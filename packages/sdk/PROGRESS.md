@@ -204,7 +204,7 @@ Also stop if the same failure survives three different fixes (use
 | 3 | API domain | DONE | `019f9afd` | 2026-07-25 | `7f08bc5cc` |
 | 4 | SDK domain | DONE | `019f9afd` | 2026-07-25 | `344a4a294` |
 | 5 | CLI domain | DONE | `019f9afd` | 2026-07-25 | `a85190ab8` |
-| 6 | Web domain and default routing | NOT STARTED | — | — | — |
+| 6 | Web domain and default routing | IN PROGRESS | `019f9afd` | 2026-07-25 | — |
 | 7 | Mobile, tests, and documentation | NOT STARTED | — | — | — |
 | 8 | Full local verification | NOT STARTED | — | — | — |
 | 9 | Pull request | NOT STARTED | — | — | — |
