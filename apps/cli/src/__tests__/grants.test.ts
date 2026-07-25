@@ -15,7 +15,7 @@ const ENV_KEYS = [
   'KORTIX_EXECUTOR_TOKEN',
   'KORTIX_TOKEN',
   'KORTIX_API_URL',
-  'KORTIX_PROJECT_ID',
+  'KORTIX_WORKSPACE_ID',
   'KORTIX_DISABLE_SANDBOX_ENV_FILE',
   'KORTIX_CONFIG_FILE',
   'KORTIX_AUTH_FILE',
@@ -28,7 +28,7 @@ let stdout = '';
 let stderr = '';
 let requests: Array<{ url: string; method: string; body: any }> = [];
 
-const PROJECT = 'proj-1';
+const WORKSPACE = 'proj-1';
 const GROUP_UUID = '11111111-2222-3333-4444-555555555555';
 
 const RESOURCES = {
@@ -156,7 +156,7 @@ afterEach(() => {
 
 describe('kortix grants', () => {
   test('ls prints grantable agents (with declared scope) + existing grants', async () => {
-    const code = await runGrants(['ls', '--project', PROJECT]);
+    const code = await runGrants(['ls', '--workspace', WORKSPACE]);
     expect(code).toBe(0);
     const out = stripAnsi(stdout);
     expect(out).toContain('support-bot');
@@ -168,7 +168,7 @@ describe('kortix grants', () => {
   });
 
   test('ls --json emits the raw payload', async () => {
-    const code = await runGrants(['ls', '--project', PROJECT, '--json']);
+    const code = await runGrants(['ls', '--workspace', WORKSPACE, '--json']);
     expect(code).toBe(0);
     const parsed = JSON.parse(stdout);
     expect(parsed.resources.agents[0].name).toBe('support-bot');
@@ -181,8 +181,8 @@ describe('kortix grants', () => {
       'support-bot',
       '--to',
       'alice@corp.com',
-      '--project',
-      PROJECT,
+      '--workspace',
+      WORKSPACE,
     ]);
     expect(code).toBe(0);
     const post = requests.find((r) => r.method === 'POST');
@@ -203,8 +203,8 @@ describe('kortix grants', () => {
       '--to',
       GROUP_UUID,
       '--group',
-      '--project',
-      PROJECT,
+      '--workspace',
+      WORKSPACE,
     ]);
     expect(code).toBe(0);
     const post = requests.find((r) => r.method === 'POST');
@@ -222,8 +222,8 @@ describe('kortix grants', () => {
       'secret',
       '--to',
       'alice@corp.com',
-      '--project',
-      PROJECT,
+      '--workspace',
+      WORKSPACE,
     ]);
     expect(code).toBe(2);
     expect(requests.find((r) => r.method === 'POST')).toBeUndefined();
@@ -238,8 +238,8 @@ describe('kortix grants', () => {
       'skill',
       '--to',
       'alice@corp.com',
-      '--project',
-      PROJECT,
+      '--workspace',
+      WORKSPACE,
     ]);
     expect(code).toBe(2);
     expect(requests.find((r) => r.method === 'POST')).toBeUndefined();
@@ -251,8 +251,8 @@ describe('kortix grants', () => {
       'support-bot',
       '--to',
       'alice@corp.com',
-      '--project',
-      PROJECT,
+      '--workspace',
+      WORKSPACE,
     ]);
     expect(code).toBe(0);
     const post = requests.find((r) => r.method === 'POST');
@@ -260,7 +260,7 @@ describe('kortix grants', () => {
   });
 
   test('assign without --to fails with exit 2 and no request', async () => {
-    const code = await runGrants(['assign', 'support-bot', '--project', PROJECT]);
+    const code = await runGrants(['assign', 'support-bot', '--workspace', WORKSPACE]);
     expect(code).toBe(2);
     expect(requests.find((r) => r.method === 'POST')).toBeUndefined();
     expect(stripAnsi(stderr)).toContain('--to');
@@ -273,15 +273,15 @@ describe('kortix grants', () => {
       '--to',
       'not-a-uuid',
       '--group',
-      '--project',
-      PROJECT,
+      '--workspace',
+      WORKSPACE,
     ]);
     expect(code).toBe(2);
     expect(requests.find((r) => r.method === 'POST')).toBeUndefined();
   });
 
   test('revoke DELETEs the grant by id', async () => {
-    const code = await runGrants(['revoke', 'grant_1', '--project', PROJECT]);
+    const code = await runGrants(['revoke', 'grant_1', '--workspace', WORKSPACE]);
     expect(code).toBe(0);
     const del = requests.find((r) => r.method === 'DELETE');
     expect(del?.url).toContain('/resource-grants/grant_1');

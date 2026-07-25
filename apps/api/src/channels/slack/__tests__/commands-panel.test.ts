@@ -7,7 +7,12 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test';
 process.env.SLACK_REQUIRE_USER_IDENTITY = 'false';
 
 mock.module('../../../config', () => ({
-  config: { FRONTEND_URL: 'https://app.test', SLACK_REQUIRE_USER_IDENTITY: false },
+  config: {
+    FRONTEND_URL: 'https://app.test',
+    SLACK_REQUIRE_USER_IDENTITY: false,
+    KORTIX_MANAGED_PROVIDER_ENABLED: true,
+    LLM_GATEWAY_MANAGED_MODELS: undefined,
+  },
 }));
 
 // FIFO db mock — slashPanel reads one workspace row.

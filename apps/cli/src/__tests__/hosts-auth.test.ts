@@ -26,7 +26,7 @@ const ENV_KEYS = [
   'KORTIX_TOKEN',
   'KORTIX_API_URL',
   'KORTIX_FRONTEND_URL',
-  'KORTIX_PROJECT_ID',
+  'KORTIX_WORKSPACE_ID',
   'BASH_ENV',
   'KORTIX_DISABLE_SANDBOX_ENV_FILE',
   'KORTIX_CONFIG_FILE',
@@ -126,7 +126,7 @@ describe('kortix hosts login', () => {
   test('--token authenticates the active host (defaults to active)', async () => {
     writeConfig(''); // logged out
     mockApi();
-    const code = await runHosts(['login', '--token', 'kortix_pat_new', '--no-project']);
+    const code = await runHosts(['login', '--token', 'kortix_pat_new', '--no-workspace']);
     expect(code).toBe(0);
     expect(requests).toEqual(['https://api.test/v1/accounts/me']);
     const host = getHost('test');
@@ -151,7 +151,7 @@ describe('kortix hosts login', () => {
       'kortix_pat_new',
       '--api',
       'https://fresh.test',
-      '--no-project',
+      '--no-workspace',
     ]);
     expect(code).toBe(0);
     expect(requests).toEqual(['https://fresh.test/v1/accounts/me']);
@@ -165,7 +165,7 @@ describe('kortix hosts login', () => {
   test('rejects a token without the kortix_pat_ prefix', async () => {
     writeConfig('');
     mockApi();
-    const code = await runHosts(['login', '--token', 'nope', '--no-project']);
+    const code = await runHosts(['login', '--token', 'nope', '--no-workspace']);
     expect(code).toBe(1);
     expect(stripAnsi(stderr)).toContain('Invalid API key format');
   });
@@ -173,7 +173,7 @@ describe('kortix hosts login', () => {
   test('the top-level `login` alias delegates identically to the active host', async () => {
     writeConfig('');
     mockApi();
-    const code = await runLogin(['--token', 'kortix_pat_alias', '--no-project']);
+    const code = await runLogin(['--token', 'kortix_pat_alias', '--no-workspace']);
     expect(code).toBe(0);
     expect(getHost('test')?.token).toBe('kortix_pat_alias');
   });
@@ -183,7 +183,7 @@ describe('kortix login — the account step of the funnel', () => {
   test('exactly one account is auto-selected (no prompt)', async () => {
     writeConfig('');
     mockApi([ACCOUNTS[0]]); // single account
-    const code = await runHosts(['login', '--token', 'kortix_pat_new', '--no-project']);
+    const code = await runHosts(['login', '--token', 'kortix_pat_new', '--no-workspace']);
     expect(code).toBe(0);
     expect(getHost('test')?.account_id).toBe('account_1');
     expect(stripAnsi(stdout)).toContain('Active account: Personal');
@@ -192,7 +192,7 @@ describe('kortix login — the account step of the funnel', () => {
   test('multiple accounts without a TTY keep the first (never blocks CI)', async () => {
     writeConfig('');
     mockApi(); // two accounts; test runner stdin is not a TTY
-    const code = await runHosts(['login', '--token', 'kortix_pat_new', '--no-project']);
+    const code = await runHosts(['login', '--token', 'kortix_pat_new', '--no-workspace']);
     expect(code).toBe(0);
     expect(getHost('test')?.account_id).toBe('account_1');
     // Non-TTY hint points the user at the switch verb.
@@ -208,7 +208,7 @@ describe('kortix login — the account step of the funnel', () => {
       'kortix_pat_new',
       '--account',
       'kortix',
-      '--no-project',
+      '--no-workspace',
     ]);
     expect(code).toBe(0);
     expect(getHost('test')?.account_id).toBe('account_2');
@@ -224,7 +224,7 @@ describe('kortix login — the account step of the funnel', () => {
       'kortix_pat_new',
       '--account',
       'nope',
-      '--no-project',
+      '--no-workspace',
     ]);
     expect(code).toBe(0);
     expect(stripAnsi(stderr)).toContain('No account "nope"');
@@ -234,7 +234,7 @@ describe('kortix login — the account step of the funnel', () => {
   test('the top-level `login --account` alias behaves identically', async () => {
     writeConfig('');
     mockApi();
-    const code = await runLogin(['--token', 'kortix_pat_new', '--account', 'kortix', '--no-project']);
+    const code = await runLogin(['--token', 'kortix_pat_new', '--account', 'kortix', '--no-workspace']);
     expect(code).toBe(0);
     expect(getHost('test')?.account_id).toBe('account_2');
   });

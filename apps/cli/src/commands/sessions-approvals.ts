@@ -6,7 +6,7 @@ import { emitJson, surfaceApiError, takeFlagBool, takeFlagValue } from '../comma
 import { C, help, status } from '../style.ts';
 import { loadSessionForChat, type ResolvedSession } from './sessions-chat.ts';
 
-type CtxOpts = { projectArg?: string; hostArg?: string };
+type CtxOpts = { workspaceArg?: string; hostArg?: string };
 
 const PENDING_HELP = help`Usage: kortix sessions pending <session-id> [options]
 
@@ -15,7 +15,7 @@ questions the agent is blocked on. Answer them with
 \`kortix sessions approve\` / \`kortix sessions answer\`.
 
 Options:
-  --project <id>   Operate on this project id (default: linked/default).
+  --workspace <id>   Operate on this workspace id (default: linked/default).
   --host <name>    Operate against a non-default Kortix host.
   --json           Machine-readable output ({ permissions, questions }).
   -h, --help       Show this help.
@@ -30,7 +30,7 @@ Options:
   --always           Allow this action pattern for the rest of the session.
   --reject           Deny the request.
   --message "<why>"  Note passed back to the agent with the reply.
-  --project <id>     Operate on this project id (default: linked/default).
+  --workspace <id>     Operate on this workspace id (default: linked/default).
   --host <name>      Operate against a non-default Kortix host.
   -h, --help         Show this help.
 `;
@@ -48,7 +48,7 @@ Options:
   --reject           Dismiss the question without answering.
   --answers <json>   Raw answers payload (string[][]) for requests carrying
                      several questions — overrides --option/--text.
-  --project <id>     Operate on this project id (default: linked/default).
+  --workspace <id>     Operate on this workspace id (default: linked/default).
   --host <name>      Operate against a non-default Kortix host.
   -h, --help         Show this help.
 `;
@@ -62,10 +62,10 @@ interface ParsedTarget {
 
 function parseTarget(argv: string[], help: string): ParsedTarget | null {
   const rest = [...argv];
-  let projectArg: string | undefined;
+  let workspaceArg: string | undefined;
   let hostArg: string | undefined;
   try {
-    projectArg = takeFlagValue(rest, ['--project']);
+    workspaceArg = takeFlagValue(rest, ['--workspace']);
     hostArg = takeFlagValue(rest, ['--host']);
   } catch (err) {
     process.stderr.write(`${status.err((err as Error).message)}\n\n${help}`);
@@ -76,7 +76,7 @@ function parseTarget(argv: string[], help: string): ParsedTarget | null {
     process.stderr.write(`${status.err('Pass a session id.')}\n\n${help}`);
     return null;
   }
-  return { sessionId: positional[0], requestId: positional[1], opts: { projectArg, hostArg }, rest };
+  return { sessionId: positional[0], requestId: positional[1], opts: { workspaceArg, hostArg }, rest };
 }
 
 async function pendingFor(resolved: ResolvedSession): Promise<{

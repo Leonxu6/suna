@@ -10,10 +10,10 @@
  *      tool calls. Acts AS the launching user via KORTIX_EXECUTOR_TOKEN; the
  *      gateway resolves the third-party credential server-side. No secret ever
  *      touches the sandbox.
- *   2. The project-scoped kortix API client — used for connector management
+ *   2. The workspace-scoped kortix API client — used for connector management
  *      (add/remove) and setup-link minting (connect / request_secret). Resolved
  *      through the same sandbox env-token host the rest of the CLI uses
- *      (KORTIX_CLI_TOKEN / KORTIX_EXECUTOR_TOKEN + KORTIX_PROJECT_ID).
+ *      (KORTIX_CLI_TOKEN / KORTIX_EXECUTOR_TOKEN + KORTIX_WORKSPACE_ID).
  */
 import {
   createExecutorClient,
@@ -22,7 +22,7 @@ import {
 } from '@kortix/executor-sdk';
 import { loadAuth } from '../api/auth.ts';
 import { clientFromAuth, type ApiClient } from '../api/client.ts';
-import { resolveProjectId } from '../project-link.ts';
+import { resolveWorkspaceId } from '../workspace-link.ts';
 import { CliError } from './io.ts';
 
 /**
@@ -33,13 +33,13 @@ import { CliError } from './io.ts';
  *   - in-sandbox: KORTIX_EXECUTOR_TOKEN/KORTIX_CLI_TOKEN + KORTIX_API_URL are
  *     injected and win;
  *   - on a laptop: falls back to the host you `kortix login`'d.
- * The project comes from KORTIX_PROJECT_ID / `.kortix/link.json` / `--project`.
- * When a project is known we hit the project-explicit gateway routes (which
+ * The workspace comes from KORTIX_WORKSPACE_ID / `.kortix/link.json` / `--workspace`.
+ * When a workspace is known we hit the workspace-explicit gateway routes (which
  * accept a plain user token), so `kortix executor` is the SAME locally and in
- * the cloud. Without a project we fall back to the legacy flat routes, which
+ * the cloud. Without a workspace we fall back to the legacy flat routes, which
  * need a scoped session token (the in-sandbox case).
  */
-export function executorClient(projectOverride?: string): ExecutorClient {
+export function executorClient(workspaceOverride?: string): ExecutorClient {
   const auth = loadAuth();
   if (!auth?.token) {
     throw new CliError(
@@ -47,21 +47,21 @@ export function executorClient(projectOverride?: string): ExecutorClient {
       'MISSING_ENV',
     );
   }
-  // --project > KORTIX_PROJECT_ID > .kortix/link.json (resolveProjectId order).
-  const projectId = resolveProjectId(projectOverride) ?? undefined;
+  // --workspace > KORTIX_WORKSPACE_ID > .kortix/link.json (resolveWorkspaceId order).
+  const workspaceId = resolveWorkspaceId(workspaceOverride) ?? undefined;
   return createExecutorClient({
     apiUrl: auth.api_base,
     token: auth.token,
-    ...(projectId ? { projectId } : {}),
+    ...(workspaceId ? { workspaceId } : {}),
   });
 }
 
 /**
- * The project-scoped kortix API client (NOT the gateway) — for connector
+ * The workspace-scoped kortix API client (NOT the gateway) — for connector
  * management + setup-link minting. Resolves the sandbox env-token host
- * (`activeHost()` in api/config.ts) + KORTIX_PROJECT_ID.
+ * (`activeHost()` in api/config.ts) + KORTIX_WORKSPACE_ID.
  */
-export function executorProjectContext(projectOverride?: string): { client: ApiClient; projectId: string } {
+export function executorWorkspaceContext(workspaceOverride?: string): { client: ApiClient; workspaceId: string } {
   const auth = loadAuth();
   if (!auth?.token) {
     throw new CliError(
@@ -69,9 +69,9 @@ export function executorProjectContext(projectOverride?: string): { client: ApiC
       'MISSING_ENV',
     );
   }
-  const projectId = resolveProjectId(projectOverride);
-  if (!projectId) throw new CliError('KORTIX_PROJECT_ID not set.', 'MISSING_ENV');
-  return { client: clientFromAuth(auth), projectId };
+  const workspaceId = resolveWorkspaceId(workspaceOverride);
+  if (!workspaceId) throw new CliError('KORTIX_WORKSPACE_ID not set.', 'MISSING_ENV');
+  return { client: clientFromAuth(auth), workspaceId };
 }
 
 /** Bound so a forgotten approval can't wedge the agent forever:
@@ -122,28 +122,28 @@ export interface SecretLinkResult {
 export async function mintConnectLink(opts: {
   slug: string;
   expiresInMinutes?: number;
-  projectOverride?: string;
+  workspaceOverride?: string;
 }): Promise<ConnectLinkResult> {
   if (!opts.slug) throw new CliError('connector slug is required', 'USAGE');
-  const { client, projectId } = executorProjectContext(opts.projectOverride);
-  return client.post<ConnectLinkResult>(`/projects/${projectId}/connect-requests`, {
+  const { client, workspaceId } = executorWorkspaceContext(opts.workspaceOverride);
+  return client.post<ConnectLinkResult>(`/workspaces/${workspaceId}/connect-requests`, {
     slug: opts.slug,
     ...(opts.expiresInMinutes ? { expires_in_minutes: opts.expiresInMinutes } : {}),
   });
 }
 
-/** Mint a short-lived link a human opens to enter project secret value(s). */
+/** Mint a short-lived link a human opens to enter workspace secret value(s). */
 export async function mintSecretLink(opts: {
   names: string[];
   scope?: 'runtime' | 'connector';
   expiresInMinutes?: number;
   labels?: Record<string, string>;
   descriptions?: Record<string, string>;
-  projectOverride?: string;
+  workspaceOverride?: string;
 }): Promise<SecretLinkResult> {
   if (opts.names.length === 0) throw new CliError('at least one secret name is required', 'USAGE');
-  const { client, projectId } = executorProjectContext(opts.projectOverride);
-  return client.post<SecretLinkResult>(`/projects/${projectId}/secret-requests`, {
+  const { client, workspaceId } = executorWorkspaceContext(opts.workspaceOverride);
+  return client.post<SecretLinkResult>(`/workspaces/${workspaceId}/secret-requests`, {
     names: opts.names,
     ...(opts.scope ? { scope: opts.scope } : {}),
     ...(opts.expiresInMinutes ? { expires_in_minutes: opts.expiresInMinutes } : {}),
@@ -155,23 +155,23 @@ export async function mintSecretLink(opts: {
 }
 
 /**
- * Add (or update) a connector on the project NOW — committed to kortix.yaml on
+ * Add (or update) a connector on the workspace NOW — committed to kortix.yaml on
  * main + synced server-side, exactly like the dashboard's "Add app". No change
  * request needed; it's live this session.
  */
 export async function addConnector(
   draft: Record<string, unknown>,
-  projectOverride?: string,
+  workspaceOverride?: string,
 ): Promise<{ ok: boolean; sync?: unknown }> {
-  const { client, projectId } = executorProjectContext(projectOverride);
+  const { client, workspaceId } = executorWorkspaceContext(workspaceOverride);
   return client.post<{ ok: boolean; sync?: unknown }>(
-    `/executor/projects/${projectId}/connectors`,
+    `/executor/workspaces/${workspaceId}/connectors`,
     draft,
   );
 }
 
-/** Remove a connector from the project (kortix.yaml on main + catalog). */
-export async function removeConnector(slug: string, projectOverride?: string): Promise<void> {
-  const { client, projectId } = executorProjectContext(projectOverride);
-  await client.delete(`/executor/projects/${projectId}/connectors/${encodeURIComponent(slug)}`);
+/** Remove a connector from the workspace (kortix.yaml on main + catalog). */
+export async function removeConnector(slug: string, workspaceOverride?: string): Promise<void> {
+  const { client, workspaceId } = executorWorkspaceContext(workspaceOverride);
+  await client.delete(`/executor/workspaces/${workspaceId}/connectors/${encodeURIComponent(slug)}`);
 }

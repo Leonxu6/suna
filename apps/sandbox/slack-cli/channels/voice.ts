@@ -4,7 +4,7 @@
 // attached SERVER-SIDE by the Executor gateway (as `Authorization: Token …`); it
 // never reaches this sandbox. Mirrors the `slack` CLI's gateway posture.
 import { ExecutorError, createExecutorClient } from '../../../../packages/executor-sdk/src/index';
-import { CliError, getEnv, handleError, kortixProjectId, out, parseArgs } from '../lib';
+import { CliError, getEnv, handleError, kortixWorkspaceId, out, parseArgs } from '../lib';
 
 // The reserved, platform-owned channel slug the voice (Recall.ai) connector
 // materializes under — must match VOICE_CHANNEL_CONNECTOR_SLUG in apps/api.
@@ -15,8 +15,8 @@ const VOICE_CONNECTOR = 'kortix_voice';
 // cheapest option, no external STT vendor). Override with --recording-config.
 const DEFAULT_RECORDING_CONFIG = { transcript: { provider: { meeting_captions: {} } } };
 
-// The Executor SDK client, built from this sandbox's env. Setting projectId
-// makes the SDK use the project-explicit gateway route, which accepts the
+// The Executor SDK client, built from this sandbox's env. Setting workspaceId
+// makes the SDK use the workspace-explicit gateway route, which accepts the
 // in-sandbox session token.
 function executorClient() {
   const apiUrl = getEnv('KORTIX_API_URL');
@@ -24,7 +24,7 @@ function executorClient() {
   if (!apiUrl || !token) {
     throw new CliError('KORTIX_API_URL / KORTIX_CLI_TOKEN not set — cannot reach the Executor.');
   }
-  return createExecutorClient({ apiUrl, token, projectId: kortixProjectId() });
+  return createExecutorClient({ apiUrl, token, workspaceId: kortixWorkspaceId() });
 }
 
 // Route a Recall.ai action through the Kortix Executor (via the SDK). The Recall

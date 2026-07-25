@@ -1,6 +1,6 @@
 import {
   emitJson,
-  resolveProjectContext,
+  resolveWorkspaceContext,
   surfaceApiError,
   takeFlagValue,
   takeFlagBool,
@@ -47,9 +47,9 @@ const PROVIDERS: readonly Provider[] = ['pipedream', 'mcp', 'openapi', 'postman'
 
 const HELP = help`Usage: kortix connectors <subcommand> [options]
 
-Manage the project's connectors — the integrations agents call as tools
+Manage the workspace's connectors — the integrations agents call as tools
 (Pipedream apps, MCP servers, OpenAPI/Postman/GraphQL/HTTP endpoints). Mirrors the
-dashboard's Customize → Connectors. Connectors are project-wide visible; the
+dashboard's Customize → Connectors. Connectors are workspace-wide visible; the
 only access gate is which AGENTS may call one (\`kortix agents scope\` /
 \`[[agents]].connectors\` in kortix.yaml) — see \`kortix grants\`.
 
@@ -62,7 +62,7 @@ Subcommands:
   show <slug> [--json]              Show one connector's tools (actions).
   add <slug> --provider <p> [...]   Add a [[connectors]] block to kortix.yaml.
                                     Add --apply to skip ship/CR and apply it
-                                    instantly on the cloud project (commit to
+                                    instantly on the cloud workspace (commit to
                                     main + sync, like the dashboard).
   rm <slug> [--apply]               Remove a [[connectors]] block from kortix.yaml
                                     (or --apply to remove on the cloud now).
@@ -77,7 +77,7 @@ Subcommands:
                                     Auto-finalizes — no \`finalize\` needed.
   finalize <slug>                   Confirm a Pipedream connection completed.
   apps [<query>] [--json]           Browse the Pipedream app catalog.
-  policy ls [--json]                Show project-wide execution policies.
+  policy ls [--json]                Show workspace-wide execution policies.
   policy set --default <risk|allow_all>   Set the default execution mode.
   policy <slug> ls [--json]         Show one connector's tool-call rules.
   policy <slug> set <match> <act>   Allow|ask|block a tool/glob/regex (applies now).
@@ -99,7 +99,7 @@ Add options (provider-specific):
   --credential <mode>      shared (the only mode).
 
 Global:
-  --project <id>     Operate on this project id (default: linked).
+  --workspace <id>     Operate on this workspace id (default: linked).
   --host <name>      Operate against a non-default Kortix host.
   -h, --help         Show this help.
 `;
@@ -119,7 +119,7 @@ export async function runConnectors(argv: string[]): Promise<number> {
   try {
     json = takeFlagBool(rest, ['--json']);
     applyRemote = takeFlagBool(rest, ['--apply']);
-    f.project = takeFlagValue(rest, ['--project']);
+    f.workspace = takeFlagValue(rest, ['--workspace']);
     f.host = takeFlagValue(rest, ['--host']);
     f.name = takeFlagValue(rest, ['--name']);
     f.provider = takeFlagValue(rest, ['--provider']);
@@ -144,19 +144,19 @@ export async function runConnectors(argv: string[]): Promise<number> {
   //    cloud call, no auth — you `kortix ship` to apply. Only credentials,
   //    OAuth, reconcile + reads talk to the cloud. ───────────────────
   //    `--apply` skips the local-edit + ship/CR flow and applies the change
-  //    instantly on the cloud project (commit to kortix.yaml on main + sync,
+  //    instantly on the cloud workspace (commit to kortix.yaml on main + sync,
   //    exactly like the dashboard) — handled in the switch below.
   if ((sub === 'add' || sub === 'create') && !applyRemote) return connectorAddLocal(positional[0], f);
   if ((sub === 'rm' || sub === 'remove' || sub === 'delete') && !applyRemote) return connectorRmLocal(positional[0]);
   if ((sub === 'policy' || sub === 'policies') && positional[0] === 'set') return policySetLocal(f.default);
 
-  const ctx = await resolveProjectContext({ projectArg: f.project, hostArg: f.host });
+  const ctx = await resolveWorkspaceContext({ workspaceArg: f.workspace, hostArg: f.host });
   if (!ctx) return 1;
-  const ex = `/executor/projects/${ctx.projectId}`;
+  const ex = `/executor/workspaces/${ctx.workspaceId}`;
 
   try {
     switch (sub) {
-      // `--apply` paths: mutate the cloud project directly (commit to
+      // `--apply` paths: mutate the cloud workspace directly (commit to
       // kortix.yaml on main + sync, like the dashboard) — no local edit, no CR.
       case 'add':
       case 'create': {
@@ -183,7 +183,7 @@ export async function runConnectors(argv: string[]): Promise<number> {
         }>(`${ex}/connectors`, draft);
         if (json) { emitJson(resp); return 0; }
         process.stdout.write(
-          `${status.ok(`${C.bold}${slug}${C.reset} live on the project`)} ${C.dim}(committed to kortix.yaml on main + synced)${C.reset}\n` +
+          `${status.ok(`${C.bold}${slug}${C.reset} live on the workspace`)} ${C.dim}(committed to kortix.yaml on main + synced)${C.reset}\n` +
             (resp.authDiscovery?.recommended?.type
               ? `  ${C.dim}Authentication: ${C.reset}${resp.authDiscovery.recommended.type}${C.dim} (auto-detected; set the credential next)${C.reset}\n`
               : '') +
@@ -308,7 +308,7 @@ export async function runConnectors(argv: string[]): Promise<number> {
         const slug = positional[0];
         if (!slug) return missing('a connector slug');
         const resp = await ctx.client.post<{ url: string; slug: string; app: string | null; expires_at: string }>(
-          `/projects/${ctx.projectId}/connect-requests`,
+          `/workspaces/${ctx.workspaceId}/connect-requests`,
           { slug, ...(f.expires ? { expires_in_minutes: Number(f.expires) } : {}) },
         );
         if (json) {
@@ -394,7 +394,7 @@ export async function runConnectors(argv: string[]): Promise<number> {
       case 'policy':
       case 'policies': {
         const a0 = positional[0] ?? 'ls';
-        // Project-wide: `policy ls`. (`policy set --default` is handled earlier.)
+        // Workspace-wide: `policy ls`. (`policy set --default` is handled earlier.)
         if (a0 === 'ls' || a0 === 'list') {
           const resp = await ctx.client.get<{
             policies: { match: string; action: string }[];
@@ -406,7 +406,7 @@ export async function runConnectors(argv: string[]): Promise<number> {
           }
           process.stdout.write(`\n  ${C.dim}default mode: ${C.reset}${C.bold}${resp.defaultMode}${C.reset}\n`);
           if (resp.policies.length === 0) {
-            process.stdout.write(`  ${C.dim}No explicit project policies.${C.reset}\n\n`);
+            process.stdout.write(`  ${C.dim}No explicit workspace policies.${C.reset}\n\n`);
             return 0;
           }
           for (const p of resp.policies) process.stdout.write(`  ${C.cyan}${p.match}${C.reset} → ${p.action}\n`);

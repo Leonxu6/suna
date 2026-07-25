@@ -136,7 +136,7 @@ export const SECRET_DEFS: SecretDef[] = [
   { key: 'KORTIX_GITHUB_APP_CLIENT_SECRET', category: 'managed_git', kind: 'operator', required: false },
   { key: 'KORTIX_GITHUB_APP_WEBHOOK_SECRET', category: 'managed_git', kind: 'operator', required: false },
   // Signs the GitHub App install-state HMAC (buildGitHubAppInstallState in
-  // apps/api/src/projects/github.ts). `connect-github` generates this once
+  // apps/api/src/workspaces/github.ts). `connect-github` generates this once
   // (if unset) alongside the App credentials.
   { key: 'KORTIX_GITHUB_APP_STATE_SECRET', category: 'managed_git', kind: 'generated', required: false, rotatable: true },
 
@@ -149,7 +149,7 @@ export const SECRET_DEFS: SecretDef[] = [
   // Connectors
   { key: 'PIPEDREAM_CLIENT_ID', category: 'connectors', kind: 'operator', required: false },
   { key: 'PIPEDREAM_CLIENT_SECRET', category: 'connectors', kind: 'operator', required: false },
-  { key: 'PIPEDREAM_PROJECT_ID', category: 'connectors', kind: 'operator', required: false },
+  { key: 'PIPEDREAM_WORKSPACE_ID', category: 'connectors', kind: 'operator', required: false },
   { key: 'POSTMAN_API_KEY', category: 'connectors', kind: 'operator', required: false },
   { key: 'PIPEDREAM_WEBHOOK_SECRET', category: 'connectors', kind: 'operator', required: false },
 
@@ -282,7 +282,7 @@ export const KEY_SERVICE_MAP: Record<string, readonly string[]> = {
   // Connectors
   PIPEDREAM_CLIENT_ID: ['kortix-api'],
   PIPEDREAM_CLIENT_SECRET: ['kortix-api'],
-  PIPEDREAM_PROJECT_ID: ['kortix-api'],
+  PIPEDREAM_WORKSPACE_ID: ['kortix-api'],
   POSTMAN_API_KEY: ['kortix-api'],
   PIPEDREAM_ENVIRONMENT: ['kortix-api'],
   PIPEDREAM_WEBHOOK_SECRET: ['kortix-api'],

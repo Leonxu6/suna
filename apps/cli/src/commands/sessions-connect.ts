@@ -8,7 +8,7 @@ import {
   resolveRunningSessionId,
 } from './sessions-chat.ts';
 
-type CtxOpts = { projectArg?: string; hostArg?: string };
+type CtxOpts = { workspaceArg?: string; hostArg?: string };
 
 const CONNECT_HELP = help`Usage: kortix sessions connect [<session-id>] [options] [-- <opencode attach args…>]
 
@@ -16,13 +16,13 @@ Attach your local OpenCode TUI to the OpenCode server already running inside a
 Kortix session sandbox. The CLI opens a local loopback proxy, injects your
 Kortix auth token, then runs \`opencode attach\` against it.
 
-Given a session id, resolves the right host/project on its own: tries the
-active/linked project first, then — unless you pin --host/--project — scans
+Given a session id, resolves the right host/workspace on its own: tries the
+active/linked workspace first, then — unless you pin --host/--workspace — scans
 every logged-in host and account for the id. One command, no manual
-\`kortix projects use\` / \`kortix hosts use\` first.
+\`kortix workspaces use\` / \`kortix hosts use\` first.
 
   --port <N>       Local loopback proxy port (default: random free port).
-  --project <id>   Pin this project id (skips the cross-host scan).
+  --workspace <id>   Pin this workspace id (skips the cross-host scan).
   --host <name>    Pin this Kortix host (skips the cross-host scan).
   -h, --help       Show this help.
 
@@ -42,11 +42,11 @@ export async function runSessionsConnect(argv: string[]): Promise<number> {
   const attachArgs = separator >= 0 ? rest.splice(separator + 1) : [];
   if (separator >= 0) rest.splice(separator);
 
-  let projectArg: string | undefined;
+  let workspaceArg: string | undefined;
   let hostArg: string | undefined;
   let portRaw: string | undefined;
   try {
-    projectArg = takeFlagValue(rest, ['--project']);
+    workspaceArg = takeFlagValue(rest, ['--workspace']);
     hostArg = takeFlagValue(rest, ['--host']);
     portRaw = takeFlagValue(rest, ['--port']);
   } catch (err) {
@@ -62,13 +62,13 @@ export async function runSessionsConnect(argv: string[]): Promise<number> {
   const proxyPort = parseConnectPort(portRaw);
   if (proxyPort === null) return 2;
 
-  const opts: CtxOpts = { projectArg, hostArg };
+  const opts: CtxOpts = { workspaceArg, hostArg };
   const sessionId = await resolveRunningSessionId(positional[0], opts, 'Pick a session to connect to');
   if (!sessionId) return 1;
 
-  // A session id may belong to a different project (or host) than the one
+  // A session id may belong to a different workspace (or host) than the one
   // currently active/linked — loadSessionForChat locates it on its own
-  // (--project/--host still pin it) instead of surfacing a bare "Not found".
+  // (--workspace/--host still pin it) instead of surfacing a bare "Not found".
   const resolved = await loadSessionForChat(sessionId, opts, 'sessions connect');
   if (!resolved) return 1;
   const ocSessionId = await ensureOpencodeSession(resolved);

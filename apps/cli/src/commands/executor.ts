@@ -69,7 +69,7 @@ async function dispatch(command: string, args: string[], flags: Record<string, s
   switch (command) {
     case 'connectors':
     case 'ls': {
-      const executor = executorClient(flags.project);
+      const executor = executorClient(flags.workspace);
       const connectors = await executor.connectors();
       out({
         connectors: connectors.map((c) => ({
@@ -84,7 +84,7 @@ async function dispatch(command: string, args: string[], flags: Record<string, s
 
     case 'discover':
     case 'search': {
-      const executor = executorClient(flags.project);
+      const executor = executorClient(flags.workspace);
       const q = args.join(' ') || flags.query || '';
       const matches = await executor.discover(q, { limit: Number(flags.limit) || 20 });
       out({ matches: matches.map((m) => ({ tool: m.tool, risk: m.risk, description: m.description })) });
@@ -92,7 +92,7 @@ async function dispatch(command: string, args: string[], flags: Record<string, s
     }
 
     case 'describe': {
-      const executor = executorClient(flags.project);
+      const executor = executorClient(flags.workspace);
       const ref = args[0];
       if (!ref || !ref.includes('.')) throw new CliError('usage: kortix executor describe <connector>.<action>', 'USAGE');
       const tool = await executor.describe(ref);
@@ -102,7 +102,7 @@ async function dispatch(command: string, args: string[], flags: Record<string, s
     }
 
     case 'call': {
-      const executor = executorClient(flags.project);
+      const executor = executorClient(flags.workspace);
       const slug = args[0];
       const action = args[1];
       if (!slug || !action) throw new CliError('usage: kortix executor call <connector> <action> [json-args]', 'USAGE');
@@ -121,7 +121,7 @@ async function dispatch(command: string, args: string[], flags: Record<string, s
 
     case 'add':
     case 'create': {
-      // Add (or update) a connector on the project NOW — committed to
+      // Add (or update) a connector on the workspace NOW — committed to
       // kortix.yaml on main + synced server-side, exactly like the dashboard's
       // "Add app". No change request needed; it's live this session. Then run
       // `kortix executor connect <slug>` to surface the auth link.
@@ -129,7 +129,7 @@ async function dispatch(command: string, args: string[], flags: Record<string, s
       if (!slug) throw new CliError('usage: kortix executor add <slug> --provider <p> [--app <app>] [--url <url>] …', 'USAGE');
       rejectBuiltinChannel(slug);
       const draft = connectorDraftFromFlags(slug, flags);
-      const res = await addConnector(draft, flags.project);
+      const res = await addConnector(draft, flags.workspace);
       out({
         ok: true,
         slug,
@@ -146,7 +146,7 @@ async function dispatch(command: string, args: string[], flags: Record<string, s
     case 'delete': {
       const slug = args[0];
       if (!slug) throw new CliError('usage: kortix executor rm <slug>', 'USAGE');
-      await removeConnector(slug, flags.project);
+      await removeConnector(slug, flags.workspace);
       out({ ok: true, slug, removed: true, note: 'Removed from kortix.yaml on main + catalog.' });
       break;
     }
@@ -161,7 +161,7 @@ async function dispatch(command: string, args: string[], flags: Record<string, s
       if (!slug) throw new CliError('usage: kortix executor connect <connector-slug>', 'USAGE');
       rejectBuiltinChannel(slug);
       const expires = flags.expires ? Number(flags.expires) : undefined;
-      const link = await mintConnectLink({ slug, expiresInMinutes: expires, projectOverride: flags.project });
+      const link = await mintConnectLink({ slug, expiresInMinutes: expires, workspaceOverride: flags.workspace });
       out({
         ok: true,
         slug: link.slug,
@@ -183,7 +183,7 @@ async function dispatch(command: string, args: string[], flags: Record<string, s
           describe: 'kortix executor describe <connector>.<action> — show a tool\'s input schema',
           call: 'kortix executor call <connector> <action> \'<json-args>\' — run a tool',
           add: 'kortix executor add <slug> --provider pipedream --app <app> — add a connector NOW (no CR), then connect',
-          rm: 'kortix executor rm <slug> — remove a connector from the project',
+          rm: 'kortix executor rm <slug> — remove a connector from the workspace',
           connect: 'kortix executor connect <connector-slug> — mint a Pipedream Quick Connect link to hand the human',
           mcp: 'kortix executor mcp — run the optional stdio MCP compatibility server',
         },

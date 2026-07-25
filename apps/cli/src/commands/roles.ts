@@ -7,10 +7,10 @@ import { emitJson, surfaceApiError, takeFlagValue, takeFlagBool } from '../comma
 import { C, help, pad, status } from '../style.ts';
 
 // Account-scoped IAM custom roles + policy assignments. Mirrors the dashboard's
-// account Roles tab + per-project "Custom roles" card, and wraps the same
+// account Roles tab + per-workspace "Custom roles" card, and wraps the same
 // /accounts/:id/iam/{roles,policies,actions} routes the web SDK already uses.
 
-type ResourceType = 'account' | 'project' | 'sandbox' | 'trigger' | 'channel' | 'member' | 'group';
+type ResourceType = 'account' | 'workspace' | 'sandbox' | 'trigger' | 'channel' | 'member' | 'group';
 type PrincipalType = 'member' | 'group' | 'token';
 
 interface IamRole {
@@ -44,7 +44,7 @@ interface ActionCatalogEntry {
 const HELP = help`Usage: kortix roles <subcommand> [options]
 
 Manage account-level custom roles + their policy assignments — the CLI face
-of the dashboard's Roles tab and a project's "Custom roles" card. Built-in
+of the dashboard's Roles tab and a workspace's "Custom roles" card. Built-in
 roles (owner/admin/member, manager/editor/user) are read-only references;
 custom roles are yours to create, edit, and bind.
 
@@ -57,12 +57,12 @@ Roles:
   rm <role>                           Delete a custom role.
 
 Assignments (policies):
-  assignments [--project <id>] [--json]   List policy bindings.
+  assignments [--workspace <id>] [--json]   List policy bindings.
   assign <role> --to <type>:<id> [opts]   Bind a role to a principal.
   unassign <policy-id>                    Remove a binding.
 
 IAM as code:
-  export [--project <id>] [--out <file>]  Dump custom roles + bindings to TOML
+  export [--workspace <id>] [--out <file>]  Dump custom roles + bindings to TOML
                                           (or JSON with --format json).
   import <file>                           Apply a roles/policies file (creates
                                           missing roles, then bulk-imports binds).
@@ -73,11 +73,11 @@ A principal is "member:<user-id>", "group:<group-id>", or "token:<sa-id>".
 Options:
   --name <n>         Display name (create).
   --desc <text>      Description (create).
-  --scope <s>        account|project — resource type of a created role,
-                     or the scope of an assignment (default: project).
+  --scope <s>        account|workspace — resource type of a created role,
+                     or the scope of an assignment (default: workspace).
   --actions <list>   Comma-separated action keys (create / set-actions).
   --to <type>:<id>   Principal for an assignment.
-  --project <id>     Project id — scope an assignment / filter / export.
+  --workspace <id>     Workspace id — scope an assignment / filter / export.
   --expires <iso>    Optional hard expiry for an assignment.
   --out <file>       Write export to a file (default: stdout).
   --format <f>       toml (default) | json — export format.
@@ -89,9 +89,9 @@ Examples:
   kortix roles ls
   kortix roles actions
   kortix roles create support_agent --name "Support Agent" \\
-    --scope project --actions project.read,project.session.start,project.trigger.fire
-  kortix roles assign support_agent --to member:<user-id> --project <project-id>
-  kortix roles assignments --project <project-id>
+    --scope workspace --actions workspace.read,workspace.session.start,workspace.trigger.fire
+  kortix roles assign support_agent --to member:<user-id> --workspace <workspace-id>
+  kortix roles assignments --workspace <workspace-id>
   kortix roles export --out policies.toml
   kortix roles import policies.toml
 `;
@@ -138,7 +138,7 @@ export async function runRoles(argv: string[]): Promise<number> {
     f.scope = takeFlagValue(rest, ['--scope']);
     f.actions = takeFlagValue(rest, ['--actions']);
     f.to = takeFlagValue(rest, ['--to']);
-    f.project = takeFlagValue(rest, ['--project']);
+    f.workspace = takeFlagValue(rest, ['--workspace']);
     f.expires = takeFlagValue(rest, ['--expires']);
     f.out = takeFlagValue(rest, ['--out']);
     f.format = takeFlagValue(rest, ['--format']);
@@ -221,7 +221,7 @@ export async function runRoles(argv: string[]): Promise<number> {
           return 2;
         }
         if (!f.name) return missing('--name <display name>');
-        const resourceType = (f.scope ?? 'project') as ResourceType;
+        const resourceType = (f.scope ?? 'workspace') as ResourceType;
         const actions = (f.actions ?? '').split(',').map((a) => a.trim()).filter(Boolean);
         const role = await ctx.client.post<IamRole>(`${base}/roles`, {
           key,
@@ -273,14 +273,14 @@ export async function runRoles(argv: string[]): Promise<number> {
 
       case 'assignments':
       case 'policies': {
-        const qs = f.project ? `?scopeType=project&scopeId=${encodeURIComponent(f.project)}` : '';
+        const qs = f.workspace ? `?scopeType=workspace&scopeId=${encodeURIComponent(f.workspace)}` : '';
         const { policies } = await ctx.client.get<{ policies: IamPolicy[] }>(`${base}/policies${qs}`);
         if (json) return emitJson(policies), 0;
         // Map role_id → key for a readable column.
         const { roles } = await ctx.client.get<{ roles: IamRole[] }>(`${base}/roles`);
         const roleKey = new Map(roles.map((r) => [r.role_id, r.key]));
         if (policies.length === 0) {
-          process.stdout.write(`  ${C.dim}No assignments${f.project ? ' on this project' : ''}.${C.reset}\n`);
+          process.stdout.write(`  ${C.dim}No assignments${f.workspace ? ' on this workspace' : ''}.${C.reset}\n`);
           return 0;
         }
         process.stdout.write('\n');
@@ -309,9 +309,9 @@ export async function runRoles(argv: string[]): Promise<number> {
         const { roles } = await ctx.client.get<{ roles: IamRole[] }>(`${base}/roles`);
         const role = findRole(roles, ref);
         if (!role) return notFound(`role "${ref}"`);
-        // Resolve scope: --project pins a project scope; otherwise --scope (default account).
-        const scope = f.project
-          ? { scopeType: 'project', scopeId: f.project as string | null }
+        // Resolve scope: --workspace pins a workspace scope; otherwise --scope (default account).
+        const scope = f.workspace
+          ? { scopeType: 'workspace', scopeId: f.workspace as string | null }
           : { scopeType: f.scope ?? 'account', scopeId: null as string | null };
         const policy = await ctx.client.post<IamPolicy>(`${base}/policies`, {
           principalType,
@@ -356,7 +356,7 @@ export async function runRoles(argv: string[]): Promise<number> {
             };
           }),
         );
-        const qs = f.project ? `?scopeType=project&scopeId=${encodeURIComponent(f.project)}` : '';
+        const qs = f.workspace ? `?scopeType=workspace&scopeId=${encodeURIComponent(f.workspace)}` : '';
         const { policies } = await ctx.client.get<{ policies: IamPolicy[] }>(`${base}/policies${qs}`);
         const policyDocs = policies.map((p) => ({
           role_key: roleKeyById.get(p.role_id) ?? p.role_id,
@@ -409,7 +409,7 @@ export async function runRoles(argv: string[]): Promise<number> {
             key: r.key,
             name: r.name ?? r.key,
             ...(r.description ? { description: r.description } : {}),
-            resourceType: r.resource_type ?? 'project',
+            resourceType: r.resource_type ?? 'workspace',
             actions: Array.isArray(r.actions) ? r.actions : [],
           });
           created++;

@@ -35,18 +35,18 @@ function agentSublabel(agent: CodingAgent): string {
   }
 }
 
-const HELP = help`Usage: kortix init [project-name] [options]
+const HELP = help`Usage: kortix init [workspace-name] [options]
 
-Start a new Kortix project.
+Start a new Kortix workspace.
 
 A fresh, self-contained workspace your agents can run from day one — the
-full OpenCode runtime, project memory, and a kortix.yaml to make it yours.
+full OpenCode runtime, workspace memory, and a kortix.yaml to make it yours.
 By default this works like create-next-app and creates a new directory. In an
 already-cloned Kortix repository, pass --force to wire local coding agents in
 place without replacing repository files.
 
 Arguments:
-  project-name         Your project's name — and the directory it's created
+  workspace-name         Your workspace's name — and the directory it's created
                        in. Prompted if omitted.
 
 Pick the coding agent(s) to wire up. The OpenCode config dir is symlinked into
@@ -55,7 +55,7 @@ skills and agents are shared; Codex and Cursor also get a root AGENTS.md pointer
 they read natively.
 
 Options:
-  --name <project>     Alias for the positional project-name.
+  --name <workspace>     Alias for the positional workspace-name.
   --primary <agent>    Primary coding agent to wire up (${SUPPORTED_AGENTS.join('|')}).
   --agents <list>      Comma-separated extras to wire up alongside --primary.
                        Example: --agents claude,cursor
@@ -63,8 +63,8 @@ Options:
                        skill kit) or minimal (base plumbing only).
   --force              Configure the current cloned Kortix repository in place.
                        Requires kortix.yaml (or kortix.toml) and .kortix/opencode.
-  --no-git             Don't run \`git init\` in the new project directory.
-  -y, --yes            Skip prompts (requires a project-name).
+  --no-git             Don't run \`git init\` in the new workspace directory.
+  -y, --yes            Skip prompts (requires a workspace-name).
   -h, --help           Show this help.
 
 Adding more marketplace items later is an agent import, not part of init:
@@ -164,7 +164,7 @@ function parseFlags(argv: string[]): InitFlags {
       }
       default:
         if (arg.startsWith('-')) throw new Error(`kortix: unknown option "${arg}"`);
-        // Positional project name (the directory to create), like create-next-app.
+        // Positional workspace name (the directory to create), like create-next-app.
         if (f.name !== undefined) throw new Error(`kortix: unexpected extra argument "${arg}"`);
         f.name = arg;
         break;
@@ -173,10 +173,10 @@ function parseFlags(argv: string[]): InitFlags {
   return f;
 }
 
-function normalizeProjectName(raw: string): string {
+function normalizeWorkspaceName(raw: string): string {
   const trimmed = raw.trim();
-  if (!trimmed) return 'kortix-project';
-  return trimmed.replace(/[^A-Za-z0-9._ -]+/g, '-').replace(/^[-\s]+|[-\s]+$/g, '') || 'kortix-project';
+  if (!trimmed) return 'kortix-workspace';
+  return trimmed.replace(/[^A-Za-z0-9._ -]+/g, '-').replace(/^[-\s]+|[-\s]+$/g, '') || 'kortix-workspace';
 }
 
 function dirIsGitRepo(path: string): boolean {
@@ -210,9 +210,9 @@ function printAgentPreamble(): void {
   const opts = SUPPORTED_AGENTS.map((a) => `${bold}${a}${reset}`).join(`  ${dim}·${reset}  `);
   const lines = [
     '',
-    `  Pick the coding agent(s) to wire into this Kortix project.`,
+    `  Pick the coding agent(s) to wire into this Kortix workspace.`,
     '',
-    `  ${dim}Each one is symlinked to the project's OpenCode config dir, so it${reset}`,
+    `  ${dim}Each one is symlinked to the workspace's OpenCode config dir, so it${reset}`,
     `  ${dim}shares the same skills + agents — ask it to scaffold triggers,${reset}`,
     `  ${dim}custom agents, or edit kortix.yaml for you.${reset}`,
     `  ${dim}(Kortix itself runs opencode inside every sandbox session.)${reset}`,
@@ -226,7 +226,7 @@ function printAgentPreamble(): void {
 /** "I want a code reviewer agent. Read the kortix skill, then..." */
 function sampleStarterPrompt(): string {
   return (
-    'I want to configure my Kortix project. Read the kortix skill, ' +
+    'I want to configure my Kortix workspace. Read the kortix skill, ' +
     'then propose an initial agent for my use case (e.g. a PR reviewer ' +
     'or a daily digest worker), wire up the trigger in kortix.yaml, ' +
     'and tell me what secrets I still need to set.'
@@ -250,27 +250,27 @@ export async function runInit(argv: string[]): Promise<number> {
 
   const configureExisting = flags.force && !flags.name;
 
-  // ── Resolve project name ─────────────────────────────────────────────
-  // The default is a NEW standalone project. `--force` with no name is the
+  // ── Resolve workspace name ─────────────────────────────────────────────
+  // The default is a NEW standalone workspace. `--force` with no name is the
   // documented post-clone setup path and operates on cwd in place.
-  let projectName: string;
+  let workspaceName: string;
   if (configureExisting) {
-    projectName = normalizeProjectName(basename(process.cwd()));
+    workspaceName = normalizeWorkspaceName(basename(process.cwd()));
   } else if (flags.name) {
-    projectName = normalizeProjectName(flags.name);
+    workspaceName = normalizeWorkspaceName(flags.name);
   } else if (flags.yes) {
-    process.stderr.write(`kortix init: a project name is required — e.g. \`kortix init my-app\`.\n`);
+    process.stderr.write(`kortix init: a workspace name is required — e.g. \`kortix init my-app\`.\n`);
     return 2;
   } else {
-    const answer = await prompt(`Project name`, 'my-kortix-project');
-    projectName = normalizeProjectName(answer);
+    const answer = await prompt(`Workspace name`, 'my-kortix-workspace');
+    workspaceName = normalizeWorkspaceName(answer);
   }
 
-  // Create the project in a fresh directory next to the shell's cwd. Refuse to
-  // scaffold into an existing non-empty folder — a Kortix project is standalone.
+  // Create the workspace in a fresh directory next to the shell's cwd. Refuse to
+  // scaffold into an existing non-empty folder — a Kortix workspace is standalone.
   const cwd = configureExisting
     ? resolve(process.cwd())
-    : resolve(process.cwd(), projectName);
+    : resolve(process.cwd(), workspaceName);
   if (
     !configureExisting &&
     existsSync(cwd) &&
@@ -278,7 +278,7 @@ export async function runInit(argv: string[]): Promise<number> {
     readdirSync(cwd).length > 0
   ) {
     process.stderr.write(
-      `kortix init: "${projectName}" already exists and isn't empty.\n` +
+      `kortix init: "${workspaceName}" already exists and isn't empty.\n` +
         `Pick a different name, or remove the directory first.\n`,
     );
     return 1;
@@ -292,7 +292,7 @@ export async function runInit(argv: string[]): Promise<number> {
     const hasRuntime = existsSync(resolve(cwd, ".kortix", "opencode"));
     if (!hasManifest || !hasRuntime) {
       process.stderr.write(
-        "kortix init --force: this directory is not a cloned Kortix project.\n" +
+        "kortix init --force: this directory is not a cloned Kortix workspace.\n" +
           "Expected kortix.yaml (or kortix.toml) and .kortix/opencode.\n",
       );
       return 1;
@@ -300,7 +300,7 @@ export async function runInit(argv: string[]): Promise<number> {
   }
 
   // ── Resolve starter template ────────────────────────────────────────
-  // There's one starter kit — every project scaffolds with the full Kortix
+  // There's one starter kit — every workspace scaffolds with the full Kortix
   // skill kit. The `--template` flag stays as an advanced escape hatch (e.g.
   // the internal base-only `minimal`), but we no longer prompt for a choice.
   const template: StarterTemplateId = flags.template ?? DEFAULT_STARTER_TEMPLATE_ID;
@@ -324,7 +324,7 @@ export async function runInit(argv: string[]): Promise<number> {
     printAgentPreamble();
     const initialIdx = SUPPORTED_AGENTS.indexOf(DEFAULT_PRIMARY);
     const picked = await selectMultiFromList<CodingAgent>({
-      title: 'Pick the coding agent(s) to wire into this Kortix project',
+      title: 'Pick the coding agent(s) to wire into this Kortix workspace',
       searchHint: `${C.dim}↑/↓ navigate · Space toggle · Enter confirm${C.reset}`,
       items: SUPPORTED_AGENTS.map((a) => ({
         value: a,
@@ -359,7 +359,7 @@ export async function runInit(argv: string[]): Promise<number> {
     ? { written: [] as string[], skipped: [] as string[] }
     : applyScaffold({
     repoRoot: cwd,
-    projectName,
+    workspaceName,
     template,
     preserveExisting: !flags.overwrite,
   });
@@ -389,8 +389,8 @@ export async function runInit(argv: string[]): Promise<number> {
   const lines: string[] = [];
   lines.push(
     configureExisting
-      ? `Configured this Kortix project in ${cwd}`
-      : `Initialized Kortix project "${projectName}" in ${cwd}`,
+      ? `Configured this Kortix workspace in ${cwd}`
+      : `Initialized Kortix workspace "${workspaceName}" in ${cwd}`,
   );
   const totalWritten = result.written.length + agentInstall.written.length;
   lines.push(`Wrote ${totalWritten} file${totalWritten === 1 ? '' : 's'}:`);
@@ -409,7 +409,7 @@ export async function runInit(argv: string[]): Promise<number> {
   if (!configureExisting) {
     lines.push('');
     lines.push('Next:');
-    lines.push(`  cd ${projectName}`);
+    lines.push(`  cd ${workspaceName}`);
   }
   process.stdout.write(`${lines.join('\n')}\n`);
 

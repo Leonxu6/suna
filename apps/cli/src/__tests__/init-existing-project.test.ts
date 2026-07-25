@@ -13,8 +13,8 @@ import { spawnSync } from "node:child_process";
 
 const cli = resolve(import.meta.dir, "..", "index.ts");
 
-describe("init in an existing cloned project", () => {
-  test("--force wires the current Kortix repo in place without creating a child project", () => {
+describe("init in an existing cloned workspace", () => {
+  test("--force wires the current Kortix repo in place without creating a child workspace", () => {
     const repo = mkdtempSync(resolve(tmpdir(), "kortix-init-existing-"));
     mkdirSync(resolve(repo, ".kortix", "opencode"), { recursive: true });
     writeFileSync(
@@ -45,7 +45,7 @@ describe("init in an existing cloned project", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
-      `Configured this Kortix project in ${realpathSync(repo)}`,
+      `Configured this Kortix workspace in ${realpathSync(repo)}`,
     );
     expect(lstatSync(resolve(repo, ".agents")).isSymbolicLink()).toBe(true);
     expect(lstatSync(resolve(repo, ".opencode")).isSymbolicLink()).toBe(true);
@@ -54,7 +54,7 @@ describe("init in an existing cloned project", () => {
       "This repository is a",
     );
     expect(readFileSync(resolve(repo, "README.md"), "utf8")).toBe("keep me\n");
-    expect(() => lstatSync(resolve(repo, "kortix-project"))).toThrow();
+    expect(() => lstatSync(resolve(repo, "kortix-workspace"))).toThrow();
     expect(
       spawnSync("git", ["status", "--porcelain"], {
         cwd: repo,

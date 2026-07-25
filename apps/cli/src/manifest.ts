@@ -34,7 +34,7 @@ export interface ManifestIssues {
 }
 
 /**
- * Normalize an env-name array the way the backend does (projects/git.ts
+ * Normalize an env-name array the way the backend does (workspaces/git.ts
  * `asStringArray`): uppercase, validate, dedupe, drop anything that isn't a
  * legal env var name. Keeps the CLI's view of required/optional in lock-step
  * with what the server will actually enforce.
@@ -84,7 +84,7 @@ export function manifestPath(cwd: string = process.cwd()): string {
 
 /**
  * Parse the local manifest (kortix.yaml or kortix.toml). Returns null when
- * there's no manifest (a project may be `.kortix/`-only). Throws the parser's
+ * there's no manifest (a workspace may be `.kortix/`-only). Throws the parser's
  * syntax error — callers surface that as the "does it compile" failure.
  */
 export function loadLocalManifest(cwd: string = process.cwd()): LocalManifest | null {

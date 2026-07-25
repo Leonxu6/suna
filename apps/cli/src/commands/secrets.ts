@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
-import type { ProjectSecret, ProjectSecretsResponse } from '../api/types.ts';
+import type { WorkspaceSecret, WorkspaceSecretsResponse } from '../api/types.ts';
 import {
   emitJson,
-  resolveProjectContext,
+  resolveWorkspaceContext,
   surfaceApiError,
   takeFlagBool,
   takeFlagValue,
@@ -12,7 +12,7 @@ import { C, help, pad, status } from '../style.ts';
 
 const HELP = help`Usage: kortix secrets <subcommand> [options]
 
-Manage encrypted env-var secrets on the linked Kortix project. Values
+Manage encrypted env-var secrets on the linked Kortix workspace. Values
 are AES-256-GCM-encrypted at rest and injected into session sandboxes
 at boot.
 
@@ -44,8 +44,8 @@ Which agents may use a secret is governed by that agent's \`secrets\` grant in
 kortix.yaml (by identifier), not a per-secret setting here.
 
 Global options:
-  --project <id>     Operate on this project id (default: linked or
-                     \$KORTIX_PROJECT_ID).
+  --workspace <id>     Operate on this workspace id (default: linked or
+                     \$KORTIX_WORKSPACE_ID).
   -h, --help         Show this help.
 `;
 
@@ -58,16 +58,16 @@ export async function runSecrets(argv: string[]): Promise<number> {
   const sub = argv[0];
   const rest = argv.slice(1);
   const json = takeFlagBool(rest, ['--json']);
-  let projectFlag: string | undefined;
+  let workspaceFlag: string | undefined;
   let hostFlag: string | undefined;
   try {
-    projectFlag = takeFlagValue(rest, ['--project']);
+    workspaceFlag = takeFlagValue(rest, ['--workspace']);
     hostFlag = takeFlagValue(rest, ['--host']);
   } catch (err) {
     process.stderr.write(`${status.err((err as Error).message)}\n`);
     return 2;
   }
-  const ctxOpts = { projectArg: projectFlag, hostArg: hostFlag };
+  const ctxOpts = { workspaceArg: workspaceFlag, hostArg: hostFlag };
 
   switch (sub) {
     case 'ls':
@@ -88,7 +88,7 @@ export async function runSecrets(argv: string[]): Promise<number> {
   }
 }
 
-type CtxOpts = { projectArg?: string; hostArg?: string };
+type CtxOpts = { workspaceArg?: string; hostArg?: string };
 
 // Mirrors the backend's isValidIdentifier / web IDENTIFIER_REGEX: alphanumeric
 // start, then letters/digits/_.- up to 128 chars total. Validated here only for
@@ -106,12 +106,12 @@ type SecretRow = {
 };
 
 async function secretsLs(opts: CtxOpts, json = false): Promise<number> {
-  const ctx = await resolveProjectContext(opts);
+  const ctx = await resolveWorkspaceContext(opts);
   if (!ctx) return 1;
 
-  let resp: ProjectSecretsResponse;
+  let resp: WorkspaceSecretsResponse;
   try {
-    resp = await ctx.client.get<ProjectSecretsResponse>(`/projects/${ctx.projectId}/secrets`);
+    resp = await ctx.client.get<WorkspaceSecretsResponse>(`/workspaces/${ctx.workspaceId}/secrets`);
   } catch (err) {
     return surfaceApiError(err);
   }
@@ -139,7 +139,7 @@ async function secretsLs(opts: CtxOpts, json = false): Promise<number> {
   // two identifiers under one key as two distinct rows (the web does the same).
   const requiredSet = new Set(required);
   const optionalSet = new Set(optional);
-  const itemState = (secret: ProjectSecret) => {
+  const itemState = (secret: WorkspaceSecret) => {
     const configured = secret.configured ?? true;
     const effectiveSource = secret.effective_source ?? (configured ? 'shared' : 'none');
     return {
@@ -289,7 +289,7 @@ async function secretsSet(args: string[], opts: CtxOpts): Promise<number> {
     }
   }
 
-  const ctx = await resolveProjectContext(opts);
+  const ctx = await resolveWorkspaceContext(opts);
   if (!ctx) return 1;
   if (args.length === 0) {
     process.stderr.write(`${status.err('Pass at least one KEY=VALUE pair.')}\n`);
@@ -334,7 +334,7 @@ async function secretsSet(args: string[], opts: CtxOpts): Promise<number> {
         ? `${C.bold}${shownId}${C.reset} ${C.dim}→ ${p.key}${C.reset}`
         : `${C.bold}${p.key}${C.reset}`;
     try {
-      await ctx.client.post<ProjectSecret>(`/projects/${ctx.projectId}/secrets`, {
+      await ctx.client.post<WorkspaceSecret>(`/workspaces/${ctx.workspaceId}/secrets`, {
         name: p.key,
         ...(identifier !== undefined ? { identifier } : {}),
         value: p.value,
@@ -366,12 +366,12 @@ async function secretsRequest(rest: string[], opts: CtxOpts, json = false): Prom
     return 2;
   }
 
-  const ctx = await resolveProjectContext(opts);
+  const ctx = await resolveWorkspaceContext(opts);
   if (!ctx) return 1;
 
   let resp: { url: string; names: string[]; scope: string; expires_at: string };
   try {
-    resp = await ctx.client.post(`/projects/${ctx.projectId}/secret-requests`, {
+    resp = await ctx.client.post(`/workspaces/${ctx.workspaceId}/secret-requests`, {
       names,
       ...(scope ? { scope } : {}),
       ...(expires ? { expires_in_minutes: Number(expires) } : {}),
@@ -395,7 +395,7 @@ async function secretsRequest(rest: string[], opts: CtxOpts, json = false): Prom
 }
 
 async function secretsUnset(names: string[], opts: CtxOpts): Promise<number> {
-  const ctx = await resolveProjectContext(opts);
+  const ctx = await resolveWorkspaceContext(opts);
   if (!ctx) return 1;
   if (names.length === 0) {
     process.stderr.write(`${status.err('Pass at least one secret name to unset.')}\n`);
@@ -405,7 +405,7 @@ async function secretsUnset(names: string[], opts: CtxOpts): Promise<number> {
   let okCount = 0;
   for (const name of names) {
     try {
-      await ctx.client.delete(`/projects/${ctx.projectId}/secrets/${encodeURIComponent(name)}`);
+      await ctx.client.delete(`/workspaces/${ctx.workspaceId}/secrets/${encodeURIComponent(name)}`);
       okCount += 1;
       process.stdout.write(`${status.ok(`removed ${C.bold}${name}${C.reset}`)}\n`);
     } catch (err) {

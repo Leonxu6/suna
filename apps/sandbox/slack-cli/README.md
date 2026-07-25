@@ -24,7 +24,7 @@ sandbox image — that's what `kortix executor` runs from).
 apps/sandbox/slack-cli/
 ├── lib/                 ← shared kernel imported by every CLI here
 │   ├── cli.ts           ←   parseArgs, out, CliError, handleError, validators
-│   ├── env.ts           ←   getEnv, requireEnv, kortixProjectId, kortixSessionId
+│   ├── env.ts           ←   getEnv, requireEnv, kortixWorkspaceId, kortixSessionId
 │   ├── api.ts           ←   kortixGet, kortixPost — apps/api client
 │   └── index.ts         ←   barrel
 │
@@ -42,7 +42,7 @@ collisions — pick a unique name.
 
 ```typescript
 #!/usr/bin/env bun
-import { parseArgs, out, handleError, CliError, validateRequired, kortixProjectId, getEnv } from "../lib"
+import { parseArgs, out, handleError, CliError, validateRequired, kortixWorkspaceId, getEnv } from "../lib"
 import { createExecutorClient } from "../../../../packages/executor-sdk/src/index"
 
 async function send(opts: { channel: string; text: string }) {
@@ -52,7 +52,7 @@ async function send(opts: { channel: string; text: string }) {
   const client = createExecutorClient({
     apiUrl: getEnv("KORTIX_API_URL")!,
     token: getEnv("KORTIX_CLI_TOKEN")!,
-    projectId: kortixProjectId(),
+    workspaceId: kortixWorkspaceId(),
   })
   const res = await client.call("slack", "send_message", { channel: opts.channel, text: opts.text })
   return res.data

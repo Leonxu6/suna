@@ -15,7 +15,7 @@ const ENV_KEYS = [
   'KORTIX_EXECUTOR_TOKEN',
   'KORTIX_TOKEN',
   'KORTIX_API_URL',
-  'KORTIX_PROJECT_ID',
+  'KORTIX_WORKSPACE_ID',
   'KORTIX_DISABLE_SANDBOX_ENV_FILE',
   'KORTIX_CONFIG_FILE',
   'KORTIX_AUTH_FILE',
@@ -233,7 +233,7 @@ describe('kortix skills — get', () => {
 });
 
 describe('kortix skills — path', () => {
-  test('resolves the on-disk skill dir under a project root', async () => {
+  test('resolves the on-disk skill dir under a workspace root', async () => {
     mkdirSync(join(tmp, '.kortix', 'opencode'), { recursive: true });
     const code = await runSkills(['path', 'kortix-system']);
     expect(code).toBe(0);

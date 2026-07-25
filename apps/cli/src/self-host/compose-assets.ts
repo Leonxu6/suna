@@ -122,7 +122,7 @@ export interface RenderComposeOptions {
    * provider (ALLOWED_SANDBOX_PROVIDERS includes it — see
    * configureIntegrations() in commands/self-host.ts). Only then does
    * kortix-api get the host's Docker socket mounted in (root-equivalent host
-   * access) and LOCAL_DOCKER_NETWORK pointed at this Compose project's own
+   * access) and LOCAL_DOCKER_NETWORK pointed at this Compose workspace's own
    * default network, so sandbox containers created by the provider
    * (apps/api/src/platform/providers/local-docker.ts) are reachable by
    * Docker DNS name. Omitted entirely — not merely unset — for every other
@@ -155,7 +155,7 @@ export const LAPTOP_APP_REPLICAS = 1;
  * intact; we only remove globally-conflicting container names, add legacy
  * Kortix service names, and restrict every published port to loopback.
  */
-export function renderFullDockerCompose(composeProject: string, options: RenderComposeOptions = {}): string {
+export function renderFullDockerCompose(composeWorkspace: string, options: RenderComposeOptions = {}): string {
   const base = parse(
     officialSupabaseDockerAssets['docker-compose.yml']!.replaceAll('${POSTGRES_PORT}', '${SUPABASE_POSTGRES_INTERNAL_PORT}'),
   ) as YamlRecord;
@@ -163,7 +163,7 @@ export function renderFullDockerCompose(composeProject: string, options: RenderC
     officialSupabaseDockerAssets['docker-compose.logs.yml']!.replaceAll('${POSTGRES_PORT}', '${SUPABASE_POSTGRES_INTERNAL_PORT}'),
   ) as YamlRecord;
   const kortix = parse(
-    kortixCompose.replaceAll('__KORTIX_COMPOSE_PROJECT__', composeProject),
+    kortixCompose.replaceAll('__KORTIX_COMPOSE_WORKSPACE__', composeWorkspace),
   ) as YamlRecord;
 
   const upstreamServices = deepMerge(
@@ -290,11 +290,11 @@ export function renderFullDockerCompose(composeProject: string, options: RenderC
       const existingEnv = isRecord(api.environment) ? api.environment : {};
       api.environment = {
         ...existingEnv,
-        // Sandbox containers land on THIS Compose project's own default
+        // Sandbox containers land on THIS Compose workspace's own default
         // network (the same one every other service here joins), so
         // kortix-api reaches them by Docker DNS name
         // (http://kortix-sb-<id>:<port> — see local-docker.ts).
-        LOCAL_DOCKER_NETWORK: `${composeProject}_default`,
+        LOCAL_DOCKER_NETWORK: `${composeWorkspace}_default`,
       };
     }
   }

@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 const CLI_ROOT = resolve(import.meta.dir, '..', '..');
 const CLI_ENTRY = join(CLI_ROOT, 'src', 'index.ts');
 const ORIGINAL_ENV = { ...process.env };
-const PROJECT = 'agents_project';
+const WORKSPACE = 'agents_workspace';
 
 let tmp: string;
 let server: ReturnType<typeof Bun.serve> | null = null;
@@ -40,7 +40,7 @@ function startServer(): string {
       Response.json({
         platformDefault: null,
         accountDefault: null,
-        projectDefault: null,
+        workspaceDefault: null,
         agentDefaults: {},
         resolvedForCaller: null,
       }),
@@ -62,7 +62,7 @@ async function runCli(args: string[], configFile?: string) {
     'KORTIX_CLI_TOKEN',
     'KORTIX_EXECUTOR_TOKEN',
     'KORTIX_FRONTEND_URL',
-    'KORTIX_PROJECT_ID',
+    'KORTIX_WORKSPACE_ID',
     'KORTIX_TOKEN',
     'BASH_ENV',
   ]) {
@@ -107,7 +107,7 @@ describe('kortix agents command', () => {
   test('models does not invent Auto when a malformed server omits every default', async () => {
     const config = writeConfig(startServer());
     const result = await runCli(
-      ['agents', 'models', '--project', PROJECT],
+      ['agents', 'models', '--workspace', WORKSPACE],
       config,
     );
     expect(result.code).toBe(0);

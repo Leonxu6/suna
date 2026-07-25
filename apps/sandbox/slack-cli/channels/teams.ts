@@ -7,8 +7,8 @@ import {
   getEnv,
   handleError,
   kortixPost,
-  kortixProjectId,
   kortixSessionId,
+  kortixWorkspaceId,
   out,
   parseArgs,
 } from '../lib';
@@ -26,14 +26,14 @@ function resolveDownloadOutput(outPath: string): string {
 async function downloadFile(url: string, outPath: string) {
   const apiUrl = getEnv('KORTIX_API_URL');
   const tok = getEnv('KORTIX_CLI_TOKEN') ?? getEnv('KORTIX_TOKEN');
-  const projectId = kortixProjectId();
-  if (!apiUrl || !tok || !projectId) {
+  const workspaceId = kortixWorkspaceId();
+  if (!apiUrl || !tok || !workspaceId) {
     throw new CliError(
-      'KORTIX_API_URL / KORTIX_CLI_TOKEN / KORTIX_PROJECT_ID not set — cannot download.',
+      'KORTIX_API_URL / KORTIX_CLI_TOKEN / KORTIX_WORKSPACE_ID not set — cannot download.',
     );
   }
   const proxyUrl = new URL(
-    `/v1/projects/${projectId}/channels/teams/file?url=${encodeURIComponent(url)}`,
+    `/v1/workspaces/${workspaceId}/channels/teams/file?url=${encodeURIComponent(url)}`,
     apiUrl,
   ).href;
   const res = await fetch(proxyUrl, {
@@ -60,10 +60,10 @@ async function downloadFile(url: string, outPath: string) {
 
 async function sendFile(filePath: string, description?: string) {
   if (!existsSync(filePath)) throw new CliError(`File not found: ${filePath}`);
-  const projectId = kortixProjectId();
+  const workspaceId = kortixWorkspaceId();
   const serviceUrl = getEnv('MS_TEAMS_SERVICE_URL');
   const conversationId = getEnv('MS_TEAMS_CONVERSATION_ID');
-  if (!projectId) throw new CliError('KORTIX_PROJECT_ID not set — cannot upload.');
+  if (!workspaceId) throw new CliError('KORTIX_WORKSPACE_ID not set — cannot upload.');
   if (!serviceUrl || !conversationId) {
     throw new CliError(
       'MS_TEAMS_SERVICE_URL / MS_TEAMS_CONVERSATION_ID not set — no active Teams conversation.',
@@ -72,7 +72,7 @@ async function sendFile(filePath: string, description?: string) {
   const data = readFileSync(filePath);
   const filename = filePath.split('/').pop() || 'file';
   const r = await kortixPost<{ ok?: boolean; uploadId?: string }>(
-    `/projects/${projectId}/channels/teams/file/upload`,
+    `/workspaces/${workspaceId}/channels/teams/file/upload`,
     {
       service_url: serviceUrl,
       conversation_id: conversationId,
@@ -90,7 +90,7 @@ function executorClient() {
   if (!apiUrl || !token) {
     throw new CliError('KORTIX_API_URL / KORTIX_CLI_TOKEN not set — cannot reach the Executor.');
   }
-  return createExecutorClient({ apiUrl, token, projectId: kortixProjectId() });
+  return createExecutorClient({ apiUrl, token, workspaceId: kortixWorkspaceId() });
 }
 
 async function executorCall(action: string, args: Record<string, unknown>): Promise<unknown> {
@@ -108,11 +108,11 @@ async function relayTurnStream(
   text: string,
   extras: { detail?: string; output?: string; sources?: Array<{ url: string; text: string }> } = {},
 ): Promise<boolean> {
-  const projectId = kortixProjectId();
+  const workspaceId = kortixWorkspaceId();
   const sessionId = kortixSessionId();
-  if (!projectId || !sessionId) return false;
+  if (!workspaceId || !sessionId) return false;
   try {
-    const r = await kortixPost<{ ok?: boolean }>(`/projects/${projectId}/turn-stream`, {
+    const r = await kortixPost<{ ok?: boolean }>(`/workspaces/${workspaceId}/turn-stream`, {
       session_id: sessionId,
       kind,
       text,

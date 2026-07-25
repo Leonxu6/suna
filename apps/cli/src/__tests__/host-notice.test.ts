@@ -10,7 +10,7 @@ const ENV_KEYS = [
   'KORTIX_EXECUTOR_TOKEN',
   'KORTIX_TOKEN',
   'KORTIX_API_URL',
-  'KORTIX_PROJECT_ID',
+  'KORTIX_WORKSPACE_ID',
   'KORTIX_SESSION_ID',
   'BASH_ENV',
   'KORTIX_DISABLE_SANDBOX_ENV_FILE',
@@ -45,7 +45,7 @@ function writeConfig(hosts: Record<string, unknown>, active = 'cloud'): string {
 }
 
 describe('host notice', () => {
-  test('shows env-provided sandbox host and project-token auth instead of logged-out config host', () => {
+  test('shows env-provided sandbox host and workspace-token auth instead of logged-out config host', () => {
     const dir = writeConfig({
       cloud: {
         url: 'https://api.kortix.com',
@@ -58,13 +58,13 @@ describe('host notice', () => {
     });
     try {
       process.env.KORTIX_API_URL = 'https://dev-api.kortix.com/v1';
-      process.env.KORTIX_CLI_TOKEN = 'kortix_pat_project';
-      process.env.KORTIX_PROJECT_ID = 'proj_123';
+      process.env.KORTIX_CLI_TOKEN = 'kortix_pat_workspace';
+      process.env.KORTIX_WORKSPACE_ID = 'proj_123';
 
       const notice = renderHostNotice(['whoami']);
       expect(notice).toContain('host sandbox');
       expect(notice).toContain('https://dev-api.kortix.com/v1');
-      expect(notice).toContain('authenticated (project token)');
+      expect(notice).toContain('authenticated (workspace token)');
       expect(notice).not.toContain('https://api.kortix.com');
       expect(notice).not.toContain('not logged in');
     } finally {
@@ -110,13 +110,13 @@ describe('host notice', () => {
     try {
       process.env.KORTIX_API_URL = 'https://api.kortix.com/v1';
       process.env.KORTIX_CLI_TOKEN = 'kortix_pat_session';
-      process.env.KORTIX_PROJECT_ID = 'proj_123';
+      process.env.KORTIX_WORKSPACE_ID = 'proj_123';
       process.env.KORTIX_SESSION_ID = 'sess_123';
 
       const notice = renderHostNotice(['whoami']);
       expect(notice).toContain('host sandbox');
       expect(notice).toContain('authenticated (session token)');
-      expect(notice).not.toContain('authenticated (project token)');
+      expect(notice).not.toContain('authenticated (workspace token)');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -138,14 +138,14 @@ describe('host notice', () => {
     );
     try {
       process.env.KORTIX_API_URL = 'https://sandbox-api.kortix.test/v1';
-      process.env.KORTIX_CLI_TOKEN = 'kortix_pat_project';
+      process.env.KORTIX_CLI_TOKEN = 'kortix_pat_workspace';
 
       const notice = renderHostNotice(['whoami', '--host', 'customdev']);
       expect(notice).toContain('host customdev');
       expect(notice).toContain('https://dev-api.kortix.com/v1');
       expect(notice).toContain('dev@example.com (user)');
       expect(notice).not.toContain('https://sandbox-api.kortix.test/v1');
-      expect(notice).not.toContain('project token');
+      expect(notice).not.toContain('workspace token');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

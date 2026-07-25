@@ -10,8 +10,8 @@ import {
   handleError,
   kortixGet,
   kortixPost,
-  kortixProjectId,
   kortixSessionId,
+  kortixWorkspaceId,
   out,
   parseArgs,
   validateRequired,
@@ -31,11 +31,11 @@ async function relayTurnStream(
     blocks?: unknown[];
   } = {},
 ): Promise<boolean> {
-  const projectId = kortixProjectId();
+  const workspaceId = kortixWorkspaceId();
   const sessionId = kortixSessionId();
-  if (!projectId || !sessionId) return false;
+  if (!workspaceId || !sessionId) return false;
   try {
-    const r = await kortixPost<{ ok?: boolean }>(`/projects/${projectId}/turn-stream`, {
+    const r = await kortixPost<{ ok?: boolean }>(`/workspaces/${workspaceId}/turn-stream`, {
       session_id: sessionId,
       kind,
       text,
@@ -70,7 +70,7 @@ function readSourcesFlag(flags: Record<string, string>): Array<{ url: string; te
 // Slack Web API methods → their Kortix `channel` connector action paths. The
 // shim speaks Slack method names; the Executor speaks connector actions.
 //
-// Use the reserved platform-owned channel slug first. Projects may define their
+// Use the reserved platform-owned channel slug first. Workspaces may define their
 // own `[[connectors]] slug="slack"` (often Pipedream Slack), which must not
 // shadow the built-in Slack CLI. Keep the legacy `slack` fallback so old API
 // deployments / old materialized rows continue to work during rollout.
@@ -109,16 +109,16 @@ function optionalInt(value: string | undefined): number | undefined {
   return value ? Number.parseInt(value, 10) : undefined;
 }
 
-// The Executor SDK client, built from this sandbox's env. Setting projectId
-// makes the SDK use the project-explicit gateway route
-// (/executor/projects/:id/call), which accepts the in-sandbox session token.
+// The Executor SDK client, built from this sandbox's env. Setting workspaceId
+// makes the SDK use the workspace-explicit gateway route
+// (/executor/workspaces/:id/call), which accepts the in-sandbox session token.
 function executorClient() {
   const apiUrl = getEnv('KORTIX_API_URL');
   const token = getEnv('KORTIX_CLI_TOKEN') ?? getEnv('KORTIX_TOKEN');
   if (!apiUrl || !token) {
     throw new CliError('KORTIX_API_URL / KORTIX_CLI_TOKEN not set — cannot reach the Executor.');
   }
-  return createExecutorClient({ apiUrl, token, projectId: kortixProjectId() });
+  return createExecutorClient({ apiUrl, token, workspaceId: kortixWorkspaceId() });
 }
 
 // Route a Slack Web API call through the Kortix Executor (via the SDK): the bot
@@ -203,10 +203,10 @@ async function send(opts: {
     const fileName = opts.file.split('/').pop() || 'file';
     // Upload via the server-side proxy — the bot token stays on the server (the
     // 3-step external-upload + form-encoding can't ride the JSON Executor gateway).
-    const projectId = kortixProjectId();
-    if (!projectId) throw new CliError('KORTIX_PROJECT_ID not set — cannot upload.');
+    const workspaceId = kortixWorkspaceId();
+    if (!workspaceId) throw new CliError('KORTIX_WORKSPACE_ID not set — cannot upload.');
     const res = await kortixPost<{ ok?: boolean; files?: unknown }>(
-      `/projects/${projectId}/channels/slack/file/upload`,
+      `/workspaces/${workspaceId}/channels/slack/file/upload`,
       {
         channel: opts.channel,
         filename: fileName,
@@ -357,14 +357,14 @@ async function download(opts: { url: string; out: string }) {
   // so a raw fetch (not the JSON kortix client), authed with the session token.
   const apiUrl = getEnv('KORTIX_API_URL');
   const tok = getEnv('KORTIX_CLI_TOKEN') ?? getEnv('KORTIX_TOKEN');
-  const projectId = kortixProjectId();
-  if (!apiUrl || !tok || !projectId) {
+  const workspaceId = kortixWorkspaceId();
+  if (!apiUrl || !tok || !workspaceId) {
     throw new CliError(
-      'KORTIX_API_URL / KORTIX_CLI_TOKEN / KORTIX_PROJECT_ID not set — cannot download.',
+      'KORTIX_API_URL / KORTIX_CLI_TOKEN / KORTIX_WORKSPACE_ID not set — cannot download.',
     );
   }
   const proxyUrl = new URL(
-    `/v1/projects/${projectId}/channels/slack/file?url=${encodeURIComponent(opts.url)}`,
+    `/v1/workspaces/${workspaceId}/channels/slack/file?url=${encodeURIComponent(opts.url)}`,
     apiUrl,
   ).href;
   const res = await fetch(proxyUrl, {
@@ -389,18 +389,18 @@ async function download(opts: { url: string; out: string }) {
 }
 
 // The manifest is built by apps/api (the SINGLE source of truth) and served at
-// GET /v1/webhooks/slack/<projectId>/manifest. We just fetch + present it, so
+// GET /v1/webhooks/slack/<workspaceId>/manifest. We just fetch + present it, so
 // there's one manifest implementation no matter where you ask for it.
-async function manifest(opts: { url?: string; projectId?: string; name?: string }) {
-  const projectId = opts.projectId || kortixProjectId();
-  if (!projectId) throw new CliError('--project-id required (or set KORTIX_PROJECT_ID)');
+async function manifest(opts: { url?: string; workspaceId?: string; name?: string }) {
+  const workspaceId = opts.workspaceId || kortixWorkspaceId();
+  if (!workspaceId) throw new CliError('--workspace-id required (or set KORTIX_WORKSPACE_ID)');
 
   const params: Record<string, string> = {};
   if (opts.name) params.name = opts.name;
-  const m = await kortixGet<unknown>(`/webhooks/slack/${projectId}/manifest`, params);
+  const m = await kortixGet<unknown>(`/webhooks/slack/${workspaceId}/manifest`, params);
 
   const publicUrl = (opts.url || getEnv('KORTIX_API_URL') || '').replace(/\/$/, '');
-  const webhookUrl = publicUrl ? `${publicUrl}/v1/webhooks/slack/${projectId}` : undefined;
+  const webhookUrl = publicUrl ? `${publicUrl}/v1/webhooks/slack/${workspaceId}` : undefined;
   return { ok: true, manifest: m, webhook_url: webhookUrl };
 }
 
@@ -532,16 +532,16 @@ async function main(): Promise<void> {
       const channel = flags.channel ?? getEnv('SLACK_CHANNEL_ID');
       const threadTs = flags.thread ?? getEnv('SLACK_THREAD_TS');
       const sessionId = kortixSessionId();
-      const projectId = kortixProjectId();
+      const workspaceId = kortixWorkspaceId();
       if (!channel || !threadTs) {
         throw new CliError(
           'bind-thread needs --channel and --thread (defaults to $SLACK_CHANNEL_ID/$SLACK_THREAD_TS on Slack turns)',
         );
       }
       if (!sessionId) throw new CliError('KORTIX_SESSION_ID not set — cannot bind this session.');
-      if (!projectId) throw new CliError('KORTIX_PROJECT_ID not set — cannot bind.');
+      if (!workspaceId) throw new CliError('KORTIX_WORKSPACE_ID not set — cannot bind.');
       out(
-        await kortixPost(`/projects/${projectId}/channels/slack/bind-thread`, {
+        await kortixPost(`/workspaces/${workspaceId}/channels/slack/bind-thread`, {
           session_id: sessionId,
           channel,
           thread_ts: threadTs,
@@ -577,7 +577,13 @@ async function main(): Promise<void> {
       out(await download(requiredFlags(flags, 'url', 'out')));
       break;
     case 'manifest':
-      out(await manifest({ url: flags.url, projectId: flags['project-id'], name: flags.name }));
+      out(
+        await manifest({
+          url: flags.url,
+          workspaceId: flags['workspace-id'] ?? flags['project-id'],
+          name: flags.name,
+        }),
+      );
       break;
     case 'ask':
       // `slack ask` was replaced by opencode's native `question` tool. Calling
@@ -617,7 +623,7 @@ Commands:
   search       (--query)
   file-info    (--file <id>)
   download     (--url, --out)
-  manifest     (--url, --project-id, [--name])
+  manifest     (--url, --workspace-id, [--name])
 
 Block Kit (rich messages):
   --blocks '[{"type":"header","text":{"type":"plain_text","text":"Hi"}},

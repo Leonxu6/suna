@@ -11,12 +11,12 @@ const SANDBOX_ENV_OVERRIDES = [
   'KORTIX_CLI_TOKEN',
   'KORTIX_EXECUTOR_TOKEN',
   'KORTIX_FRONTEND_URL',
-  'KORTIX_PROJECT_ID',
+  'KORTIX_WORKSPACE_ID',
   'KORTIX_TOKEN',
   'BASH_ENV',
 ] as const;
 
-const PROJECT = 'gw_proj';
+const WORKSPACE = 'gw_proj';
 
 let tmp: string;
 let server: ReturnType<typeof Bun.serve> | null = null;
@@ -45,7 +45,7 @@ function writeConfig(apiBase: string): string {
 }
 
 // A routing policy the mock mutates on PUT so a set→get round-trip is observable.
-let routingProject = {
+let routingWorkspace = {
   defaultModel: null as string | null,
   visionModel: null as string | null,
   defaultFallback: null as { models: string[]; fallbackOn: string } | null,
@@ -55,12 +55,12 @@ let routingProject = {
 function routingDoc() {
   return {
     version: 1,
-    project: routingProject,
+    workspace: routingWorkspace,
     effective: {
-      defaultModel: routingProject.defaultModel ?? 'glm-5.2',
-      defaultModelSource: routingProject.defaultModel ? 'project' : 'platform',
-      visionModel: routingProject.visionModel ?? 'claude-sonnet-4.6',
-      defaultFallback: routingProject.defaultFallback ?? { models: [], fallbackOn: 'transient' },
+      defaultModel: routingWorkspace.defaultModel ?? 'glm-5.2',
+      defaultModelSource: routingWorkspace.defaultModel ? 'workspace' : 'platform',
+      visionModel: routingWorkspace.visionModel ?? 'claude-sonnet-4.6',
+      defaultFallback: routingWorkspace.defaultFallback ?? { models: [], fallbackOn: 'transient' },
     },
     capabilities: { write: true },
   };
@@ -80,12 +80,12 @@ function startServer(): string {
         if (text) entry.body = JSON.parse(text);
       }
       requests.push(entry);
-      const base = `/v1/projects/${PROJECT}/gateway`;
+      const base = `/v1/workspaces/${WORKSPACE}/gateway`;
 
       if (url.pathname === `${base}/routing-policy`) {
-        if (req.method === 'PUT') routingProject = entry.body as typeof routingProject;
+        if (req.method === 'PUT') routingWorkspace = entry.body as typeof routingWorkspace;
         if (req.method === 'DELETE')
-          routingProject = {
+          routingWorkspace = {
             defaultModel: null,
             visionModel: null,
             defaultFallback: null,
@@ -95,7 +95,7 @@ function startServer(): string {
       }
       if (url.pathname === `${base}/budgets` && req.method === 'GET') {
         return Response.json({
-          project_spend: { requests: 4, cost: 1.23 },
+          workspace_spend: { requests: 4, cost: 1.23 },
           budgets: [],
           members: [],
         });
@@ -202,7 +202,7 @@ describe('kortix gateway command', () => {
   beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), 'kortix-gw-'));
     requests = [];
-    routingProject = { defaultModel: null, visionModel: null, defaultFallback: null, rules: [] };
+    routingWorkspace = { defaultModel: null, visionModel: null, defaultFallback: null, rules: [] };
     process.env = { ...ORIGINAL_ENV };
     for (const key of SANDBOX_ENV_OVERRIDES) delete process.env[key];
   });
@@ -215,29 +215,29 @@ describe('kortix gateway command', () => {
 
   test('routing get: hits routing-policy and emits the effective policy as JSON', async () => {
     const cfg = writeConfig(startServer());
-    const r = await runCli(['gateway', 'routing', '--json', '--project', PROJECT], cfg);
+    const r = await runCli(['gateway', 'routing', '--json', '--workspace', WORKSPACE], cfg);
     expect(r.code).toBe(0);
     expect(JSON.parse(r.stdout).effective.defaultModel).toBe('glm-5.2');
     expect(requests).toEqual([
-      { method: 'GET', path: `/v1/projects/${PROJECT}/gateway/routing-policy` },
+      { method: 'GET', path: `/v1/workspaces/${WORKSPACE}/gateway/routing-policy` },
     ]);
   }, 15_000);
 
   test('routing set: reads current then PUTs a merged body (one field changed, rest preserved)', async () => {
     const cfg = writeConfig(startServer());
-    routingProject = {
+    routingWorkspace = {
       defaultModel: null,
       visionModel: 'claude-sonnet-4.6',
       defaultFallback: null,
       rules: [],
     };
     const r = await runCli(
-      ['gateway', 'routing', 'set', '--default-model', 'openai/gpt-5.5', '--project', PROJECT],
+      ['gateway', 'routing', 'set', '--default-model', 'openai/gpt-5.5', '--workspace', WORKSPACE],
       cfg,
     );
     expect(r.code).toBe(0);
     const put = requests.find((q) => q.method === 'PUT');
-    expect(put?.path).toBe(`/v1/projects/${PROJECT}/gateway/routing-policy`);
+    expect(put?.path).toBe(`/v1/workspaces/${WORKSPACE}/gateway/routing-policy`);
     // The unrelated visionModel is preserved; only defaultModel changes.
     expect(put?.body).toMatchObject({
       defaultModel: 'openai/gpt-5.5',
@@ -248,17 +248,17 @@ describe('kortix gateway command', () => {
   test('budget set: PUTs limit/scope with the expected shape', async () => {
     const cfg = writeConfig(startServer());
     const r = await runCli(
-      ['gateway', 'budget', 'set', '--limit', '25', '--period', 'month', '--project', PROJECT],
+      ['gateway', 'budget', 'set', '--limit', '25', '--period', 'month', '--workspace', WORKSPACE],
       cfg,
     );
     expect(r.code).toBe(0);
     const put = requests.find((q) => q.method === 'PUT');
-    expect(put?.body).toMatchObject({ scope: 'project', limit_usd: 25, period: 'month' });
+    expect(put?.body).toMatchObject({ scope: 'workspace', limit_usd: 25, period: 'month' });
   }, 15_000);
 
   test('keys new: POSTs the name and surfaces the one-time secret', async () => {
     const cfg = writeConfig(startServer());
-    const r = await runCli(['gateway', 'keys', 'new', 'ci-key', '--project', PROJECT], cfg);
+    const r = await runCli(['gateway', 'keys', 'new', 'ci-key', '--workspace', WORKSPACE], cfg);
     expect(r.code).toBe(0);
     expect(r.stdout).toContain('kortix_gw_secretshownonce');
     expect(requests.find((q) => q.method === 'POST')?.body).toMatchObject({ name: 'ci-key' });
@@ -267,7 +267,7 @@ describe('kortix gateway command', () => {
   test('usage: aggregates overview + breakdown', async () => {
     const cfg = writeConfig(startServer());
     const r = await runCli(
-      ['gateway', 'usage', '--json', '--days', '30', '--project', PROJECT],
+      ['gateway', 'usage', '--json', '--days', '30', '--workspace', WORKSPACE],
       cfg,
     );
     expect(r.code).toBe(0);
@@ -275,26 +275,26 @@ describe('kortix gateway command', () => {
     expect(out.overview.requests).toBe(10);
     expect(out.breakdown.models[0].model).toBe('openai/gpt-5.5');
     expect(requests.map((q) => q.path).sort()).toEqual([
-      `/v1/projects/${PROJECT}/gateway/breakdown?days=30`,
-      `/v1/projects/${PROJECT}/gateway/overview?days=30`,
+      `/v1/workspaces/${WORKSPACE}/gateway/breakdown?days=30`,
+      `/v1/workspaces/${WORKSPACE}/gateway/overview?days=30`,
     ]);
   }, 15_000);
 
   test('logs --limit N: the value is a query param, never mistaken for a logId (regression)', async () => {
     const cfg = writeConfig(startServer());
-    const r = await runCli(['gateway', 'logs', '--limit', '3', '--project', PROJECT], cfg);
+    const r = await runCli(['gateway', 'logs', '--limit', '3', '--workspace', WORKSPACE], cfg);
     expect(r.code).toBe(0);
     // The list endpoint with ?limit=3 — NOT /logs/3 (which 400s "Invalid log id").
     expect(requests).toEqual([
-      { method: 'GET', path: `/v1/projects/${PROJECT}/gateway/logs?limit=3` },
+      { method: 'GET', path: `/v1/workspaces/${WORKSPACE}/gateway/logs?limit=3` },
     ]);
   }, 15_000);
 
   test('logs --failed: filters to ok=false', async () => {
     const cfg = writeConfig(startServer());
-    const r = await runCli(['gateway', 'logs', '--failed', '--json', '--project', PROJECT], cfg);
+    const r = await runCli(['gateway', 'logs', '--failed', '--json', '--workspace', WORKSPACE], cfg);
     expect(r.code).toBe(0);
-    expect(requests[0].path).toBe(`/v1/projects/${PROJECT}/gateway/logs?ok=false`);
+    expect(requests[0].path).toBe(`/v1/workspaces/${WORKSPACE}/gateway/logs?ok=false`);
   }, 15_000);
 
   test('test: POSTs prompt + models to the playground', async () => {
@@ -308,14 +308,14 @@ describe('kortix gateway command', () => {
         '--prompt',
         'ping',
         '--json',
-        '--project',
-        PROJECT,
+        '--workspace',
+        WORKSPACE,
       ],
       cfg,
     );
     expect(r.code).toBe(0);
     const post = requests.find((q) => q.method === 'POST');
-    expect(post?.path).toBe(`/v1/projects/${PROJECT}/gateway/playground`);
+    expect(post?.path).toBe(`/v1/workspaces/${WORKSPACE}/gateway/playground`);
     expect(post?.body).toMatchObject({
       prompt: 'ping',
       models: ['openai/gpt-5.5', 'openai/gpt-4o'],
@@ -325,11 +325,11 @@ describe('kortix gateway command', () => {
 
   test('routing reset: DELETEs the policy', async () => {
     const cfg = writeConfig(startServer());
-    const r = await runCli(['gateway', 'routing', 'reset', '--project', PROJECT], cfg);
+    const r = await runCli(['gateway', 'routing', 'reset', '--workspace', WORKSPACE], cfg);
     expect(r.code).toBe(0);
     expect(
       requests.some(
-        (q) => q.method === 'DELETE' && q.path === `/v1/projects/${PROJECT}/gateway/routing-policy`,
+        (q) => q.method === 'DELETE' && q.path === `/v1/workspaces/${WORKSPACE}/gateway/routing-policy`,
       ),
     ).toBe(true);
   }, 15_000);

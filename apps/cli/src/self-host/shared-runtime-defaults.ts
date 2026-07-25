@@ -55,7 +55,7 @@ export const SHARED_FEATURE_FLAG_DEFAULTS: Record<string, string> = {
   KORTIX_PUBLIC_BILLING_ENABLED: 'false',
   // Pipedream-backed connector UI (the "Connect your tools" onboarding step,
   // the "Easy connect" app catalogue) off by default — a fresh self-host has
-  // no PIPEDREAM_CLIENT_ID/SECRET/PROJECT_ID configured, and those surfaces
+  // no PIPEDREAM_CLIENT_ID/SECRET/WORKSPACE_ID configured, and those surfaces
   // would otherwise dead-end in a 501. `kortix self-host configure` flips
   // this to 'true' once Pipedream credentials are set (see selfHostConfigure
   // in commands/self-host.ts). Custom connectors (OpenAPI/GraphQL/MCP/HTTP)

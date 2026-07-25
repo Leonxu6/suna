@@ -27,8 +27,8 @@ export interface ClientOptions {
   apiBase?: string;
   token?: string;
   /** When set (non-empty), every request is scoped to this account via a
-   *  `?account_id=` query param. The API honors it in resolveProjectAccount
-   *  (and validates membership); project-id routes ignore it. Without it the
+   *  `?account_id=` query param. The API honors it in resolveWorkspaceAccount
+   *  (and validates membership); workspace-id routes ignore it. Without it the
    *  server falls back to the caller's earliest-joined account. */
   accountId?: string;
 }
@@ -40,7 +40,7 @@ function joinUrl(base: string, path: string): string {
   // bare origin (`https://api.kortix.com`); a session sandbox injects
   // `KORTIX_API_URL` *with* the suffix (`https://<tunnel>/v1`). Strip a trailing
   // `/v1` here so we add exactly one below — otherwise in-sandbox calls hit
-  // `/v1/v1/projects/…` and 404 even with a valid token.
+  // `/v1/v1/workspaces/…` and 404 even with a valid token.
   if (b.endsWith('/v1')) b = b.slice(0, -3);
   const p = path.startsWith('/') ? path : `/${path}`;
   // Hono mounts v1 routes. Normalize incoming `/accounts/me` -> `/v1/accounts/me`.
@@ -118,8 +118,8 @@ export function createApiClient(opts: ClientOptions): ApiClient {
 
 export interface ClientFromAuthOptions {
   /** Scope every request to this account via `?account_id=`. Opt-in: pass it
-   *  only for account-scoped LISTs (e.g. `projects ls`). Project-id routes
-   *  (`/projects/<id>/…`) already determine the account from the id, and
+   *  only for account-scoped LISTs (e.g. `workspaces ls`). Workspace-id routes
+   *  (`/workspaces/<id>/…`) already determine the account from the id, and
    *  identity calls (`/accounts/me`) must stay account-agnostic — leave it
    *  unset for those. */
   accountId?: string;

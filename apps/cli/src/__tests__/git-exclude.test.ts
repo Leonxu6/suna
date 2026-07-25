@@ -12,10 +12,10 @@ test('repository-local excludes are appended once without replacing existing con
   const excludePath = resolve(repo, '.git', 'info', 'exclude');
   writeFileSync(excludePath, '# user entry\n/custom\n');
 
-  appendGitExcludeEntries(repo, ['/.kortix/link.json'], 'Kortix local project binding');
-  appendGitExcludeEntries(repo, ['/.kortix/link.json'], 'Kortix local project binding');
+  appendGitExcludeEntries(repo, ['/.kortix/link.json'], 'Kortix local workspace binding');
+  appendGitExcludeEntries(repo, ['/.kortix/link.json'], 'Kortix local workspace binding');
 
   expect(readFileSync(excludePath, 'utf8')).toBe(
-    '# user entry\n/custom\n# Kortix local project binding\n/.kortix/link.json\n',
+    '# user entry\n/custom\n# Kortix local workspace binding\n/.kortix/link.json\n',
   );
 });

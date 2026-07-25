@@ -4,17 +4,17 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
-import type { ProjectSummary } from "../api/types.ts";
+import type { WorkspaceSummary } from "../api/types.ts";
 import {
-  configureClonedProjectAuth,
-  resolveProjectCloneTarget,
-  saveClonedProjectLink,
-} from "../commands/projects.ts";
-import { loadLink } from "../project-link.ts";
+  configureClonedWorkspaceAuth,
+  resolveWorkspaceCloneTarget,
+  saveClonedWorkspaceLink,
+} from "../commands/workspaces.ts";
+import { loadLink } from "../workspace-link.ts";
 
-function project(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
+function workspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary {
   return {
-    project_id: "proj_1",
+    workspace_id: "proj_1",
     account_id: "acct_1",
     name: "Demo",
     repo_url: "https://github.com/acme/demo.git",
@@ -29,11 +29,11 @@ function project(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
   };
 }
 
-describe("project clone target", () => {
+describe("workspace clone target", () => {
   test("uses the Kortix proxy with the logged-in token when available", () => {
     expect(
-      resolveProjectCloneTarget(
-        project({ git_origin_url: "https://api.kortix.com/v1/git/proj_1.git" }),
+      resolveWorkspaceCloneTarget(
+        workspace({ git_origin_url: "https://api.kortix.com/v1/git/proj_1.git" }),
         "kortix_pat_test",
       ),
     ).toEqual({
@@ -46,8 +46,8 @@ describe("project clone target", () => {
 
   test("requests a short-lived provider token for a direct managed origin", () => {
     expect(
-      resolveProjectCloneTarget(
-        project({ metadata: { git: { managed: true } } }),
+      resolveWorkspaceCloneTarget(
+        workspace({ metadata: { git: { managed: true } } }),
         "kortix_pat_test",
       ),
     ).toEqual({
@@ -59,7 +59,7 @@ describe("project clone target", () => {
   });
 
   test("relies on the user credential helper for direct BYO repositories", () => {
-    expect(resolveProjectCloneTarget(project(), "kortix_pat_test")).toEqual({
+    expect(resolveWorkspaceCloneTarget(workspace(), "kortix_pat_test")).toEqual({
       repoUrl: "https://github.com/acme/demo.git",
       token: null,
       username: "x-access-token",
@@ -68,8 +68,8 @@ describe("project clone target", () => {
   });
 });
 
-test("a cloned repo is bound to its project without dirtying git status", () => {
-  const repo = mkdtempSync(resolve(tmpdir(), "kortix-project-clone-link-"));
+test("a cloned repo is bound to its workspace without dirtying git status", () => {
+  const repo = mkdtempSync(resolve(tmpdir(), "kortix-workspace-clone-link-"));
   mkdirSync(resolve(repo, ".kortix"), { recursive: true });
   writeFileSync(resolve(repo, "kortix.yaml"), "kortix_version: 2\n");
   spawnSync("git", ["init", "-b", "main"], { cwd: repo });
@@ -88,10 +88,10 @@ test("a cloned repo is bound to its project without dirtying git status", () => 
     { cwd: repo },
   );
 
-  saveClonedProjectLink(repo, project(), "dev", "https://dev-api.kortix.com");
+  saveClonedWorkspaceLink(repo, workspace(), "dev", "https://dev-api.kortix.com");
 
   expect(loadLink(repo)).toMatchObject({
-    project_id: "proj_1",
+    workspace_id: "proj_1",
     account_id: "acct_1",
     host: "dev",
   });
@@ -102,11 +102,11 @@ test("a cloned repo is bound to its project without dirtying git status", () => 
 });
 
 test("a proxied clone installs an on-demand Kortix credential helper without storing a token", () => {
-  const repo = mkdtempSync(resolve(tmpdir(), "kortix-project-clone-auth-"));
+  const repo = mkdtempSync(resolve(tmpdir(), "kortix-workspace-clone-auth-"));
   spawnSync("git", ["init", "-b", "main"], { cwd: repo });
   const repoUrl = "https://dev-api.kortix.com/v1/git/proj_1.git";
 
-  configureClonedProjectAuth(repo, repoUrl, "!kortix git-credential");
+  configureClonedWorkspaceAuth(repo, repoUrl, "!kortix git-credential");
 
   const helpers = spawnSync(
     "git",

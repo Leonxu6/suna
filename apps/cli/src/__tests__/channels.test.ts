@@ -15,7 +15,7 @@ const ENV_KEYS = [
   'KORTIX_EXECUTOR_TOKEN',
   'KORTIX_TOKEN',
   'KORTIX_API_URL',
-  'KORTIX_PROJECT_ID',
+  'KORTIX_WORKSPACE_ID',
   'KORTIX_DISABLE_SANDBOX_ENV_FILE',
   'KORTIX_CONFIG_FILE',
   'KORTIX_AUTH_FILE',
@@ -26,8 +26,8 @@ const ENV_KEYS = [
 const INSTALL_URL = 'https://slack.com/oauth/v2/authorize?client_id=1.2&scope=chat:write&state=signed';
 const TEAMS_CONSENT_URL = 'https://login.microsoftonline.com/common/adminconsent?client_id=teams-1';
 const INSTALLATION = {
-  workspaceId: 'T012AB3CD',
-  workspaceName: 'Acme',
+  providerWorkspaceId: 'T012AB3CD',
+  providerWorkspaceName: 'Acme',
   botUserId: 'U0BOT',
   installedAt: '2026-07-08T00:00:00.000Z',
 };
@@ -139,7 +139,7 @@ beforeEach(() => {
   saved = {};
   for (const key of ENV_KEYS) { saved[key] = process.env[key]; delete process.env[key]; }
   process.env.KORTIX_DISABLE_SANDBOX_ENV_FILE = '1';
-  process.env.KORTIX_PROJECT_ID = 'proj_1';
+  process.env.KORTIX_WORKSPACE_ID = 'proj_1';
   originalCwd = process.cwd();
   tmp = mkdtempSync(join(tmpdir(), 'kortix-channels-test-'));
   process.chdir(tmp);
@@ -264,7 +264,7 @@ describe('kortix channels status', () => {
     expect(code).toBe(0);
     const parsed = JSON.parse(stdout);
     expect(parsed.connected).toBe(true);
-    expect(parsed.installation.workspaceId).toBe('T012AB3CD');
+    expect(parsed.installation.providerWorkspaceId).toBe('T012AB3CD');
   });
 });
 

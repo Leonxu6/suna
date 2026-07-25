@@ -104,8 +104,8 @@ describe('Host.dashboard_url — persists through the config file round trip', (
     // Regression: authToHost() used to rebuild the Host record from scratch
     // on every login, dropping any field the `Auth` shape doesn't carry.
     // dashboard_url has no other call site that re-derives it after login
-    // (unlike account_slug/default_project, which login.ts re-sets right
-    // after via setActiveAccount/ensureDefaultProjectBinding) — so the very
+    // (unlike account_slug/default_workspace, which login.ts re-sets right
+    // after via setActiveAccount/ensureDefaultWorkspaceBinding) — so the very
     // first successful `kortix login` against a `kortix self-host`-registered
     // host silently erased the authoritative frontend URL, and the NEXT
     // `kortix login` (e.g. after `kortix logout` + `kortix login` again) was

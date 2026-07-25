@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { projectWebUrl, sessionWebUrl, webDashboardUrl } from '../web-url';
+import { workspaceWebUrl, sessionWebUrl, webDashboardUrl } from '../web-url';
 
 const SAVED = { ...process.env };
 
@@ -71,22 +71,22 @@ describe('webDashboardUrl — authoritative env wins over derivation', () => {
   });
 });
 
-describe('projectWebUrl / sessionWebUrl', () => {
+describe('workspaceWebUrl / sessionWebUrl', () => {
   test('prefers the server-provided dashboard_url', () => {
     expect(
-      projectWebUrl('https://api-prod.kortix.com/v1', 'p1', 'https://kortix.com/projects/p1'),
-    ).toBe('https://kortix.com/projects/p1');
+      workspaceWebUrl('https://api-prod.kortix.com/v1', 'p1', 'https://kortix.com/workspaces/p1'),
+    ).toBe('https://kortix.com/workspaces/p1');
   });
 
   test('without dashboard_url, derived host still never leaks api-prod', () => {
-    expect(projectWebUrl('https://api-prod.kortix.com/v1', 'p1')).toBe(
-      'https://kortix.com/projects/p1',
+    expect(workspaceWebUrl('https://api-prod.kortix.com/v1', 'p1')).toBe(
+      'https://kortix.com/workspaces/p1',
     );
   });
 
-  test('session url is built on the project url', () => {
+  test('session url is built on the workspace url', () => {
     expect(sessionWebUrl('https://api-prod.kortix.com/v1', 'p1', 's1')).toBe(
-      'https://kortix.com/projects/p1/sessions/s1',
+      'https://kortix.com/workspaces/p1/sessions/s1',
     );
   });
 });

@@ -206,9 +206,9 @@ interface SelfHostEnv {
   KORTIX_GITHUB_APP_SLUG: string;
   KORTIX_GITHUB_TOKEN: string;
   KORTIX_GITHUB_OWNER: string;
-  // Managed git: the backend that provisions project repos. The API reads these
+  // Managed git: the backend that provisions workspace repos. The API reads these
   // MANAGED_GIT_* vars (KORTIX_GITHUB_* alone don't reach it), so the wizard sets
-  // both. Without it, project create/CRUD fails "provider github not configured".
+  // both. Without it, workspace create/CRUD fails "provider github not configured".
   MANAGED_GIT_PROVIDER: string;
   MANAGED_GIT_GITHUB_TOKEN: string;
   MANAGED_GIT_GITHUB_OWNER: string;
@@ -217,7 +217,7 @@ interface SelfHostEnv {
   KORTIX_SELF_HOST_INTEGRATIONS_REVIEWED: string;
   PIPEDREAM_CLIENT_ID: string;
   PIPEDREAM_CLIENT_SECRET: string;
-  PIPEDREAM_PROJECT_ID: string;
+  PIPEDREAM_WORKSPACE_ID: string;
   PIPEDREAM_ENVIRONMENT: string;
   PIPEDREAM_WEBHOOK_SECRET: string;
   [key: string]: string;
@@ -485,7 +485,7 @@ async function selfHostStart(flags: GlobalFlags): Promise<number> {
 
   if (!gitProviderConfigured(env)) {
     process.stdout.write(
-      `${C.dim}  note     managed git not configured yet — connect GitHub in the dashboard (Settings → Git) before creating projects.${C.reset}\n\n`,
+      `${C.dim}  note     managed git not configured yet — connect GitHub in the dashboard (Settings → Git) before creating workspaces.${C.reset}\n\n`,
     );
   }
 
@@ -595,7 +595,7 @@ function selfHostDoctor(flags: GlobalFlags): number {
       'docker',
       [
         'compose',
-        '--project-name', composeProject(flags.instance),
+        '--workspace-name', composeWorkspace(flags.instance),
         '--env-file', envPath(flags.instance),
         '-f', composePath(flags.instance),
         'config', '--quiet',
@@ -1103,7 +1103,7 @@ function readUpdaterReport(instance: string): UpdaterReport | null {
   const result = spawnSync(
     'docker',
     [
-      'compose', '--project-name', composeProject(instance),
+      'compose', '--workspace-name', composeWorkspace(instance),
       '--env-file', envPath(instance), '-f', composePath(instance),
       'run', '--rm', '--no-deps', '-T', 'kortix-updater', 'report',
     ],
@@ -1659,7 +1659,7 @@ async function selfHostConfigure(flags: GlobalFlags): Promise<number> {
 async function selfHostConnectGithub(_args: string[], _flags: GlobalFlags): Promise<number> {
   process.stdout.write(
     `\n  ${C.yellow}kortix self-host connect-github is deprecated.${C.reset}\n` +
-      `  ${C.dim}GitHub (projects) is configured in the dashboard: Settings → Git.${C.reset}\n\n`,
+      `  ${C.dim}GitHub (workspaces) is configured in the dashboard: Settings → Git.${C.reset}\n\n`,
   );
   return 0;
 }
@@ -1778,7 +1778,7 @@ async function configureIntegrations(env: SelfHostEnv, flags: GlobalFlags): Prom
   // Pipedream (optional, default skip): the ONE other env-only credential
   // that belongs here — the platform-level OAuth app Pipedream issues per
   // operator, not a per-user connection (those live in the DB and are
-  // configured per-project in the app). Never gates init/start either way;
+  // configured per-workspace in the app). Never gates init/start either way;
   // KORTIX_PUBLIC_CONNECTORS_ENABLED is re-derived from whatever ends up set
   // here on every write (see normalizeFullSupabaseEnv), so skipping just
   // leaves connectors hidden in the frontend rather than half-configured.
@@ -1792,7 +1792,7 @@ async function configureIntegrations(env: SelfHostEnv, flags: GlobalFlags): Prom
       env.INTEGRATION_AUTH_PROVIDER = 'pipedream';
       env.PIPEDREAM_CLIENT_ID = await prompt('Pipedream client ID', env.PIPEDREAM_CLIENT_ID);
       env.PIPEDREAM_CLIENT_SECRET = await promptSecret('Pipedream client secret', env.PIPEDREAM_CLIENT_SECRET);
-      env.PIPEDREAM_PROJECT_ID = await prompt('Pipedream project ID', env.PIPEDREAM_PROJECT_ID);
+      env.PIPEDREAM_WORKSPACE_ID = await prompt('Pipedream workspace ID', env.PIPEDREAM_WORKSPACE_ID);
       env.PIPEDREAM_ENVIRONMENT = await selectFrom('Pipedream environment', ['development', 'production'] as const, env.PIPEDREAM_ENVIRONMENT === 'development' ? 'development' : 'production');
       env.PIPEDREAM_WEBHOOK_SECRET = await promptSecret('Pipedream webhook secret (optional)', env.PIPEDREAM_WEBHOOK_SECRET);
     }
@@ -1817,7 +1817,7 @@ async function promptSecret(label: string, current: string): Promise<string> {
 }
 
 function pipedreamConfigured(env: SelfHostEnv): boolean {
-  return !!(env.PIPEDREAM_CLIENT_ID || env.PIPEDREAM_CLIENT_SECRET || env.PIPEDREAM_PROJECT_ID);
+  return !!(env.PIPEDREAM_CLIENT_ID || env.PIPEDREAM_CLIENT_SECRET || env.PIPEDREAM_WORKSPACE_ID);
 }
 
 /**
@@ -1855,7 +1855,7 @@ export function sandboxProviderConfigured(env: Record<string, string>): boolean 
   );
 }
 
-/** Managed git provider configured? Required to create/CRUD projects. */
+/** Managed git provider configured? Required to create/CRUD workspaces. */
 export function gitProviderConfigured(env: Record<string, string>): boolean {
   if (env.MANAGED_GIT_PROVIDER !== 'github') return false;
   const pat = !!(env.MANAGED_GIT_GITHUB_TOKEN && env.MANAGED_GIT_GITHUB_OWNER);
@@ -2049,7 +2049,7 @@ function renderIntegrationSummary(env: SelfHostEnv): void {
  */
 function renderAfterStartNote(): void {
   process.stdout.write(
-    `  ${C.dim}After start ${C.reset}Sign in → Settings → Git to connect GitHub (projects) · connect your model key in the app (BYOK) · optional: connectors, SMTP — all in the dashboard.${C.reset}\n\n`,
+    `  ${C.dim}After start ${C.reset}Sign in → Settings → Git to connect GitHub (workspaces) · connect your model key in the app (BYOK) · optional: connectors, SMTP — all in the dashboard.${C.reset}\n\n`,
   );
 }
 
@@ -2092,8 +2092,8 @@ async function ensurePort(
 function composeHasRunningServices(instance: string): boolean {
   if (!existsSync(composePath(instance)) || !existsSync(envPath(instance))) return false;
   // `docker compose ps` reparses the entire generated stack and can take long
-  // enough to hit the CLI/test timeout even when this project has no
-  // containers. Compose already labels every container with the project name,
+  // enough to hit the CLI/test timeout even when this workspace has no
+  // containers. Compose already labels every container with the workspace name,
   // so a bounded `docker ps` label lookup is the exact, cheaper question here:
   // "does this instance currently have at least one running container?"
   const result = spawnSync(
@@ -2102,7 +2102,7 @@ function composeHasRunningServices(instance: string): boolean {
       'ps',
       '--quiet',
       '--filter',
-      `label=com.docker.compose.project=${composeProject(instance)}`,
+      `label=com.docker.compose.workspace=${composeWorkspace(instance)}`,
     ],
     { cwd: instanceDir(instance), encoding: 'utf8', timeout: 3_000 },
   );
@@ -2256,16 +2256,16 @@ function defaultEnv(flags: GlobalFlags): SelfHostEnv {
     PGRST_DB_SCHEMAS: 'public',
     PGRST_DB_MAX_ROWS: '1000',
     PGRST_DB_EXTRA_SEARCH_PATH: 'public',
-    POOLER_TENANT_ID: composeProject(flags.instance),
+    POOLER_TENANT_ID: composeWorkspace(flags.instance),
     POOLER_DEFAULT_POOL_SIZE: '20',
     POOLER_MAX_CLIENT_CONN: '100',
     POOLER_DB_POOL_SIZE: '5',
     STUDIO_DEFAULT_ORGANIZATION: 'Kortix',
-    STUDIO_DEFAULT_PROJECT: flags.instance,
+    STUDIO_DEFAULT_WORKSPACE: flags.instance,
     OPENAI_API_KEY: '',
     FUNCTIONS_VERIFY_JWT: 'false',
     GLOBAL_S3_BUCKET: 'kortix-storage',
-    STORAGE_TENANT_ID: composeProject(flags.instance),
+    STORAGE_TENANT_ID: composeWorkspace(flags.instance),
     REGION: 'local',
     IMGPROXY_AUTO_WEBP: 'true',
     DOCKER_SOCKET_LOCATION: '/var/run/docker.sock',
@@ -2299,7 +2299,7 @@ function defaultEnv(flags: GlobalFlags): SelfHostEnv {
     KORTIX_SELF_HOST_INTEGRATIONS_REVIEWED: 'false',
     PIPEDREAM_CLIENT_ID: '',
     PIPEDREAM_CLIENT_SECRET: '',
-    PIPEDREAM_PROJECT_ID: '',
+    PIPEDREAM_WORKSPACE_ID: '',
     PIPEDREAM_ENVIRONMENT: 'production',
     PIPEDREAM_WEBHOOK_SECRET: '',
   };
@@ -2311,7 +2311,7 @@ function writeCompose(instance: string, env: SelfHostEnv): void {
   writeKortixRuntimeAssets(root);
   writeFileSync(
     composePath(instance),
-    renderFullDockerCompose(composeProject(instance), {
+    renderFullDockerCompose(composeWorkspace(instance), {
       domainConfigured: Boolean(env.KORTIX_DOMAIN?.trim()),
       tunnelConfigured: reachabilityMode(env) === 'tunnel',
       namedTunnelConfigured: namedTunnelConfigured(env),
@@ -2431,13 +2431,13 @@ function normalizeFullSupabaseEnv(instance: string, env: SelfHostEnv): void {
   // check.
   env.KORTIX_INSTANCE_DIR = instanceDir(instance);
 
-  env.POOLER_TENANT_ID ||= composeProject(instance);
-  env.STORAGE_TENANT_ID ||= composeProject(instance);
-  env.STUDIO_DEFAULT_PROJECT ||= instance;
+  env.POOLER_TENANT_ID ||= composeWorkspace(instance);
+  env.STORAGE_TENANT_ID ||= composeWorkspace(instance);
+  env.STUDIO_DEFAULT_WORKSPACE ||= instance;
 }
 
 function compose(instance: string, args: string[]): number {
-  const result = spawnSync('docker', ['compose', '--project-name', composeProject(instance), '--env-file', envPath(instance), '-f', composePath(instance), ...args], {
+  const result = spawnSync('docker', ['compose', '--workspace-name', composeWorkspace(instance), '--env-file', envPath(instance), '-f', composePath(instance), ...args], {
     cwd: instanceDir(instance),
     stdio: 'inherit',
   });
@@ -2456,7 +2456,7 @@ function readComposeLogs(instance: string, service: string): string {
   const result = spawnSync(
     'docker',
     [
-      'compose', '--project-name', composeProject(instance),
+      'compose', '--workspace-name', composeWorkspace(instance),
       '--env-file', envPath(instance), '-f', composePath(instance),
       'logs', '--no-color', '--no-log-prefix', service,
     ],
@@ -2557,7 +2557,7 @@ function composePath(instance: string): string {
   return join(instanceDir(instance), 'docker-compose.yml');
 }
 
-function composeProject(instance: string): string {
+function composeWorkspace(instance: string): string {
   return `kortix-${instance}`.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
 }
 

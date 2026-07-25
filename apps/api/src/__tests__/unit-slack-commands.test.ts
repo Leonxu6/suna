@@ -35,6 +35,30 @@ mock.module('../channels/slack/selection', () => ({
   modelLabel: (id: string) => (id === 'anthropic/claude-opus-4-8' ? 'Claude Opus 4.8' : id),
   setChannelConversationPolicy: async () => undefined,
 }));
+mock.module('../channels/slack/model-gate', () => ({
+  channelModelContext: async () =>
+    selection
+      ? { workspaceId: 'p1', accountId: 'a1', ownerUserId: 'u1', freeManagedOnly: false }
+      : null,
+}));
+mock.module('../llm-gateway/models/picker', () => ({
+  listPickerModels: async () => ({
+    models: [
+      { id: 'anthropic/claude-opus-4-8', label: 'Claude Opus 4.8', hint: 'Most capable' },
+      { id: 'openai/gpt-5.5', label: 'GPT-5.5', hint: 'OpenAI flagship' },
+    ],
+    workspaceDefault: { model: 'glm-5.2', source: 'platform', label: 'GLM 5.2' },
+  }),
+  labelForModelRef: (id: string) =>
+    id === 'anthropic/claude-opus-4-8' ? 'Claude Opus 4.8' : id,
+}));
+mock.module('../llm-gateway/resolution/default-model', () => ({
+  isModelServableForAccount: async (input: { model: string }) => input.model !== 'not-a-model',
+  resolveEffectiveModel: async (input: { explicit?: string | null }) => ({
+    model: input.explicit ?? null,
+    source: input.explicit ? 'explicit' : 'platform',
+  }),
+}));
 
 // Identity layer — kept out of the db chain so it doesn't disturb dbResults
 // ordering. Controllable per-test via `identityRow`.
@@ -79,11 +103,11 @@ beforeEach(() => {
 });
 
 describe('help', () => {
-  test('lists the new agents / models / session commands', async () => {
+  test('lists the agent, model, and session commands', async () => {
     const resp = await handleSlashCommand('help', '', ctx);
     const txt = allText(resp);
-    expect(txt).toContain('agents');
-    expect(txt).toContain('models');
+    expect(txt).toContain('agent');
+    expect(txt).toContain('model');
     expect(txt).toContain('session');
   });
 });
@@ -133,14 +157,14 @@ describe('/kortix models', () => {
   test('unbound channel → prompts to switch', async () => {
     selection = null;
     const resp = await handleSlashCommand('models', '', ctx);
-    expect(allText(resp)).toContain('No workspace bound');
+    expect(allText(resp)).toContain('No workspace is connected');
   });
 });
 
 describe('/kortix model <id>', () => {
-  test('rejects a malformed id without writing', async () => {
+  test('rejects an unavailable id without writing', async () => {
     const resp = await handleSlashCommand('model', 'not-a-model', ctx);
-    expect(resp.text).toContain("doesn't look like a model id");
+    expect(resp.text).toContain("isn't available");
     expect(setModelCalls.length).toBe(0);
   });
   test('sets a valid id', async () => {
@@ -156,7 +180,7 @@ describe('/kortix model <id>', () => {
   test('unbound channel → prompts to switch, no write', async () => {
     selection = null;
     const resp = await handleSlashCommand('model', 'anthropic/claude-opus-4-8', ctx);
-    expect(resp.text).toContain('Bind a workspace first');
+    expect(resp.text).toContain('Connect a workspace first');
     expect(setModelCalls.length).toBe(0);
   });
 });

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import {
   emitJson,
   locateSessionAnywhere,
-  resolveProjectContext,
+  resolveWorkspaceContext,
   surfaceApiError,
   takeFlagBool,
   takeFlagValue,
@@ -16,22 +16,22 @@ import { runSessionsDigest } from './sessions-digest.ts';
 import { runSessionsShell } from './sessions-shell.ts';
 import { C, help, pad, status } from '../style.ts';
 import { sessionWebUrl } from '../web-url.ts';
-import type { ProjectSession, ProjectSummary } from '../api/types.ts';
+import type { WorkspaceSession, WorkspaceSummary } from '../api/types.ts';
 
 const HELP = help`Usage: kortix sessions <subcommand> [options]
 
-Manage Kortix project sessions — each session is an isolated sandbox VM
+Manage Kortix workspace sessions — each session is an isolated sandbox VM
 on its own ephemeral branch.
 
 Subcommands:
-  ls                                List sessions on the project. --json.
+  ls                                List sessions on the workspace. --json.
   status                            Mission control: every session + what
                                     each agent is doing right now (live).
                                     --all, --json. Aliases: overview, ps.
   new [--prompt "<text>"]           Start a new session, optionally with an
                                     initial prompt. --agent <name> pins the
                                     session to that agent (default: the
-                                    project's declared default agent).
+                                    workspace's declared default agent).
                                     --model <id> overrides the model.
                                     --wait blocks until it's running; --json
                                     prints the session object (capture
@@ -42,7 +42,7 @@ Subcommands:
                                       end-user (surfaced as KORTIX_ORIGIN_REF).
                                     --secret <id>           narrow injected
                                       secrets to these identifiers (repeatable).
-                                    --no-secrets            inject zero project
+                                    --no-secrets            inject zero workspace
                                       secrets into the session.
                                     --connector <alias>=<profile-id>  bind a
                                       connector to a profile (repeatable).
@@ -84,7 +84,7 @@ Subcommands:
   open <session-id>                 Open the dashboard URL for a session.
 
 Global options:
-  --project <id>     Operate on this project id (default: linked).
+  --workspace <id>     Operate on this workspace id (default: linked).
   -h, --help         Show this help.
 `;
 
@@ -145,14 +145,14 @@ export async function runSessions(argv: string[]): Promise<number> {
   }
   const json = takeFlagBool(rest, ['--json']);
   const wait = takeFlagBool(rest, ['--wait']);
-  let projectFlag: string | undefined;
+  let workspaceFlag: string | undefined;
   let promptFlag: string | undefined;
   let hostFlag: string | undefined;
   let portFlag: string | undefined;
   let agentFlag: string | undefined;
   let overrides: SessionOverrides = {};
   try {
-    projectFlag = takeFlagValue(rest, ['--project']);
+    workspaceFlag = takeFlagValue(rest, ['--workspace']);
     hostFlag = takeFlagValue(rest, ['--host']);
     promptFlag = takeFlagValue(rest, ['--prompt', '-p']);
     portFlag = takeFlagValue(rest, ['--port']);
@@ -164,7 +164,7 @@ export async function runSessions(argv: string[]): Promise<number> {
     process.stderr.write(`${status.err((err as Error).message)}\n`);
     return 2;
   }
-  const ctxOpts = { projectArg: projectFlag, hostArg: hostFlag };
+  const ctxOpts = { workspaceArg: workspaceFlag, hostArg: hostFlag };
 
   switch (sub) {
     case 'ls':
@@ -194,7 +194,7 @@ export async function runSessions(argv: string[]): Promise<number> {
   }
 }
 
-type CtxOpts = { projectArg?: string; hostArg?: string };
+type CtxOpts = { workspaceArg?: string; hostArg?: string };
 
 /** Start-time override flags for `sessions new`. Model/agent apply to any
  *  caller; origin_ref + secrets are Kortix-as-a-Backend fields the API accepts
@@ -221,7 +221,7 @@ export function parseSessionOverrides(argv: string[]): SessionOverrides {
   if (secrets.length && noSecrets) {
     throw new Error('pass either --secret <id> or --no-secrets, not both');
   }
-  // `secrets: []` (inject zero project secrets) is a distinct, documented state
+  // `secrets: []` (inject zero workspace secrets) is a distinct, documented state
   // from omitting the field (agent's normal set); --no-secrets expresses it.
   if (secrets.length) out.secrets = secrets;
   else if (noSecrets) out.secrets = [];
@@ -239,13 +239,13 @@ export function parseSessionOverrides(argv: string[]): SessionOverrides {
 }
 
 async function sessionsLs(opts: CtxOpts, json = false): Promise<number> {
-  const ctx = await resolveProjectContext(opts);
+  const ctx = await resolveWorkspaceContext(opts);
   if (!ctx) return 1;
 
-  let sessions: ProjectSession[];
+  let sessions: WorkspaceSession[];
   try {
-    sessions = await ctx.client.get<ProjectSession[]>(
-      `/projects/${ctx.projectId}/sessions`,
+    sessions = await ctx.client.get<WorkspaceSession[]>(
+      `/workspaces/${ctx.workspaceId}/sessions`,
     );
   } catch (err) {
     return surfaceApiError(err);
@@ -286,15 +286,15 @@ async function sessionsNew(
   agent?: string,
   overrides: SessionOverrides = {},
 ): Promise<number> {
-  const ctx = await resolveProjectContext(opts);
+  const ctx = await resolveWorkspaceContext(opts);
   if (!ctx) return 1;
 
   const body: Record<string, unknown> = {};
   if (prompt) body.initial_prompt = prompt;
   // Explicit caller override — the server otherwise falls back to the
-  // project's declared default agent (kortix.yaml's `default_agent`), or the
+  // workspace's declared default agent (kortix.yaml's `default_agent`), or the
   // non-binding 'default' sentinel when none is configured. See
-  // apps/api/src/projects/lib/sessions.ts createProjectSession.
+  // apps/api/src/workspaces/lib/sessions.ts createWorkspaceSession.
   if (agent) body.agent_name = agent;
   if (overrides.model) body.opencode_model = overrides.model;
   if (overrides.originRef) body.origin_ref = overrides.originRef;
@@ -305,10 +305,10 @@ async function sessionsNew(
   const prepared = await prepareClientCreatedBranch(ctx, body);
   if (prepared === 'error') return 1;
 
-  let created: ProjectSession;
+  let created: WorkspaceSession;
   try {
-    created = await ctx.client.post<ProjectSession>(
-      `/projects/${ctx.projectId}/sessions`,
+    created = await ctx.client.post<WorkspaceSession>(
+      `/workspaces/${ctx.workspaceId}/sessions`,
       body,
     );
   } catch (err) {
@@ -329,11 +329,11 @@ async function sessionsNew(
           stage: 'provisioning' | 'starting' | 'ready' | 'stopped' | 'failed';
           reason?: string;
         }>(
-          `/projects/${ctx.projectId}/sessions/${created.session_id}/start`,
+          `/workspaces/${ctx.workspaceId}/sessions/${created.session_id}/start`,
           {},
         );
-        created = await ctx.client.get<ProjectSession>(
-          `/projects/${ctx.projectId}/sessions/${created.session_id}`,
+        created = await ctx.client.get<WorkspaceSession>(
+          `/workspaces/${ctx.workspaceId}/sessions/${created.session_id}`,
         );
         if (start.stage === 'ready') {
           ready = true;
@@ -390,22 +390,22 @@ async function sessionsNew(
 }
 
 async function prepareClientCreatedBranch(
-  ctx: { client: { get<T>(path: string): Promise<T> }; projectId: string },
+  ctx: { client: { get<T>(path: string): Promise<T> }; workspaceId: string },
   body: Record<string, unknown>,
 ): Promise<'ok' | 'error'> {
-  let project: ProjectSummary;
+  let workspace: WorkspaceSummary;
   try {
-    project = await ctx.client.get<ProjectSummary>(`/projects/${ctx.projectId}`);
+    workspace = await ctx.client.get<WorkspaceSummary>(`/workspaces/${ctx.workspaceId}`);
   } catch {
     // Let the create call surface the real API error.
     return 'ok';
   }
 
-  if (serverCanCreateBranch(project)) return 'ok';
+  if (serverCanCreateBranch(workspace)) return 'ok';
   if (!isInsideGitWorkTree()) return 'ok';
 
   const origin = gitStdout(['remote', 'get-url', 'origin']);
-  if (!origin || normalizeGitUrl(origin) !== normalizeGitUrl(project.repo_url)) return 'ok';
+  if (!origin || normalizeGitUrl(origin) !== normalizeGitUrl(workspace.repo_url)) return 'ok';
 
   const baseRef = currentGitBranch();
   if (!baseRef) {
@@ -544,7 +544,7 @@ async function sessionsRestart(sessionId: string | undefined, opts: CtxOpts): Pr
 
   try {
     await located.located.client.post<{ ok: true; status: string }>(
-      `/projects/${located.located.projectId}/sessions/${sessionId}/restart`,
+      `/workspaces/${located.located.workspaceId}/sessions/${sessionId}/restart`,
     );
   } catch (err) {
     return surfaceApiError(err);
@@ -573,10 +573,10 @@ async function sessionsRename(
   );
   if (!located) return 1;
 
-  let updated: ProjectSession;
+  let updated: WorkspaceSession;
   try {
-    updated = await located.located.client.patch<ProjectSession>(
-      `/projects/${located.located.projectId}/sessions/${sessionId}`,
+    updated = await located.located.client.patch<WorkspaceSession>(
+      `/workspaces/${located.located.workspaceId}/sessions/${sessionId}`,
       { name },
     );
   } catch (err) {
@@ -604,7 +604,7 @@ async function sessionsRm(sessionId: string | undefined, opts: CtxOpts): Promise
   if (!located) return 1;
 
   try {
-    await located.located.client.delete(`/projects/${located.located.projectId}/sessions/${sessionId}`);
+    await located.located.client.delete(`/workspaces/${located.located.workspaceId}/sessions/${sessionId}`);
   } catch (err) {
     return surfaceApiError(err);
   }
@@ -623,7 +623,7 @@ async function sessionsOpen(sessionId: string | undefined, opts: CtxOpts): Promi
     (host) => `kortix sessions open ${sessionId} --host ${host}`,
   );
   if (!located) return 1;
-  const url = sessionWebUrl(located.located.auth.api_base, located.located.projectId, sessionId);
+  const url = sessionWebUrl(located.located.auth.api_base, located.located.workspaceId, sessionId);
   process.stdout.write(`${C.dim}Opening ${url}${C.reset}\n`);
   openInBrowser(url);
   return 0;
@@ -635,8 +635,8 @@ function shortId(id: string): string {
   return id.split('-')[0] ?? id;
 }
 
-function serverCanCreateBranch(project: ProjectSummary): boolean {
-  const meta = (project.metadata ?? {}) as Record<string, any>;
+function serverCanCreateBranch(workspace: WorkspaceSummary): boolean {
+  const meta = (workspace.metadata ?? {}) as Record<string, any>;
   const git = meta.git as { provider?: string; managed?: boolean; auth?: { method?: string } } | undefined;
   // Managed repos: the server holds the credential and can create the branch.
   if (git?.managed === true) return true;

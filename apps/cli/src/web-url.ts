@@ -5,7 +5,7 @@
  * Kortix over the API, so the only base URL it is handed is `KORTIX_API_URL`
  * (e.g. https://api-prod.kortix.com). User-facing links must point at the
  * frontend (e.g. https://kortix.com). Resolving them by string-munging the API
- * host is fragile — it silently produced `api-prod.kortix.com/projects/…`
+ * host is fragile — it silently produced `api-prod.kortix.com/workspaces/…`
  * links — so we never guess when an authoritative value is available.
  *
  * Resolution order, most authoritative first:
@@ -13,8 +13,8 @@
  *      `dashboard_url` (see {@link Host} in api/config.ts), captured
  *      authoritatively at the source: `kortix self-host` knows its own
  *      `PUBLIC_URL` and stamps it on the `selfhost` host it registers, or
- *      `project.dashboard_url` — the server's own `config.FRONTEND_URL`,
- *      baked into every serialized project (see {@link projectWebUrl}).
+ *      `workspace.dashboard_url` — the server's own `config.FRONTEND_URL`,
+ *      baked into every serialized workspace (see {@link workspaceWebUrl}).
  *   2. `KORTIX_FRONTEND_URL` — injected into every sandbox right next to
  *      `KORTIX_API_URL` (the server's `config.FRONTEND_URL`, verbatim). Also
  *      settable locally.
@@ -84,24 +84,27 @@ function deriveFrontendFromApiBase(apiBase: string): string {
 }
 
 /**
- * Web (dashboard) URL for a project. Prefers the server-provided `dashboardUrl`
+ * Web (dashboard) URL for a workspace. Prefers the server-provided `dashboardUrl`
  * (authoritative) and only falls back to {@link webDashboardUrl} when absent.
  */
-export function projectWebUrl(
+export function workspaceWebUrl(
   apiBase: string,
-  projectId: string,
+  workspaceId: string,
   dashboardUrl?: string | null,
 ): string {
   if (dashboardUrl && dashboardUrl.trim()) return stripTrailingSlash(dashboardUrl.trim());
-  return `${webDashboardUrl(apiBase)}/projects/${projectId}`;
+  return `${webDashboardUrl(apiBase)}/workspaces/${workspaceId}`;
 }
 
-/** Web (dashboard) URL for a session within a project. */
+/** @deprecated Use `workspaceWebUrl`. */
+export const projectWebUrl = workspaceWebUrl;
+
+/** Web (dashboard) URL for a session within a workspace. */
 export function sessionWebUrl(
   apiBase: string,
-  projectId: string,
+  workspaceId: string,
   sessionId: string,
   dashboardUrl?: string | null,
 ): string {
-  return `${projectWebUrl(apiBase, projectId, dashboardUrl)}/sessions/${sessionId}`;
+  return `${workspaceWebUrl(apiBase, workspaceId, dashboardUrl)}/sessions/${sessionId}`;
 }

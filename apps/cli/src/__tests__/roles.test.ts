@@ -15,7 +15,7 @@ const ENV_KEYS = [
   'KORTIX_EXECUTOR_TOKEN',
   'KORTIX_TOKEN',
   'KORTIX_API_URL',
-  'KORTIX_PROJECT_ID',
+  'KORTIX_WORKSPACE_ID',
   'KORTIX_DISABLE_SANDBOX_ENV_FILE',
   'KORTIX_CONFIG_FILE',
   'KORTIX_AUTH_FILE',
@@ -28,10 +28,10 @@ let stdout = '';
 let stderr = '';
 let requests: Array<{ url: string; method: string; body: any }> = [];
 
-// Built-in `member` (project floor role) + a custom `support_agent` role.
+// Built-in `member` (workspace floor role) + a custom `support_agent` role.
 const ROLES = [
-  { role_id: 'builtin:member', key: 'member', name: 'Member', description: null, resource_type: 'project', is_system: true, account_id: null },
-  { role_id: 'role_77', key: 'support_agent', name: 'Support Agent', description: 'Read + run', resource_type: 'project', is_system: false, account_id: 'account_1' },
+  { role_id: 'builtin:member', key: 'member', name: 'Member', description: null, resource_type: 'workspace', is_system: true, account_id: null },
+  { role_id: 'role_77', key: 'support_agent', name: 'Support Agent', description: 'Read + run', resource_type: 'workspace', is_system: false, account_id: 'account_1' },
 ];
 
 function writeConfig(): void {
@@ -74,18 +74,18 @@ function mockApi() {
     requests.push({ url, method, body });
 
     const has = (p: string) => url.includes(p);
-    if (has('/iam/roles/role_77/permissions')) return json({ role_id: 'role_77', key: 'support_agent', actions: ['project.read', 'project.session.start'] });
+    if (has('/iam/roles/role_77/permissions')) return json({ role_id: 'role_77', key: 'support_agent', actions: ['workspace.read', 'workspace.session.start'] });
     if (has('/iam/roles/role_77/usage')) return json({ role_id: 'role_77', policy_count: 1 });
     if (has('/iam/roles/role_77') && method === 'DELETE') return json({ deleted: true });
     if (has('/iam/roles') && method === 'POST') return json({ role_id: 'role_new', key: body?.key, name: body?.name, resource_type: body?.resourceType, is_system: false, account_id: 'account_1' });
     if (has('/iam/roles')) return json({ roles: ROLES });
-    if (has('/iam/actions')) return json({ actions: [{ action: 'project.read', label: 'Read project', resource_type: 'project' }] });
+    if (has('/iam/actions')) return json({ actions: [{ action: 'workspace.read', label: 'Read workspace', resource_type: 'workspace' }] });
     if (has('/iam/policies:bulk-import') && method === 'POST') {
       const n = (body?.policies ?? []).length;
       return json({ attempted: n, created: n, skipped: 0, errors: [] });
     }
     if (has('/iam/policies') && method === 'POST') return json({ policy_id: 'pol_1', principal_type: body?.principalType, principal_id: body?.principalId, scope_type: body?.scopeType, scope_id: body?.scopeId, role_id: body?.roleId, effect: 'allow', created_at: '2026-01-01T00:00:00.000Z' });
-    if (has('/iam/policies')) return json({ policies: [{ policy_id: 'pol_1', principal_type: 'member', principal_id: 'user-9', scope_type: 'project', scope_id: 'proj-1', role_id: 'role_77', effect: 'allow', created_at: '2026-01-01T00:00:00.000Z' }] });
+    if (has('/iam/policies')) return json({ policies: [{ policy_id: 'pol_1', principal_type: 'member', principal_id: 'user-9', scope_type: 'workspace', scope_id: 'proj-1', role_id: 'role_77', effect: 'allow', created_at: '2026-01-01T00:00:00.000Z' }] });
     return new Response(JSON.stringify({ error: `unexpected ${method} ${url}` }), { status: 500 });
   }) as typeof fetch;
 }
@@ -141,8 +141,8 @@ describe('kortix roles', () => {
     const code = await runRoles([
       'create', 'support_agent',
       '--name', 'Support Agent',
-      '--scope', 'project',
-      '--actions', 'project.read, project.session.start',
+      '--scope', 'workspace',
+      '--actions', 'workspace.read, workspace.session.start',
     ]);
     expect(code).toBe(0);
     const post = requests.find((r) => r.method === 'POST' && r.url.includes('/iam/roles'));
@@ -150,13 +150,13 @@ describe('kortix roles', () => {
     expect(post!.body).toMatchObject({
       key: 'support_agent',
       name: 'Support Agent',
-      resourceType: 'project',
-      actions: ['project.read', 'project.session.start'], // trimmed
+      resourceType: 'workspace',
+      actions: ['workspace.read', 'workspace.session.start'], // trimmed
     });
   });
 
   test('create rejects an invalid key client-side (no round-trip) and suggests a fix', async () => {
-    const code = await runRoles(['create', 'support-agent', '--name', 'X', '--actions', 'project.read']);
+    const code = await runRoles(['create', 'support-agent', '--name', 'X', '--actions', 'workspace.read']);
     expect(code).toBe(2);
     const err = stripAnsi(stderr);
     expect(err).toContain('[a-z0-9_]');
@@ -165,30 +165,30 @@ describe('kortix roles', () => {
     expect(requests.some((r) => r.method === 'POST')).toBe(false);
   });
 
-  test('assign binds a role to a principal at project scope (POST /iam/policies)', async () => {
-    const code = await runRoles(['assign', 'support_agent', '--to', 'member:user-9', '--project', 'proj-1']);
+  test('assign binds a role to a principal at workspace scope (POST /iam/policies)', async () => {
+    const code = await runRoles(['assign', 'support_agent', '--to', 'member:user-9', '--workspace', 'proj-1']);
     expect(code).toBe(0);
     const post = requests.find((r) => r.method === 'POST' && r.url.includes('/iam/policies'));
     expect(post).toBeDefined();
     expect(post!.body).toMatchObject({
       principalType: 'member',
       principalId: 'user-9',
-      scopeType: 'project',
+      scopeType: 'workspace',
       scopeId: 'proj-1',
       roleId: 'role_77', // resolved from the key
     });
   });
 
-  test('assignments filters policies by project scope', async () => {
-    const code = await runRoles(['assignments', '--project', 'proj-1']);
+  test('assignments filters policies by workspace scope', async () => {
+    const code = await runRoles(['assignments', '--workspace', 'proj-1']);
     expect(code).toBe(0);
     const get = requests.find((r) => r.method === 'GET' && r.url.includes('/iam/policies'));
-    expect(get!.url).toContain('scopeType=project');
+    expect(get!.url).toContain('scopeType=workspace');
     expect(get!.url).toContain('scopeId=proj-1');
   });
 
   test('set-actions refuses a built-in role', async () => {
-    const code = await runRoles(['set-actions', 'member', '--actions', 'project.read']);
+    const code = await runRoles(['set-actions', 'member', '--actions', 'workspace.read']);
     expect(code).toBe(2);
     expect(stripAnsi(stderr)).toContain('read-only');
     // No PUT was attempted.
@@ -218,15 +218,15 @@ describe('kortix roles', () => {
 
   test('import creates missing roles and dedupes already-existing bindings', async () => {
     // Existing live state (from the mock): role support_agent=role_77, and one
-    // policy member:user-9 @ project:proj-1 → role_77.
+    // policy member:user-9 @ workspace:proj-1 → role_77.
     const file = join(tmp, 'pol.toml');
     writeFileSync(
       file,
       [
-        '[[roles]]', 'key = "support_agent"', 'name = "Support Agent"', 'resource_type = "project"', 'actions = ["project.read"]', '',
-        '[[roles]]', 'key = "new_role"', 'name = "New Role"', 'resource_type = "project"', 'actions = ["project.read"]', '',
-        '[[policies]]', 'role_key = "support_agent"', 'principal_type = "member"', 'principal_id = "user-9"', 'scope_type = "project"', 'scope_id = "proj-1"', '',
-        '[[policies]]', 'role_key = "support_agent"', 'principal_type = "member"', 'principal_id = "user-NEW"', 'scope_type = "project"', 'scope_id = "proj-1"', '',
+        '[[roles]]', 'key = "support_agent"', 'name = "Support Agent"', 'resource_type = "workspace"', 'actions = ["workspace.read"]', '',
+        '[[roles]]', 'key = "new_role"', 'name = "New Role"', 'resource_type = "workspace"', 'actions = ["workspace.read"]', '',
+        '[[policies]]', 'role_key = "support_agent"', 'principal_type = "member"', 'principal_id = "user-9"', 'scope_type = "workspace"', 'scope_id = "proj-1"', '',
+        '[[policies]]', 'role_key = "support_agent"', 'principal_type = "member"', 'principal_id = "user-NEW"', 'scope_type = "workspace"', 'scope_id = "proj-1"', '',
       ].join('\n'),
       'utf8',
     );

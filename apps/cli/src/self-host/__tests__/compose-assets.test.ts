@@ -127,7 +127,7 @@ describe('full self-host Docker distribution', () => {
     expect(api?.environment?.LOCAL_DOCKER_NETWORK).toBeUndefined();
   });
 
-  test('mounts the Docker socket + points LOCAL_DOCKER_NETWORK at this Compose project\'s own network when local-docker is selected', () => {
+  test('mounts the Docker socket + points LOCAL_DOCKER_NETWORK at this Compose workspace\'s own network when local-docker is selected', () => {
     const document = parse(renderFullDockerCompose('kortix-default', { localDockerConfigured: true })) as {
       services: Record<string, { volumes?: string[]; environment?: Record<string, string> }>;
     };

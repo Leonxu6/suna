@@ -19,7 +19,7 @@ const SANDBOX_ENV_OVERRIDES = [
   'KORTIX_CLI_TOKEN',
   'KORTIX_EXECUTOR_TOKEN',
   'KORTIX_FRONTEND_URL',
-  'KORTIX_PROJECT_ID',
+  'KORTIX_WORKSPACE_ID',
   'KORTIX_TOKEN',
   'BASH_ENV',
 ] as const;
@@ -145,7 +145,7 @@ describe('kortix sandboxes build --local --print', () => {
 
   test('needs no login — the whole point of a pre-push gate', async () => {
     // runCli strips every KORTIX_* credential and there's no config.json in tmp,
-    // so this asserts the command routes above resolveProjectContext.
+    // so this asserts the command routes above resolveWorkspaceContext.
     const r = await runCli(['sandboxes', 'build', '--local', '--print']);
     expect(r.code).toBe(0);
     expect(r.stderr).not.toContain('Not logged in');

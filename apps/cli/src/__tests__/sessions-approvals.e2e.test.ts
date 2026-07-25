@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { runSessions } from '../commands/sessions';
 
-const PROJECT_ID = '00000000-0000-4000-a000-000000000111';
+const WORKSPACE_ID = '00000000-0000-4000-a000-000000000111';
 const ACCOUNT_ID = '00000000-0000-4000-a000-000000000222';
 const SESSION_ID = '00000000-0000-4000-a000-000000000333';
 const PROXY_ID = 'external-approvals';
@@ -16,7 +16,7 @@ const ENV_KEYS = [
   'KORTIX_EXECUTOR_TOKEN',
   'KORTIX_TOKEN',
   'KORTIX_API_URL',
-  'KORTIX_PROJECT_ID',
+  'KORTIX_WORKSPACE_ID',
   'KORTIX_DISABLE_SANDBOX_ENV_FILE',
 ] as const;
 
@@ -36,7 +36,7 @@ function sessionRow() {
   return {
     session_id: SESSION_ID,
     account_id: ACCOUNT_ID,
-    project_id: PROJECT_ID,
+    workspace_id: WORKSPACE_ID,
     branch_name: SESSION_ID,
     sandbox_provider: 'daytona',
     sandbox_id: 'sandbox-row-id',
@@ -69,7 +69,7 @@ describe('sessions pending/approve/answer', () => {
       port: 0,
       fetch: async (req) => {
         const url = new URL(req.url);
-        if (req.method === 'GET' && url.pathname === `/v1/projects/${PROJECT_ID}/sessions/${SESSION_ID}`) {
+        if (req.method === 'GET' && url.pathname === `/v1/workspaces/${WORKSPACE_ID}/sessions/${SESSION_ID}`) {
           return Response.json(sessionRow());
         }
         if (req.method === 'GET' && url.pathname === `/v1/p/${PROXY_ID}/8000/permission`) {
@@ -175,7 +175,7 @@ describe('sessions pending/approve/answer', () => {
     pendingPermissions = [permission('perm_1')];
     pendingQuestions = [question('q_1')];
 
-    const code = await runSessions(['pending', SESSION_ID, '--project', PROJECT_ID, '--json']);
+    const code = await runSessions(['pending', SESSION_ID, '--workspace', WORKSPACE_ID, '--json']);
 
     expect(code).toBe(0);
     const payload = JSON.parse(stdoutChunks.join(''));
@@ -186,7 +186,7 @@ describe('sessions pending/approve/answer', () => {
   test('pending human output lists the ask and the command to answer it', async () => {
     pendingPermissions = [permission('perm_1')];
 
-    const code = await runSessions(['pending', SESSION_ID, '--project', PROJECT_ID]);
+    const code = await runSessions(['pending', SESSION_ID, '--workspace', WORKSPACE_ID]);
 
     expect(code).toBe(0);
     const out = stdoutChunks.join('');
@@ -196,7 +196,7 @@ describe('sessions pending/approve/answer', () => {
   });
 
   test('approve with an explicit request id replies once', async () => {
-    const code = await runSessions(['approve', SESSION_ID, 'perm_1', '--project', PROJECT_ID]);
+    const code = await runSessions(['approve', SESSION_ID, 'perm_1', '--workspace', WORKSPACE_ID]);
 
     expect(code).toBe(0);
     expect(permissionReplies).toEqual([{ id: 'perm_1', body: { reply: 'once' } }]);
@@ -206,7 +206,7 @@ describe('sessions pending/approve/answer', () => {
     pendingPermissions = [permission('perm_solo')];
 
     const code = await runSessions([
-      'approve', SESSION_ID, '--always', '--message', 'go ahead', '--project', PROJECT_ID,
+      'approve', SESSION_ID, '--always', '--message', 'go ahead', '--workspace', WORKSPACE_ID,
     ]);
 
     expect(code).toBe(0);
@@ -216,7 +216,7 @@ describe('sessions pending/approve/answer', () => {
   });
 
   test('approve --reject sends a rejection', async () => {
-    const code = await runSessions(['approve', SESSION_ID, 'perm_x', '--reject', '--project', PROJECT_ID]);
+    const code = await runSessions(['approve', SESSION_ID, 'perm_x', '--reject', '--workspace', WORKSPACE_ID]);
 
     expect(code).toBe(0);
     expect(permissionReplies).toEqual([{ id: 'perm_x', body: { reply: 'reject' } }]);
@@ -225,7 +225,7 @@ describe('sessions pending/approve/answer', () => {
   test('bare approve with several pending permissions errors and lists ids', async () => {
     pendingPermissions = [permission('perm_a'), permission('perm_b')];
 
-    const code = await runSessions(['approve', SESSION_ID, '--project', PROJECT_ID]);
+    const code = await runSessions(['approve', SESSION_ID, '--workspace', WORKSPACE_ID]);
 
     expect(code).toBe(1);
     expect(permissionReplies).toEqual([]);
@@ -238,7 +238,7 @@ describe('sessions pending/approve/answer', () => {
     pendingQuestions = [question('q_1')];
 
     const code = await runSessions([
-      'answer', SESSION_ID, 'q_1', '--option', 'Staging', '--project', PROJECT_ID,
+      'answer', SESSION_ID, 'q_1', '--option', 'Staging', '--workspace', WORKSPACE_ID,
     ]);
 
     expect(code).toBe(0);
@@ -251,12 +251,12 @@ describe('sessions pending/approve/answer', () => {
     pendingQuestions = [question('q_1')];
 
     let code = await runSessions([
-      'answer', SESSION_ID, 'q_1', '--text', 'use the blue one', '--project', PROJECT_ID,
+      'answer', SESSION_ID, 'q_1', '--text', 'use the blue one', '--workspace', WORKSPACE_ID,
     ]);
     expect(code).toBe(0);
 
     pendingQuestions = [question('q_2')];
-    code = await runSessions(['answer', SESSION_ID, 'q_2', '--reject', '--project', PROJECT_ID]);
+    code = await runSessions(['answer', SESSION_ID, 'q_2', '--reject', '--workspace', WORKSPACE_ID]);
     expect(code).toBe(0);
 
     expect(questionReplies).toEqual([
@@ -266,7 +266,7 @@ describe('sessions pending/approve/answer', () => {
   });
 
   test('answer without any answer flags errors before any network reply', async () => {
-    const code = await runSessions(['answer', SESSION_ID, 'q_1', '--project', PROJECT_ID]);
+    const code = await runSessions(['answer', SESSION_ID, 'q_1', '--workspace', WORKSPACE_ID]);
 
     expect(code).toBe(2);
     expect(questionReplies).toEqual([]);

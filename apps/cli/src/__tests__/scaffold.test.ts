@@ -26,7 +26,7 @@ const GKW_SKILL_PATHS = [
 function baseStarterPaths(): string[] {
   const probe = mkdtempSync(join(tmpdir(), 'kortix-scaffold-base-'));
   try {
-    return applyScaffold({ repoRoot: probe, projectName: 'Base', template: 'minimal' }).written.sort();
+    return applyScaffold({ repoRoot: probe, workspaceName: 'Base', template: 'minimal' }).written.sort();
   } finally {
     rmSync(probe, { recursive: true, force: true });
   }
@@ -53,7 +53,7 @@ function walk(root: string, relPrefix = ''): string[] {
 
 describe('applyScaffold', () => {
   test('writes the default (full) Kortix starter into a fresh directory', () => {
-    const result = applyScaffold({ repoRoot: dir, projectName: 'Hello World' });
+    const result = applyScaffold({ repoRoot: dir, workspaceName: 'Hello World' });
 
     // The one starter kit is the default — the full skill kit ships with it.
     for (const path of REQUIRED_BASE_PATHS) expect(result.written).toContain(path);
@@ -64,7 +64,7 @@ describe('applyScaffold', () => {
 
     const manifest = readFileSync(join(dir, 'kortix.yaml'), 'utf8');
     expect(manifest).toContain('name: "Hello World"');
-    expect(manifest).not.toContain('{{projectName}}');
+    expect(manifest).not.toContain('{{workspaceName}}');
 
     expect(manifest).not.toMatch(/^sandbox:/m);
     expect(manifest).toContain('config_dir: .kortix/opencode');
@@ -77,7 +77,7 @@ describe('applyScaffold', () => {
   test('general-knowledge-worker template carries the full domain skill kit', () => {
     const result = applyScaffold({
       repoRoot: dir,
-      projectName: 'Hello World',
+      workspaceName: 'Hello World',
       template: 'general-knowledge-worker',
     });
 
@@ -87,7 +87,7 @@ describe('applyScaffold', () => {
 
   test('minimal template writes only the shared Kortix starter', () => {
     const base = baseStarterPaths();
-    const result = applyScaffold({ repoRoot: dir, projectName: 'Minimal', template: 'minimal' });
+    const result = applyScaffold({ repoRoot: dir, workspaceName: 'Minimal', template: 'minimal' });
 
     expect(result.written.sort()).toEqual(base);
     for (const path of REQUIRED_BASE_PATHS) expect(result.written).toContain(path);
@@ -103,7 +103,7 @@ describe('applyScaffold', () => {
 
     const result = applyScaffold({
       repoRoot: dir,
-      projectName: 'Preserved',
+      workspaceName: 'Preserved',
       preserveExisting: true,
     });
 
@@ -118,7 +118,7 @@ describe('applyScaffold', () => {
   test('without preserveExisting, overwrites prior files', () => {
     writeFileSync(join(dir, 'README.md'), 'CUSTOM README', 'utf8');
 
-    const result = applyScaffold({ repoRoot: dir, projectName: 'Overwrite' });
+    const result = applyScaffold({ repoRoot: dir, workspaceName: 'Overwrite' });
 
     expect(result.skipped).toEqual([]);
     expect(result.written).toContain('README.md');

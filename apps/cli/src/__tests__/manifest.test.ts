@@ -31,7 +31,7 @@ describe('lintManifest', () => {
   test('a clean starter-shaped manifest has no errors', () => {
     const issues = lintToml(`
       kortix_version = 1
-      [project]
+      [workspace]
       name = "x"
       [env]
       required = []
@@ -41,7 +41,7 @@ describe('lintManifest', () => {
   });
 
   test('errors when kortix_version is missing', () => {
-    const issues = lintToml(`[project]\nname = "x"\n`);
+    const issues = lintToml(`[workspace]\nname = "x"\n`);
     expect(issues.errors.some((e) => e.includes('kortix_version'))).toBe(true);
   });
 

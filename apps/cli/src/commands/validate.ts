@@ -12,7 +12,7 @@
  * Mirrors the same validator that `kortix ship` runs as a pre-flight check
  * and that the backend runs on CR-merge — there is exactly one schema, used
  * in three places. The Dockerfile lint rides the same three places for free:
- * a Dockerfile that can't build in the cloud is as much a broken project as a
+ * a Dockerfile that can't build in the cloud is as much a broken workspace as a
  * malformed manifest, and both are decidable from text alone.
  */
 import { existsSync, readFileSync } from 'node:fs';
@@ -31,7 +31,7 @@ import { C, help, status } from '../style.ts';
 
 const HELP = help`Usage: kortix validate [options]
 
-Statically validate the project's kortix.yaml against the canonical schema,
+Statically validate the workspace's kortix.yaml against the canonical schema,
 and lint every \`sandbox.templates\` Dockerfile for the constraints the cloud
 builder enforces (no COPY from the repo, no RUN heredocs, Debian-family base).
 
@@ -91,7 +91,7 @@ function lintSandboxDockerfiles(
       continue;
     }
     // Report the path as written in the manifest when it stays inside the
-    // project, so the author sees the string they typed.
+    // workspace, so the author sees the string they typed.
     const shown = relative(root, abs).startsWith('..') ? abs : tpl.dockerfile;
     issues.push(...lintDockerfile(text, { path: shown }));
   }
@@ -122,13 +122,13 @@ export function runValidate(argv: string[]): number {
   }
   if (flags.scopes) {
     process.stdout.write(
-      `${C.dim}Grantable kortix_cli actions (project-scoped — account-level admin actions can never be granted to an agent):${C.reset}\n`,
+      `${C.dim}Grantable kortix_cli actions (workspace-scoped — account-level admin actions can never be granted to an agent):${C.reset}\n`,
     );
     for (const a of GRANTABLE_KORTIX_CLI_ACTIONS) process.stdout.write(`  ${a}\n`);
     return 0;
   }
 
-  // Explicit --file wins; otherwise resolve the project's manifest, preferring
+  // Explicit --file wins; otherwise resolve the workspace's manifest, preferring
   // kortix.yaml over kortix.toml (falls back to kortix.yaml for the not-found msg).
   const filePath = flags.file
     ? resolve(process.cwd(), flags.file)
@@ -142,7 +142,7 @@ export function runValidate(argv: string[]): number {
       process.stderr.write(
         `${status.err('Manifest not found')}\n` +
           `  ${C.dim}Looked for ${filePath}${C.reset}\n` +
-          `  ${C.dim}Run from your project root, or pass${C.reset} ${C.cyan}--file <path>${C.reset}\n`,
+          `  ${C.dim}Run from your workspace root, or pass${C.reset} ${C.cyan}--file <path>${C.reset}\n`,
       );
     }
     return 2;

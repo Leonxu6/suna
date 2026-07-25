@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
-import { ensureDefaultProjectBinding } from '../project-bind.ts';
+import { ensureDefaultWorkspaceBinding } from '../workspace-bind.ts';
 import type { Auth } from '../api/auth.ts';
 
 const AUTH: Auth = {
@@ -21,13 +21,13 @@ const ENV_KEYS = [
   'KORTIX_EXECUTOR_TOKEN',
   'KORTIX_TOKEN',
   'KORTIX_API_URL',
-  'KORTIX_PROJECT_ID',
+  'KORTIX_WORKSPACE_ID',
   'KORTIX_DISABLE_SANDBOX_ENV_FILE',
 ] as const;
 
-function project(id: string, name: string) {
+function workspace(id: string, name: string) {
   return {
-    project_id: id,
+    workspace_id: id,
     account_id: 'account_1',
     name,
     repo_url: 'https://git.example.test/r.git',
@@ -39,7 +39,7 @@ function project(id: string, name: string) {
   };
 }
 
-describe('ensureDefaultProjectBinding', () => {
+describe('ensureDefaultWorkspaceBinding', () => {
   let dir: string;
   let configFile: string;
   let stderrChunks: string[];
@@ -87,10 +87,10 @@ describe('ensureDefaultProjectBinding', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  function mockProjects(list: unknown[] | { status: number }) {
+  function mockWorkspaces(list: unknown[] | { status: number }) {
     globalThis.fetch = (async (url: string | URL | Request) => {
       const u = String(url instanceof Request ? url.url : url);
-      if (u.includes('/projects')) {
+      if (u.includes('/workspaces')) {
         if (Array.isArray(list)) return Response.json(list);
         return Response.json({ error: 'boom' }, { status: list.status });
       }
@@ -98,15 +98,15 @@ describe('ensureDefaultProjectBinding', () => {
     }) as typeof fetch;
   }
 
-  function storedDefaultProject(): { project_id: string; name: string } | undefined {
+  function storedDefaultWorkspace(): { workspace_id: string; name: string } | undefined {
     const cfg = JSON.parse(readFileSync(configFile, 'utf8'));
-    return cfg.hosts?.test?.default_project;
+    return cfg.hosts?.test?.default_workspace;
   }
 
-  it('is a no-op when a default project is already bound', async () => {
+  it('is a no-op when a default workspace is already bound', async () => {
     const cfg = JSON.parse(readFileSync(configFile, 'utf8'));
-    cfg.hosts.test.default_project = {
-      project_id: 'proj_existing',
+    cfg.hosts.test.default_workspace = {
+      workspace_id: 'proj_existing',
       account_id: 'account_1',
       name: 'Existing',
     };
@@ -115,52 +115,52 @@ describe('ensureDefaultProjectBinding', () => {
       throw new Error('must not fetch when already bound');
     }) as unknown as typeof fetch;
 
-    const outcome = await ensureDefaultProjectBinding(AUTH);
+    const outcome = await ensureDefaultWorkspaceBinding(AUTH);
 
     expect(outcome.bound).toBe(false);
-    expect(outcome.project?.project_id).toBe('proj_existing');
+    expect(outcome.workspace?.workspace_id).toBe('proj_existing');
   });
 
-  it('auto-binds when the account has exactly one project', async () => {
-    mockProjects([project('proj_only', 'Only One')]);
+  it('auto-binds when the account has exactly one workspace', async () => {
+    mockWorkspaces([workspace('proj_only', 'Only One')]);
 
-    const outcome = await ensureDefaultProjectBinding(AUTH);
+    const outcome = await ensureDefaultWorkspaceBinding(AUTH);
 
     expect(outcome.bound).toBe(true);
-    expect(outcome.project?.project_id).toBe('proj_only');
-    expect(storedDefaultProject()?.project_id).toBe('proj_only');
-    expect(stderrChunks.join('')).toContain('Default project:');
+    expect(outcome.workspace?.workspace_id).toBe('proj_only');
+    expect(storedDefaultWorkspace()?.workspace_id).toBe('proj_only');
+    expect(stderrChunks.join('')).toContain('Default workspace:');
   });
 
-  it('hints at kortix init and binds nothing when the account has zero projects', async () => {
-    mockProjects([]);
+  it('hints at kortix init and binds nothing when the account has zero workspaces', async () => {
+    mockWorkspaces([]);
 
-    const outcome = await ensureDefaultProjectBinding(AUTH);
+    const outcome = await ensureDefaultWorkspaceBinding(AUTH);
 
     expect(outcome.bound).toBe(false);
-    expect(outcome.project).toBeNull();
-    expect(storedDefaultProject()).toBeUndefined();
+    expect(outcome.workspace).toBeNull();
+    expect(storedDefaultWorkspace()).toBeUndefined();
     expect(stderrChunks.join('')).toContain('kortix init');
   });
 
-  it('does not prompt or bind on a non-TTY when several projects exist', async () => {
-    mockProjects([project('proj_a', 'A'), project('proj_b', 'B')]);
+  it('does not prompt or bind on a non-TTY when several workspaces exist', async () => {
+    mockWorkspaces([workspace('proj_a', 'A'), workspace('proj_b', 'B')]);
 
-    const outcome = await ensureDefaultProjectBinding(AUTH);
+    const outcome = await ensureDefaultWorkspaceBinding(AUTH);
 
     expect(outcome.bound).toBe(false);
-    expect(outcome.project).toBeNull();
-    expect(storedDefaultProject()).toBeUndefined();
-    expect(stderrChunks.join('')).toContain('kortix projects use');
+    expect(outcome.workspace).toBeNull();
+    expect(storedDefaultWorkspace()).toBeUndefined();
+    expect(stderrChunks.join('')).toContain('kortix workspaces use');
   });
 
-  it('degrades to unbound with the reason on stderr when listing projects fails', async () => {
-    mockProjects({ status: 500 });
+  it('degrades to unbound with the reason on stderr when listing workspaces fails', async () => {
+    mockWorkspaces({ status: 500 });
 
-    const outcome = await ensureDefaultProjectBinding(AUTH);
+    const outcome = await ensureDefaultWorkspaceBinding(AUTH);
 
     expect(outcome.bound).toBe(false);
-    expect(outcome.project).toBeNull();
-    expect(stderrChunks.join('')).toContain('Could not list projects');
+    expect(outcome.workspace).toBeNull();
+    expect(stderrChunks.join('')).toContain('Could not list workspaces');
   });
 });

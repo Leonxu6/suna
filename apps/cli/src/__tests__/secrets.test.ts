@@ -15,7 +15,7 @@ const ENV_KEYS = [
   'KORTIX_EXECUTOR_TOKEN',
   'KORTIX_TOKEN',
   'KORTIX_API_URL',
-  'KORTIX_PROJECT_ID',
+  'KORTIX_WORKSPACE_ID',
   'KORTIX_DISABLE_SANDBOX_ENV_FILE',
   'KORTIX_CONFIG_FILE',
   'KORTIX_AUTH_FILE',
@@ -53,7 +53,7 @@ function secret(
     identifier,
     name,
     secret_id: `sec_${identifier}`,
-    project_id: 'proj_1',
+    workspace_id: 'proj_1',
     created_by: 'user_1',
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
@@ -120,7 +120,7 @@ function mockApi() {
     }
     requests.push({ url, method, body });
 
-    if (url.includes('/projects/proj_1/secrets') && method === 'GET') {
+    if (url.includes('/workspaces/proj_1/secrets') && method === 'GET') {
       return json({
         items: secretItems.map((s) => secret(s.identifier, s.name, s)),
         required: manifestRequired,
@@ -130,13 +130,13 @@ function mockApi() {
         manifest_path: 'kortix.yaml',
       });
     }
-    if (url.includes('/projects/proj_1/secrets') && method === 'POST') {
+    if (url.includes('/workspaces/proj_1/secrets') && method === 'POST') {
       const input = typeof body === 'object' && body !== null ? body : {};
       const name = String(input.name).toUpperCase();
       const identifier = String(input.identifier ?? name);
       return json(secret(identifier, name));
     }
-    if (url.includes('/projects/proj_1/secrets/') && method === 'DELETE') {
+    if (url.includes('/workspaces/proj_1/secrets/') && method === 'DELETE') {
       return json({ status: 'deleted' });
     }
     return new Response(JSON.stringify({ error: `unexpected ${method} ${url}` }), { status: 500 });
@@ -150,7 +150,7 @@ beforeEach(() => {
     delete process.env[key];
   }
   process.env.KORTIX_DISABLE_SANDBOX_ENV_FILE = '1';
-  process.env.KORTIX_PROJECT_ID = 'proj_1';
+  process.env.KORTIX_WORKSPACE_ID = 'proj_1';
   originalCwd = process.cwd();
   tmp = mkdtempSync(join(tmpdir(), 'kortix-secrets-test-'));
   process.chdir(tmp);

@@ -7,12 +7,12 @@ import type {
   OauthFlowStartResponse,
   OauthListResponse,
   OauthPollResponse,
-  ProjectSecret,
+  WorkspaceSecret,
 } from '../api/types.ts';
 import { openInBrowser } from '../browser.ts';
 import {
   emitJson,
-  resolveProjectContext,
+  resolveWorkspaceContext,
   surfaceApiError,
   takeFlagBool,
   takeFlagValue,
@@ -21,13 +21,13 @@ import { C, help, pad, status } from '../style.ts';
 
 const HELP = help`Usage: kortix providers <subcommand> [options]
 
-Configure LLM providers for the linked Kortix project. Two paths:
+Configure LLM providers for the linked Kortix workspace. Two paths:
 
   • OAuth (zero config) — uses the upstream provider's device-code flow
     (ChatGPT Pro/Plus, GitHub Copilot). Tokens land encrypted on the
-    project, get refreshed on each sandbox boot.
+    workspace, get refreshed on each sandbox boot.
 
-  • API key — stored as an encrypted project secret. Injected into
+  • API key — stored as an encrypted workspace secret. Injected into
     sessions at boot, picked up by opencode's provider lookup.
 
 Subcommands:
@@ -36,14 +36,14 @@ Subcommands:
                                     providers).
   login <provider>                  Run the OAuth device-code flow.
                                     Providers: openai, github-copilot.
-  set <provider> [<key>]            Save an API key as a project secret.
+  set <provider> [<key>]            Save an API key as a workspace secret.
                                     Provider → env-var mapping below.
                                     With no <key>, reads from stdin.
                                     bedrock also needs --region <region>.
   rm <provider>                     Remove the OAuth credential and/or
                                     the matching API-key secret(s).
 
-Known API-key providers (provider → project secret(s)):
+Known API-key providers (provider → workspace secret(s)):
   anthropic       → ANTHROPIC_API_KEY
   openai          → OPENAI_API_KEY
   openrouter      → OPENROUTER_API_KEY
@@ -55,14 +55,14 @@ Known API-key providers (provider → project secret(s)):
   bedrock         → AWS_BEARER_TOKEN_BEDROCK + AWS_REGION (--region)
 
 Global options:
-  --project <id>     Operate on this project id (default: linked).
+  --workspace <id>     Operate on this workspace id (default: linked).
   --host <name>      Operate against a non-default Kortix host.
   --region <region>  (set bedrock) AWS region, e.g. us-east-1.
   --enterprise <url> (login github-copilot) Enterprise GHE URL.
   -h, --help         Show this help.
 `;
 
-// ── provider → required project-secret(s) for the API-key flow ────────────
+// ── provider → required workspace-secret(s) for the API-key flow ────────────
 // Sourced from @kortix/llm-catalog's Kortix-owned auth requirement — NOT the
 // raw models.dev env list, which for some providers (Bedrock) includes an
 // auth method (SigV4 access keys) Kortix's transport doesn't implement. See
@@ -105,7 +105,7 @@ export function isProviderConnected(envVars: string[], secretNames: Set<string>)
 // Providers that support the OAuth device-code flow.
 const OAUTH_PROVIDERS = new Set(['openai', 'github-copilot']);
 
-type CtxOpts = { projectArg?: string; hostArg?: string };
+type CtxOpts = { workspaceArg?: string; hostArg?: string };
 
 export async function runProviders(argv: string[]): Promise<number> {
   if (argv.length === 0 || argv[0] === '-h' || argv[0] === '--help') {
@@ -115,13 +115,13 @@ export async function runProviders(argv: string[]): Promise<number> {
 
   const sub = argv[0];
   const rest = argv.slice(1);
-  let projectFlag: string | undefined;
+  let workspaceFlag: string | undefined;
   let hostFlag: string | undefined;
   let enterpriseFlag: string | undefined;
   let regionFlag: string | undefined;
   let json = false;
   try {
-    projectFlag = takeFlagValue(rest, ['--project']);
+    workspaceFlag = takeFlagValue(rest, ['--workspace']);
     hostFlag = takeFlagValue(rest, ['--host']);
     enterpriseFlag = takeFlagValue(rest, ['--enterprise']);
     regionFlag = takeFlagValue(rest, ['--region']);
@@ -130,7 +130,7 @@ export async function runProviders(argv: string[]): Promise<number> {
     process.stderr.write(`${status.err((err as Error).message)}\n`);
     return 2;
   }
-  const ctxOpts: CtxOpts = { projectArg: projectFlag, hostArg: hostFlag };
+  const ctxOpts: CtxOpts = { workspaceArg: workspaceFlag, hostArg: hostFlag };
 
   switch (sub) {
     case 'ls':
@@ -152,15 +152,15 @@ export async function runProviders(argv: string[]): Promise<number> {
 }
 
 async function providersLs(opts: CtxOpts, json = false): Promise<number> {
-  const ctx = await resolveProjectContext(opts);
+  const ctx = await resolveWorkspaceContext(opts);
   if (!ctx) return 1;
 
   let oauthList: OauthListResponse;
-  let secrets: { items: ProjectSecret[] };
+  let secrets: { items: WorkspaceSecret[] };
   try {
     [oauthList, secrets] = await Promise.all([
-      ctx.client.get<OauthListResponse>(`/projects/${ctx.projectId}/oauth`),
-      ctx.client.get<{ items: ProjectSecret[] }>(`/projects/${ctx.projectId}/secrets`),
+      ctx.client.get<OauthListResponse>(`/workspaces/${ctx.workspaceId}/oauth`),
+      ctx.client.get<{ items: WorkspaceSecret[] }>(`/workspaces/${ctx.workspaceId}/secrets`),
     ]);
   } catch (err) {
     return surfaceApiError(err);
@@ -235,14 +235,14 @@ async function providersLogin(
     );
     return 2;
   }
-  const ctx = await resolveProjectContext(opts);
+  const ctx = await resolveWorkspaceContext(opts);
   if (!ctx) return 1;
 
   // Kick off the device-code flow.
   let flow: OauthFlowStartResponse;
   try {
     flow = await ctx.client.post<OauthFlowStartResponse>(
-      `/projects/${ctx.projectId}/oauth/${provider}/start`,
+      `/workspaces/${ctx.workspaceId}/oauth/${provider}/start`,
       enterpriseUrl ? { enterprise_url: enterpriseUrl } : {},
     );
   } catch (err) {
@@ -266,7 +266,7 @@ async function providersLogin(
     let resp: OauthPollResponse;
     try {
       resp = await ctx.client.post<OauthPollResponse>(
-        `/projects/${ctx.projectId}/oauth/${provider}/poll`,
+        `/workspaces/${ctx.workspaceId}/oauth/${provider}/poll`,
         { flow_id: flow.flow_id },
       );
     } catch (err) {
@@ -275,7 +275,7 @@ async function providersLogin(
     }
     if (resp.status === 'success') {
       process.stdout.write(
-        `\n${status.ok(`Authorized ${C.bold}${provider}${C.reset} on this project`)}\n`,
+        `\n${status.ok(`Authorized ${C.bold}${provider}${C.reset} on this workspace`)}\n`,
       );
       const exp = resp.credential.expires_in_ms;
       if (exp !== null) {
@@ -359,12 +359,12 @@ async function providersSet(
     values[regionVar!] = region;
   }
 
-  const ctx = await resolveProjectContext(opts);
+  const ctx = await resolveWorkspaceContext(opts);
   if (!ctx) return 1;
 
   try {
     for (const [name, value] of Object.entries(values)) {
-      await ctx.client.post<ProjectSecret>(`/projects/${ctx.projectId}/secrets`, { name, value });
+      await ctx.client.post<WorkspaceSecret>(`/workspaces/${ctx.workspaceId}/secrets`, { name, value });
     }
   } catch (err) {
     return surfaceApiError(err);
@@ -381,7 +381,7 @@ async function providersRm(provider: string | undefined, opts: CtxOpts): Promise
     process.stderr.write(`${status.err('Pass a provider.')}\n`);
     return 2;
   }
-  const ctx = await resolveProjectContext(opts);
+  const ctx = await resolveWorkspaceContext(opts);
   if (!ctx) return 1;
 
   let removedOauth = false;
@@ -389,7 +389,7 @@ async function providersRm(provider: string | undefined, opts: CtxOpts): Promise
 
   if (OAUTH_PROVIDERS.has(provider)) {
     try {
-      await ctx.client.delete(`/projects/${ctx.projectId}/oauth/${provider}`);
+      await ctx.client.delete(`/workspaces/${ctx.workspaceId}/oauth/${provider}`);
       removedOauth = true;
     } catch (err) {
       if (!(err instanceof ApiError) || err.status !== 404) {
@@ -401,7 +401,7 @@ async function providersRm(provider: string | undefined, opts: CtxOpts): Promise
   const envVars = PROVIDER_ENV_VARS[provider] ?? [];
   for (const envVar of envVars) {
     try {
-      await ctx.client.delete(`/projects/${ctx.projectId}/secrets/${envVar}`);
+      await ctx.client.delete(`/workspaces/${ctx.workspaceId}/secrets/${envVar}`);
       removedKeys.push(envVar);
     } catch (err) {
       if (!(err instanceof ApiError) || err.status !== 404) {

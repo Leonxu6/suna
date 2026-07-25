@@ -12,7 +12,7 @@ Subcommands:
                    to a second line.
 
 Global options:
-  --project <id>   Operate on this project id.
+  --workspace <id>   Operate on this workspace id.
   -h, --help       Show this help.
 `;
 
@@ -33,7 +33,7 @@ describe('formatHelp', () => {
       'List things.',
       'Upsert a thing. Wraps',
       'to a second line.',
-      '--project <id>',
+      '--workspace <id>',
     ]) {
       expect(out).toContain(fragment);
     }

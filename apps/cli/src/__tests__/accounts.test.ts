@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { runAccounts } from '../commands/accounts.ts';
-import { runProjects } from '../commands/projects.ts';
-import { activeAccount, defaultProject } from '../api/config.ts';
+import { runWorkspaces } from '../commands/workspaces.ts';
+import { activeAccount, defaultWorkspace } from '../api/config.ts';
 import { stripAnsi } from '../style.ts';
 
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -18,7 +18,7 @@ const ENV_KEYS = [
   'KORTIX_TOKEN',
   'KORTIX_API_URL',
   'KORTIX_FRONTEND_URL',
-  'KORTIX_PROJECT_ID',
+  'KORTIX_WORKSPACE_ID',
   'BASH_ENV',
   'KORTIX_DISABLE_SANDBOX_ENV_FILE',
   'KORTIX_CONFIG_FILE',
@@ -164,13 +164,13 @@ describe('kortix accounts', () => {
   });
 });
 
-describe('kortix projects use', () => {
-  test('sets the default project and switches the active account to its account', async () => {
+describe('kortix workspaces use', () => {
+  test('sets the default workspace and switches the active account to its account', async () => {
     mockApi((url) => {
-      if (url === 'https://api.test/v1/projects/proj_x') {
+      if (url === 'https://api.test/v1/workspaces/proj_x') {
         return new Response(
           JSON.stringify({
-            project_id: 'proj_x',
+            workspace_id: 'proj_x',
             account_id: 'account_2',
             name: 'Beta',
             repo_url: 'https://github.com/x/beta.git',
@@ -187,30 +187,30 @@ describe('kortix projects use', () => {
       return undefined;
     });
 
-    const code = await runProjects(['use', 'proj_x']);
+    const code = await runWorkspaces(['use', 'proj_x']);
     expect(code).toBe(0);
-    // The by-id GET is NOT account-scoped (the project may be in any account).
-    expect(requests).toContain('https://api.test/v1/projects/proj_x');
-    // Default project recorded …
-    expect(defaultProject()).toEqual({ project_id: 'proj_x', account_id: 'account_2', name: 'Beta' });
+    // The by-id GET is NOT account-scoped (the workspace may be in any account).
+    expect(requests).toContain('https://api.test/v1/workspaces/proj_x');
+    // Default workspace recorded …
+    expect(defaultWorkspace()).toEqual({ workspace_id: 'proj_x', account_id: 'account_2', name: 'Beta' });
     // … and the active account followed it to Kortix (account_2).
     expect(activeAccount()).toEqual({ id: 'account_2', slug: 'kortix', name: 'Kortix' });
     const out = stripAnsi(stdout);
-    expect(out).toContain('Default project: Beta');
+    expect(out).toContain('Default workspace: Beta');
     expect(out).toContain('now active');
   });
 });
 
-describe('kortix projects ls scoping', () => {
+describe('kortix workspaces ls scoping', () => {
   test('scopes the list to the active account', async () => {
     mockApi((url) => {
-      if (url.startsWith('https://api.test/v1/projects')) {
+      if (url.startsWith('https://api.test/v1/workspaces')) {
         return new Response(JSON.stringify([]), { status: 200 });
       }
       return undefined;
     });
-    const code = await runProjects(['ls', '--json']);
+    const code = await runWorkspaces(['ls', '--json']);
     expect(code).toBe(0);
-    expect(requests).toEqual(['https://api.test/v1/projects?account_id=account_1']);
+    expect(requests).toEqual(['https://api.test/v1/workspaces?account_id=account_1']);
   });
 });

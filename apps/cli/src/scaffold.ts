@@ -7,7 +7,7 @@ export interface ScaffoldInput {
   /** Absolute path of the destination directory. Must already exist. */
   repoRoot: string;
   /** Display name written into kortix.yaml + README. */
-  projectName: string;
+  workspaceName: string;
   /** Optional "owner/repo" placeholder for README clone URL. */
   repoFullName?: string;
   /** Starter variant. Defaults to the minimal Kortix runtime floor. */
@@ -33,7 +33,7 @@ export interface ScaffoldResult {
  */
 export function applyScaffold(input: ScaffoldInput): ScaffoldResult {
   const files: StarterFile[] = getStarterFiles({
-    projectName: input.projectName,
+    workspaceName: input.workspaceName,
     repoFullName: input.repoFullName,
     template: input.template,
   });

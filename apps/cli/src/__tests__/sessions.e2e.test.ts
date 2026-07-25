@@ -7,7 +7,7 @@ import { join } from 'node:path';
 
 import { runSessions } from '../commands/sessions';
 
-const PROJECT_ID = '00000000-0000-4000-a000-000000000111';
+const WORKSPACE_ID = '00000000-0000-4000-a000-000000000111';
 const ACCOUNT_ID = '00000000-0000-4000-a000-000000000222';
 
 let root = '';
@@ -18,7 +18,7 @@ let previousConfigFile: string | undefined;
 let previousCliToken: string | undefined;
 let previousExecutorToken: string | undefined;
 let previousApiUrl: string | undefined;
-let previousProjectId: string | undefined;
+let previousWorkspaceId: string | undefined;
 let previousServiceToken: string | undefined;
 let previousBashEnv: string | undefined;
 let previousDisableSandboxEnvFile: string | undefined;
@@ -45,14 +45,14 @@ describe('sessions new CLI flow', () => {
     previousCliToken = process.env.KORTIX_CLI_TOKEN;
     previousExecutorToken = process.env.KORTIX_EXECUTOR_TOKEN;
     previousApiUrl = process.env.KORTIX_API_URL;
-    previousProjectId = process.env.KORTIX_PROJECT_ID;
+    previousWorkspaceId = process.env.KORTIX_WORKSPACE_ID;
     previousServiceToken = process.env.KORTIX_TOKEN;
     previousBashEnv = process.env.BASH_ENV;
     previousDisableSandboxEnvFile = process.env.KORTIX_DISABLE_SANDBOX_ENV_FILE;
     delete process.env.KORTIX_CLI_TOKEN;
     delete process.env.KORTIX_EXECUTOR_TOKEN;
     delete process.env.KORTIX_API_URL;
-    delete process.env.KORTIX_PROJECT_ID;
+    delete process.env.KORTIX_WORKSPACE_ID;
     delete process.env.KORTIX_TOKEN;
     delete process.env.BASH_ENV;
     process.env.KORTIX_DISABLE_SANDBOX_ENV_FILE = '1';
@@ -75,7 +75,7 @@ describe('sessions new CLI flow', () => {
     writeFileSync(
       join(repo, '.kortix', 'link.json'),
       JSON.stringify({
-        project_id: PROJECT_ID,
+        workspace_id: WORKSPACE_ID,
         account_id: ACCOUNT_ID,
         host: 'default',
         host_url: 'http://127.0.0.1',
@@ -88,9 +88,9 @@ describe('sessions new CLI flow', () => {
       port: 0,
       fetch: async (req) => {
         const url = new URL(req.url);
-        if (req.method === 'GET' && url.pathname === `/v1/projects/${PROJECT_ID}`) {
+        if (req.method === 'GET' && url.pathname === `/v1/workspaces/${WORKSPACE_ID}`) {
           return Response.json({
-            project_id: PROJECT_ID,
+            workspace_id: WORKSPACE_ID,
             account_id: ACCOUNT_ID,
             name: 'test',
             repo_url: origin,
@@ -103,13 +103,13 @@ describe('sessions new CLI flow', () => {
             updated_at: '2026-01-01T00:00:00.000Z',
           });
         }
-        if (req.method === 'POST' && url.pathname === `/v1/projects/${PROJECT_ID}/sessions`) {
+        if (req.method === 'POST' && url.pathname === `/v1/workspaces/${WORKSPACE_ID}/sessions`) {
           sessionCreateBody = await req.json() as Record<string, unknown>;
           const sessionId = sessionCreateBody.session_id as string;
           return Response.json({
             session_id: sessionId,
             account_id: ACCOUNT_ID,
-            project_id: PROJECT_ID,
+            workspace_id: WORKSPACE_ID,
             branch_name: sessionId,
             base_ref: sessionCreateBody.base_ref,
             sandbox_provider: 'daytona',
@@ -125,10 +125,10 @@ describe('sessions new CLI flow', () => {
             updated_at: '2026-01-01T00:00:00.000Z',
           });
         }
-        if (req.method === 'GET' && url.pathname === `/v1/projects/${PROJECT_ID}/sessions`) {
+        if (req.method === 'GET' && url.pathname === `/v1/workspaces/${WORKSPACE_ID}/sessions`) {
           return Response.json(sessionList);
         }
-        const transcriptMatch = url.pathname.match(new RegExp(`^/v1/projects/${PROJECT_ID}/sessions/([^/]+)/transcript$`));
+        const transcriptMatch = url.pathname.match(new RegExp(`^/v1/workspaces/${WORKSPACE_ID}/sessions/([^/]+)/transcript$`));
         if (req.method === 'GET' && transcriptMatch) {
           transcriptRequests.push(url);
           return Response.json({
@@ -198,8 +198,8 @@ describe('sessions new CLI flow', () => {
     else process.env.KORTIX_EXECUTOR_TOKEN = previousExecutorToken;
     if (previousApiUrl === undefined) delete process.env.KORTIX_API_URL;
     else process.env.KORTIX_API_URL = previousApiUrl;
-    if (previousProjectId === undefined) delete process.env.KORTIX_PROJECT_ID;
-    else process.env.KORTIX_PROJECT_ID = previousProjectId;
+    if (previousWorkspaceId === undefined) delete process.env.KORTIX_WORKSPACE_ID;
+    else process.env.KORTIX_WORKSPACE_ID = previousWorkspaceId;
     if (previousServiceToken === undefined) delete process.env.KORTIX_TOKEN;
     else process.env.KORTIX_TOKEN = previousServiceToken;
     if (previousBashEnv === undefined) delete process.env.BASH_ENV;
@@ -228,7 +228,7 @@ describe('sessions new CLI flow', () => {
     expect(sessionSha).toBe(baseSha);
   });
 
-  test('--agent forces the session onto an explicit agent instead of the project default', async () => {
+  test('--agent forces the session onto an explicit agent instead of the workspace default', async () => {
     const code = await runSessions(['new', '--agent', 'release-bot']);
 
     expect(code).toBe(0);
@@ -236,7 +236,7 @@ describe('sessions new CLI flow', () => {
     expect(sessionCreateBody).toMatchObject({ agent_name: 'release-bot' });
   });
 
-  test('omitting --agent never sends agent_name (server resolves the project default)', async () => {
+  test('omitting --agent never sends agent_name (server resolves the workspace default)', async () => {
     const code = await runSessions(['new']);
 
     expect(code).toBe(0);
@@ -244,14 +244,14 @@ describe('sessions new CLI flow', () => {
     expect(sessionCreateBody).not.toHaveProperty('agent_name');
   });
 
-  test('digest uses compact project transcript endpoint', async () => {
+  test('digest uses compact workspace transcript endpoint', async () => {
     const runningId = '11111111-1111-4111-8111-111111111111';
     const stoppedId = '22222222-2222-4222-8222-222222222222';
     sessionList = [
       {
         session_id: runningId,
         account_id: ACCOUNT_ID,
-        project_id: PROJECT_ID,
+        workspace_id: WORKSPACE_ID,
         branch_name: runningId,
         base_ref: 'main',
         sandbox_provider: 'daytona',
@@ -269,7 +269,7 @@ describe('sessions new CLI flow', () => {
       {
         session_id: stoppedId,
         account_id: ACCOUNT_ID,
-        project_id: PROJECT_ID,
+        workspace_id: WORKSPACE_ID,
         branch_name: stoppedId,
         base_ref: 'main',
         sandbox_provider: 'daytona',

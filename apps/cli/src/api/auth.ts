@@ -46,10 +46,10 @@ function hostToAuth(host: Host): Auth {
 /**
  * Build the Host record to persist for a login. Spreads `previous` first so
  * fields the `Auth` shape doesn't carry — `dashboard_url`, `account_slug`,
- * `account_name`, `default_project` — survive a re-login instead of being
+ * `account_name`, `default_workspace` — survive a re-login instead of being
  * silently wiped. `dashboard_url` in particular has no other call site that
- * re-derives it after login (unlike account_slug/default_project, which
- * login.ts re-sets right after via setActiveAccount/ensureDefaultProjectBinding),
+ * re-derives it after login (unlike account_slug/default_workspace, which
+ * login.ts re-sets right after via setActiveAccount/ensureDefaultWorkspaceBinding),
  * so without this merge, the very first successful `kortix login` on a
  * `kortix self-host`-registered host would erase the authoritative frontend
  * URL `registerLocalHost` had just stamped on it — reintroducing the

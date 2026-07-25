@@ -21,7 +21,7 @@ const OPENCODE_DIR = '.kortix/opencode';
  *   .claude   → .kortix/opencode   (Claude Code: .claude/skills, .claude/agents — flat, depth-1)
  *   .agents   → .kortix/opencode   (Codex + the cross-tool AGENTS standard: .agents/skills, recursive)
  *
- * Codex's documented project skills dir is `.agents/skills` (not `.codex/`), and
+ * Codex's documented workspace skills dir is `.agents/skills` (not `.codex/`), and
  * `.agents/skills` is what OpenCode + other agent tools read too — so the codex
  * choice wires `.agents`. Each link targets `.kortix/opencode` directly (not via
  * `.opencode`) so any agent can be wired independently. Cursor has no dir of its
@@ -50,7 +50,7 @@ export interface WireAgentsResult {
 }
 
 /**
- * Wire each chosen coding agent to the project's OpenCode config. opencode /
+ * Wire each chosen coding agent to the workspace's OpenCode config. opencode /
  * claude / codex get a symlink from their native discovery dir to
  * `.kortix/opencode` (sharing its skills + agents). codex and cursor also get a
  * root `AGENTS.md` pointer — the universal, always-loaded instructions file they
@@ -115,9 +115,9 @@ function handleExisting(abs: string, overwrite: boolean): boolean {
 }
 
 function agentsPointer(): string {
-  return `# Kortix project
+  return `# Kortix workspace
 
-This repository is a [Kortix](https://kortix.ai) project — its agent runtime
+This repository is a [Kortix](https://kortix.ai) workspace — its agent runtime
 config lives under \`.kortix/\` and the manifest is \`kortix.yaml\`. The OpenCode
 config dir is symlinked into each wired coding agent's native location
 (\`.opencode\`, \`.claude\`, \`.agents\`), so its skills and agents are shared.

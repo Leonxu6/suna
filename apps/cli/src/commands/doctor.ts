@@ -2,33 +2,33 @@ import { ApiError } from '../api/client.ts';
 import { loadAuth, loadAuthForHost } from '../api/auth.ts';
 import { hasEnvTokenHost } from '../api/config.ts';
 import { DEFAULT_SANDBOX_RUNTIME_PORT, opencodeClient } from '../api/sandbox-proxy.ts';
-import { loadLink } from '../project-link.ts';
+import { loadLink } from '../workspace-link.ts';
 import {
-  resolveProjectContext,
+  resolveWorkspaceContext,
   takeFlagBool,
   takeFlagValue,
 } from '../command-helpers.ts';
 import { C, help, status } from '../style.ts';
 import type {
   MeResponse,
-  ProjectSession,
-  ProjectSummary,
+  WorkspaceSession,
+  WorkspaceSummary,
 } from '../api/types.ts';
 
 const HELP = help`Usage: kortix doctor [options]
 
-End-to-end smoke test: confirms login → project resolves → optionally
+End-to-end smoke test: confirms login → workspace resolves → optionally
 spins up a throwaway session, sends a message, and asserts the agent
 replies. Designed so coding agents can verify Kortix end-to-end before
 they start orchestrating real work.
 
 Options:
-  --no-session         Stop after auth + project checks. Don't create
+  --no-session         Stop after auth + workspace checks. Don't create
                        a sandbox. Fast and cheap.
   --keep-session       Don't delete the test session at the end.
   --prompt "<text>"    Test prompt (default: "ping").
   --timeout <seconds>  How long to wait for the reply (default: 180).
-  --project <id>       Operate on this project (default: linked).
+  --workspace <id>       Operate on this workspace (default: linked).
   --host <name>        Operate against a non-default Kortix host.
   -h, --help           Show this help.
 
@@ -42,7 +42,7 @@ interface DoctorFlags {
   keepSession: boolean;
   prompt: string;
   timeoutSec: number;
-  project?: string;
+  workspace?: string;
   host?: string;
   help: boolean;
 }
@@ -78,7 +78,7 @@ export async function runDoctor(argv: string[]): Promise<number> {
   );
 
   // ── 2. /accounts/me ─────────────────────────────────────────────────────
-  const ctx = await resolveProjectContext({ projectArg: flags.project, hostArg: flags.host });
+  const ctx = await resolveWorkspaceContext({ workspaceArg: flags.workspace, hostArg: flags.host });
   if (!ctx) return 1;
   try {
     const me = await ctx.client.get<MeResponse>('/accounts/me');
@@ -88,15 +88,15 @@ export async function runDoctor(argv: string[]): Promise<number> {
     return 1;
   }
 
-  // ── 3. Project ──────────────────────────────────────────────────────────
-  let project: ProjectSummary;
+  // ── 3. Workspace ──────────────────────────────────────────────────────────
+  let workspace: WorkspaceSummary;
   try {
-    project = await ctx.client.get<ProjectSummary>(`/projects/${ctx.projectId}`);
+    workspace = await ctx.client.get<WorkspaceSummary>(`/workspaces/${ctx.workspaceId}`);
     process.stdout.write(
-      `${status.ok(`project ${C.bold}${project.name}${C.reset} ${C.faded}(${project.project_id})${C.reset}`)}\n`,
+      `${status.ok(`workspace ${C.bold}${workspace.name}${C.reset} ${C.faded}(${workspace.workspace_id})${C.reset}`)}\n`,
     );
   } catch (err) {
-    process.stdout.write(`${status.err(`project lookup failed: ${describe(err)}`)}\n`);
+    process.stdout.write(`${status.err(`workspace lookup failed: ${describe(err)}`)}\n`);
     return 1;
   }
 
@@ -108,10 +108,10 @@ export async function runDoctor(argv: string[]): Promise<number> {
   // ── 4. Spin up a session ────────────────────────────────────────────────
   const t0 = Date.now();
   process.stdout.write(`  ${C.dim}creating session…${C.reset}\n`);
-  let session: ProjectSession;
+  let session: WorkspaceSession;
   try {
-    session = await ctx.client.post<ProjectSession>(
-      `/projects/${ctx.projectId}/sessions`,
+    session = await ctx.client.post<WorkspaceSession>(
+      `/workspaces/${ctx.workspaceId}/sessions`,
       { initial_prompt: null },
     );
   } catch (err) {
@@ -126,7 +126,7 @@ export async function runDoctor(argv: string[]): Promise<number> {
   let cleanup = async () => {
     if (flags.keepSession) return;
     try {
-      await ctx.client.delete(`/projects/${ctx.projectId}/sessions/${sessionId}`);
+      await ctx.client.delete(`/workspaces/${ctx.workspaceId}/sessions/${sessionId}`);
       process.stdout.write(`  ${C.dim}cleaned up session${C.reset}\n`);
     } catch {
       /* best effort */
@@ -137,12 +137,12 @@ export async function runDoctor(argv: string[]): Promise<number> {
     // ── 5. Wait for running status ───────────────────────────────────────
     process.stdout.write(`  ${C.dim}waiting for sandbox to come up…${C.reset}\n`);
     const deadline = Date.now() + flags.timeoutSec * 1000;
-    let running: ProjectSession | null = null;
+    let running: WorkspaceSession | null = null;
     while (Date.now() < deadline) {
-      let cur: ProjectSession;
+      let cur: WorkspaceSession;
       try {
-        cur = await ctx.client.get<ProjectSession>(
-          `/projects/${ctx.projectId}/sessions/${sessionId}`,
+        cur = await ctx.client.get<WorkspaceSession>(
+          `/workspaces/${ctx.workspaceId}/sessions/${sessionId}`,
         );
       } catch (err) {
         process.stdout.write(`${status.err(`status poll failed: ${describe(err)}`)}\n`);
@@ -264,7 +264,7 @@ function parseFlags(argv: string[]): DoctorFlags {
   flags.help = takeFlagBool(rest, ['-h', '--help']);
   flags.noSession = takeFlagBool(rest, ['--no-session']);
   flags.keepSession = takeFlagBool(rest, ['--keep-session']);
-  flags.project = takeFlagValue(rest, ['--project']);
+  flags.workspace = takeFlagValue(rest, ['--workspace']);
   flags.host = takeFlagValue(rest, ['--host']);
   const p = takeFlagValue(rest, ['--prompt']);
   if (p) flags.prompt = p;

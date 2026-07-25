@@ -5,13 +5,13 @@ import { join } from 'node:path';
 
 import {
   activeAccount,
-  clearDefaultProject,
-  defaultProject,
+  clearDefaultWorkspace,
+  defaultWorkspace,
   loadConfig,
   setActiveAccount,
-  setDefaultProject,
+  setDefaultWorkspace,
 } from '../api/config.ts';
-import { resolveProjectId, saveLink } from '../project-link.ts';
+import { resolveWorkspaceId, saveLink } from '../workspace-link.ts';
 import { renderContext, renderHostNotice } from '../host-notice.ts';
 import { stripAnsi } from '../style.ts';
 
@@ -20,6 +20,7 @@ const ENV_KEYS = [
   'KORTIX_EXECUTOR_TOKEN',
   'KORTIX_TOKEN',
   'KORTIX_API_URL',
+  'KORTIX_WORKSPACE_ID',
   'KORTIX_PROJECT_ID',
   'BASH_ENV',
   'KORTIX_DISABLE_SANDBOX_ENV_FILE',
@@ -69,14 +70,28 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-describe('config: account + default-project state', () => {
+describe('config: account + default-workspace state', () => {
   test('old config without the new fields still loads (back-compat)', () => {
     writeConfig({ test: loggedInHost() });
     const config = loadConfig();
     expect(config.active).toBe('test');
     expect(config.hosts.test.account_id).toBe('account_1');
-    expect(config.hosts.test.default_project).toBeUndefined();
+    expect(config.hosts.test.default_workspace).toBeUndefined();
     expect(activeAccount()).toEqual({ id: 'account_1', slug: 'account_', name: '' });
+  });
+
+  test('legacy default_project config migrates to default_workspace in memory', () => {
+    writeConfig({
+      test: loggedInHost({
+        default_project: { project_id: 'proj_legacy', account_id: 'account_1', name: 'Legacy' },
+      }),
+    });
+    expect(defaultWorkspace()).toEqual({
+      workspace_id: 'proj_legacy',
+      account_id: 'account_1',
+      name: 'Legacy',
+    });
+    expect(loadConfig().hosts.test.default_project).toBeUndefined();
   });
 
   test('setActiveAccount persists display fields and round-trips', () => {
@@ -89,84 +104,106 @@ describe('config: account + default-project state', () => {
     expect(onDisk.hosts.test.account_name).toBe('Kortix');
   });
 
-  test('setDefaultProject + defaultProject round-trip and clearDefaultProject removes it', () => {
+  test('setDefaultWorkspace + defaultWorkspace round-trip and clearDefaultWorkspace removes it', () => {
     writeConfig({ test: loggedInHost() });
-    setDefaultProject({ project_id: 'proj_a', account_id: 'account_1', name: 'Alpha' });
-    expect(defaultProject()).toEqual({ project_id: 'proj_a', account_id: 'account_1', name: 'Alpha' });
-    expect(clearDefaultProject()).toBe(true);
-    expect(defaultProject()).toBeNull();
-    expect(clearDefaultProject()).toBe(false);
+    setDefaultWorkspace({ workspace_id: 'proj_a', account_id: 'account_1', name: 'Alpha' });
+    expect(defaultWorkspace()).toEqual({ workspace_id: 'proj_a', account_id: 'account_1', name: 'Alpha' });
+    expect(clearDefaultWorkspace()).toBe(true);
+    expect(defaultWorkspace()).toBeNull();
+    expect(clearDefaultWorkspace()).toBe(false);
   });
 
-  test('switching to a different account drops a now-foreign default project', () => {
+  test('switching to a different account drops a now-foreign default workspace', () => {
     writeConfig({
       test: loggedInHost({
-        default_project: { project_id: 'proj_a', account_id: 'account_1', name: 'Alpha' },
+        default_workspace: { workspace_id: 'proj_a', account_id: 'account_1', name: 'Alpha' },
       }),
     });
-    expect(defaultProject()?.project_id).toBe('proj_a');
+    expect(defaultWorkspace()?.workspace_id).toBe('proj_a');
     setActiveAccount({ id: 'account_2', slug: 'two', name: 'Two' });
-    expect(defaultProject()).toBeNull();
+    expect(defaultWorkspace()).toBeNull();
   });
 
-  test('switching to the SAME account keeps the default project', () => {
+  test('switching to the SAME account keeps the default workspace', () => {
     writeConfig({
       test: loggedInHost({
-        default_project: { project_id: 'proj_a', account_id: 'account_1', name: 'Alpha' },
+        default_workspace: { workspace_id: 'proj_a', account_id: 'account_1', name: 'Alpha' },
       }),
     });
     setActiveAccount({ id: 'account_1', slug: 'one', name: 'One' });
-    expect(defaultProject()?.project_id).toBe('proj_a');
+    expect(defaultWorkspace()?.workspace_id).toBe('proj_a');
   });
 });
 
-describe('resolveProjectId fallback order', () => {
-  test('falls back to the active host default project when no link / env', () => {
+describe('resolveWorkspaceId fallback order', () => {
+  test('falls back to the active host default workspace when no link / env', () => {
     writeConfig({
       test: loggedInHost({
-        default_project: { project_id: 'proj_default', account_id: 'account_1' },
+        default_workspace: { workspace_id: 'proj_default', account_id: 'account_1' },
       }),
     });
     process.chdir(tmp); // linkless dir
-    expect(resolveProjectId()).toBe('proj_default');
+    expect(resolveWorkspaceId()).toBe('proj_default');
   });
 
-  test('explicit arg and KORTIX_PROJECT_ID outrank the default', () => {
+  test('explicit arg and KORTIX_WORKSPACE_ID outrank the default', () => {
     writeConfig({
       test: loggedInHost({
-        default_project: { project_id: 'proj_default', account_id: 'account_1' },
+        default_workspace: { workspace_id: 'proj_default', account_id: 'account_1' },
       }),
     });
     process.chdir(tmp);
-    expect(resolveProjectId('explicit')).toBe('explicit');
-    process.env.KORTIX_PROJECT_ID = 'env_proj';
-    expect(resolveProjectId()).toBe('env_proj');
+    expect(resolveWorkspaceId('explicit')).toBe('explicit');
+    process.env.KORTIX_WORKSPACE_ID = 'env_proj';
+    expect(resolveWorkspaceId()).toBe('env_proj');
   });
 
-  test('a directory link outranks the default project', () => {
+  test('a directory link outranks the default workspace', () => {
     writeConfig({
       test: loggedInHost({
-        default_project: { project_id: 'proj_default', account_id: 'account_1' },
+        default_workspace: { workspace_id: 'proj_default', account_id: 'account_1' },
       }),
     });
     mkdirSync(join(tmp, '.kortix'), { recursive: true });
     process.chdir(tmp);
     saveLink(
-      { project_id: 'proj_linked', account_id: 'account_1', linked_at: '2026-01-01T00:00:00.000Z' },
+      { workspace_id: 'proj_linked', account_id: 'account_1', linked_at: '2026-01-01T00:00:00.000Z' },
       tmp,
     );
     expect(existsSync(join(tmp, '.kortix', 'link.json'))).toBe(true);
-    expect(resolveProjectId()).toBe('proj_linked');
+    expect(resolveWorkspaceId()).toBe('proj_linked');
+  });
+
+  test('legacy project_id directory links remain readable', () => {
+    mkdirSync(join(tmp, '.kortix'), { recursive: true });
+    writeFileSync(
+      join(tmp, '.kortix', 'link.json'),
+      JSON.stringify({
+        project_id: 'proj_legacy_link',
+        account_id: 'account_1',
+        linked_at: '2026-01-01T00:00:00.000Z',
+      }),
+    );
+    process.chdir(tmp);
+    expect(resolveWorkspaceId()).toBe('proj_legacy_link');
+  });
+
+  test('legacy KORTIX_PROJECT_ID remains a fallback after KORTIX_WORKSPACE_ID', () => {
+    process.chdir(tmp);
+    process.env.KORTIX_PROJECT_ID = 'proj_legacy_env';
+    expect(resolveWorkspaceId()).toBe('proj_legacy_env');
+    process.env.KORTIX_WORKSPACE_ID = 'workspace_canonical_env';
+    expect(resolveWorkspaceId()).toBe('workspace_canonical_env');
   });
 });
 
 describe('renderContext + host notice', () => {
-  test('context block shows host, account, and default project', () => {
+  test('context block shows host, account, and default workspace', () => {
     writeConfig({
       test: loggedInHost({
         account_slug: 'kortix',
         account_name: 'Kortix',
-        default_project: { project_id: 'proj_a', account_id: 'account_1', name: 'Alpha' },
+        default_workspace: { workspace_id: 'proj_a', account_id: 'account_1', name: 'Alpha' },
       }),
     });
     process.chdir(tmp);
@@ -175,24 +212,24 @@ describe('renderContext + host notice', () => {
     expect(out).toContain('test');
     expect(out).toContain('account');
     expect(out).toContain('Kortix');
-    expect(out).toContain('project');
+    expect(out).toContain('workspace');
     expect(out).toContain('Alpha');
     expect(out).toContain('(default)');
-    // A bound default project points at the switch verb.
-    expect(out).toContain('switch with `kortix projects use`');
+    // A bound default workspace points at the switch verb.
+    expect(out).toContain('switch with `kortix workspaces use`');
   });
 
-  test('a directory-linked project does not show the default-project switch hint', () => {
+  test('a directory-linked workspace does not show the default-workspace switch hint', () => {
     writeConfig({
       test: loggedInHost({
         account_slug: 'kortix',
         account_name: 'Kortix',
-        default_project: { project_id: 'proj_a', account_id: 'account_1', name: 'Alpha' },
+        default_workspace: { workspace_id: 'proj_a', account_id: 'account_1', name: 'Alpha' },
       }),
     });
     mkdirSync(join(tmp, '.kortix'), { recursive: true });
     saveLink(
-      { project_id: 'proj_linked', account_id: 'account_1', linked_at: '2026-01-01T00:00:00.000Z' },
+      { workspace_id: 'proj_linked', account_id: 'account_1', linked_at: '2026-01-01T00:00:00.000Z' },
       tmp,
     );
     process.chdir(tmp);
@@ -201,20 +238,20 @@ describe('renderContext + host notice', () => {
     expect(out).not.toContain('switch with');
   });
 
-  test('context block nudges when account / default project are unset', () => {
+  test('context block nudges when account / default workspace are unset', () => {
     writeConfig({ test: loggedInHost({ account_id: '' }) });
     process.chdir(tmp);
     const out = stripAnsi(renderContext());
     expect(out).toContain('kortix accounts use');
-    expect(out).toContain('kortix projects use');
+    expect(out).toContain('kortix workspaces use');
   });
 
-  test('breadcrumb renders the full host -> account -> project -> session path when signed in', () => {
+  test('breadcrumb renders the full host -> account -> workspace -> session path when signed in', () => {
     writeConfig({
       test: loggedInHost({
         account_slug: 'kortix',
         account_name: 'Kortix',
-        default_project: { project_id: 'proj_a', account_id: 'account_1', name: 'Alpha' },
+        default_workspace: { workspace_id: 'proj_a', account_id: 'account_1', name: 'Alpha' },
       }),
     });
     process.chdir(tmp);
@@ -224,7 +261,7 @@ describe('renderContext + host notice', () => {
     expect(out).toContain('▸ kortix hosts use');
     // Every level is present, top-down.
     expect(out).toContain('account');
-    expect(out).toContain('project');
+    expect(out).toContain('workspace');
     expect(out).toContain('session');
     // The session leaf is empty (no persisted active session) and offers a verb.
     expect(out).toContain('open one: kortix chat');
@@ -246,7 +283,7 @@ describe('renderContext + host notice', () => {
     expect(out).toMatch(/○\s+host/);
     expect(out).toContain('not logged in');
     expect(out).toContain('→ kortix hosts login');
-    // Can't have an account/project without a signed-in host.
+    // Can't have an account/workspace without a signed-in host.
     expect(out).not.toContain('account');
     expect(out).not.toContain('session');
   });
@@ -259,19 +296,19 @@ describe('renderContext + host notice', () => {
     expect(out).toContain('→ kortix accounts use');
   });
 
-  test('subcommand host notice appends account + default project', () => {
+  test('subcommand host notice appends account + default workspace', () => {
     writeConfig({
       test: loggedInHost({
         account_slug: 'kortix',
         account_name: 'Kortix',
-        default_project: { project_id: 'proj_a', account_id: 'account_1', name: 'Alpha' },
+        default_workspace: { workspace_id: 'proj_a', account_id: 'account_1', name: 'Alpha' },
       }),
     });
     process.chdir(tmp);
     const notice = stripAnsi(renderHostNotice(['whoami']) ?? '');
     expect(notice).toContain('host test');
     expect(notice).toContain('account Kortix');
-    expect(notice).toContain('project Alpha');
+    expect(notice).toContain('workspace Alpha');
     expect(notice).toContain('(default)');
   });
 
@@ -283,7 +320,7 @@ describe('renderContext + host notice', () => {
     mkdirSync(join(tmp, '.kortix'), { recursive: true });
     saveLink(
       {
-        project_id: 'proj_linked',
+        workspace_id: 'proj_linked',
         account_id: 'account_1',
         host: 'customdev',
         host_url: 'https://dev-api.kortix.com',
@@ -296,22 +333,22 @@ describe('renderContext + host notice', () => {
     const notice = stripAnsi(renderHostNotice(['env', 'pull']) ?? '');
     expect(notice).toContain('host customdev');
     expect(notice).toContain('https://dev-api.kortix.com');
-    expect(notice).toContain('project proj_lin');
+    expect(notice).toContain('workspace proj_lin');
     expect(notice).not.toContain('host cloud');
   });
 
-  test('--host override does not claim the active account / project', () => {
+  test('--host override does not claim the active account / workspace', () => {
     writeConfig({
       test: loggedInHost({
         account_slug: 'kortix',
         account_name: 'Kortix',
-        default_project: { project_id: 'proj_a', account_id: 'account_1', name: 'Alpha' },
+        default_workspace: { workspace_id: 'proj_a', account_id: 'account_1', name: 'Alpha' },
       }),
     });
     process.chdir(tmp);
     const notice = stripAnsi(renderHostNotice(['whoami', '--host', 'cloud']) ?? '');
     expect(notice).toContain('host cloud');
     expect(notice).not.toContain('account Kortix');
-    expect(notice).not.toContain('project Alpha');
+    expect(notice).not.toContain('workspace Alpha');
   });
 });

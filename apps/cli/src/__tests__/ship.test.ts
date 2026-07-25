@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { ApiClient } from '../api/client.ts';
-import type { ProjectSummary } from '../api/types.ts';
+import type { WorkspaceSummary } from '../api/types.ts';
 import {
   authHeaderArgs,
-  linkGitHubBackedProject,
+  linkGitHubBackedWorkspace,
   reconcileShippedManifest,
   resolveExistingShipGitTarget,
   resolveProvisionShipGitTarget,
@@ -19,9 +19,9 @@ test('managed git auth headers honor the provider-selected username', () => {
   expect(encoded && Buffer.from(encoded, 'base64').toString('utf8')).toBe('t:jwt-token');
 });
 
-function project(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
+function workspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary {
   return {
-    project_id: 'proj_1',
+    workspace_id: 'proj_1',
     account_id: 'acct_1',
     name: 'Demo',
     repo_url: 'https://github.com/managed-kortix/demo.git',
@@ -38,22 +38,22 @@ function project(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
 
 function recordingClient(
   calls: Array<{ path: string; body: unknown }>,
-  linkedProject: ProjectSummary,
+  linkedWorkspace: WorkspaceSummary,
 ): ApiClient {
   return {
     apiBase: 'https://api.kortix.test',
     post: async <T>(path: string, body?: unknown) => {
       calls.push({ path, body });
-      return { project: linkedProject } as T;
+      return { workspace: linkedWorkspace } as T;
     },
   } as unknown as ApiClient;
 }
 
-describe('GitHub-backed project linking', () => {
-  test('uses the projects-mounted route with a GitHub PAT', async () => {
+describe('GitHub-backed workspace linking', () => {
+  test('uses the workspaces-mounted route with a GitHub PAT', async () => {
     const calls: Array<{ path: string; body: unknown }> = [];
 
-    await linkGitHubBackedProject(recordingClient(calls, project()), {
+    await linkGitHubBackedWorkspace(recordingClient(calls, workspace()), {
       repoUrl: 'https://github.com/acme/demo.git',
       name: 'Demo',
       accountId: 'acct_1',
@@ -63,7 +63,7 @@ describe('GitHub-backed project linking', () => {
 
     expect(calls).toEqual([
       {
-        path: '/projects/link-repository',
+        path: '/workspaces/link-repository',
         body: {
           repo_url: 'https://github.com/acme/demo.git',
           name: 'Demo',
@@ -74,10 +74,10 @@ describe('GitHub-backed project linking', () => {
     ]);
   });
 
-  test('uses the projects-mounted route with the GitHub App', async () => {
+  test('uses the workspaces-mounted route with the GitHub App', async () => {
     const calls: Array<{ path: string; body: unknown }> = [];
 
-    await linkGitHubBackedProject(recordingClient(calls, project()), {
+    await linkGitHubBackedWorkspace(recordingClient(calls, workspace()), {
       repoUrl: 'https://github.com/acme/demo.git',
       name: 'Demo',
       accountId: 'acct_1',
@@ -86,7 +86,7 @@ describe('GitHub-backed project linking', () => {
 
     expect(calls).toEqual([
       {
-        path: '/projects/link-repository',
+        path: '/workspaces/link-repository',
         body: {
           repo_url: 'https://github.com/acme/demo.git',
           name: 'Demo',
@@ -100,7 +100,7 @@ describe('GitHub-backed project linking', () => {
 describe('ship git target resolution', () => {
   test('first-time managed ship pushes to the managed upstream with the provision token', () => {
     const target = resolveProvisionShipGitTarget({
-      ...project({
+      ...workspace({
         git_origin_url: 'https://api.kortix.com/v1/git/proj_1.git',
         metadata: { git: { managed: true } },
       }),
@@ -116,7 +116,7 @@ describe('ship git target resolution', () => {
 
   test('existing managed ship ignores proxy origin and mints a managed git token', () => {
     const target = resolveExistingShipGitTarget(
-      project({
+      workspace({
         git_origin_url: 'https://api.kortix.com/v1/git/proj_1.git',
         metadata: { git: { managed: true } },
       }),
@@ -128,9 +128,9 @@ describe('ship git target resolution', () => {
     });
   });
 
-  test('non-managed proxy projects still push through the Kortix git proxy', () => {
+  test('non-managed proxy workspaces still push through the Kortix git proxy', () => {
     const target = resolveExistingShipGitTarget(
-      project({
+      workspace({
         repo_url: 'https://github.com/acme/byo.git',
         git_origin_url: 'https://api.kortix.com/v1/git/proj_1.git',
         metadata: { git: { managed: false } },
@@ -143,9 +143,9 @@ describe('ship git target resolution', () => {
     });
   });
 
-  test('plain BYO projects rely on local git credentials', () => {
+  test('plain BYO workspaces rely on local git credentials', () => {
     const target = resolveExistingShipGitTarget(
-      project({
+      workspace({
         repo_url: 'https://github.com/acme/byo.git',
         metadata: { git: { managed: false } },
       }),
@@ -160,13 +160,13 @@ describe('ship git target resolution', () => {
 
 test('ship reconciles the remote manifest independently of connector prompts', async () => {
   const calls: Array<{ path: string; body: unknown }> = [];
-  const client = recordingClient(calls, project());
+  const client = recordingClient(calls, workspace());
 
   await reconcileShippedManifest(client, 'proj_1');
 
   expect(calls).toEqual([
     {
-      path: '/executor/projects/proj_1/connectors/sync',
+      path: '/executor/workspaces/proj_1/connectors/sync',
       body: undefined,
     },
   ]);
