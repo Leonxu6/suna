@@ -202,7 +202,7 @@ Also stop if the same failure survives three different fixes (use
 | 1 | Contract inventory and RED tests | DONE | `019f9afd` | 2026-07-25 | `adb74756a` |
 | 2 | Database domain | DONE | `019f9afd` | 2026-07-25 | `981431967` |
 | 3 | API domain | DONE | `019f9afd` | 2026-07-25 | `7f08bc5cc` |
-| 4 | SDK domain | NOT STARTED | — | — | — |
+| 4 | SDK domain | IN PROGRESS | `019f9afd` | 2026-07-25 | — |
 | 5 | CLI domain | NOT STARTED | — | — | — |
 | 6 | Web domain and default routing | NOT STARTED | — | — | — |
 | 7 | Mobile, tests, and documentation | NOT STARTED | — | — | — |
