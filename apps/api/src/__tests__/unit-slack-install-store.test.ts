@@ -29,10 +29,10 @@ mock.module('../shared/db', () => ({
   },
 }));
 
-mock.module('../projects/secrets', () => ({
-  decryptProjectSecret: (_projectId: string, value: string) => value.replace(/^enc:/, ''),
-  encryptProjectSecret: (_projectId: string, value: string) => `enc:${value}`,
-  listProjectSecrets: async () => ({}),
+mock.module('../workspaces/secrets', () => ({
+  decryptWorkspaceSecret: (_workspaceId: string, value: string) => value.replace(/^enc:/, ''),
+  encryptWorkspaceSecret: (_workspaceId: string, value: string) => `enc:${value}`,
+  listWorkspaceSecrets: async () => ({}),
 }));
 
 const { saveSlackInstall } = await import('../channels/install-store');
@@ -47,9 +47,9 @@ beforeEach(() => {
 });
 
 describe('saveSlackInstall', () => {
-  test('registers the workspace-project install for BYO Slack apps', async () => {
+  test('registers the provider workspace for a Kortix workspace', async () => {
     await saveSlackInstall({
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       botToken: 'xoxb-test',
       signingSecret: 'signing-secret',
       teamId: 'T1',
@@ -59,20 +59,22 @@ describe('saveSlackInstall', () => {
 
     expect(insertedValues[0]).toEqual({
       platform: 'slack',
-      workspaceId: 'T1',
-      projectId: 'proj-1',
+      providerWorkspaceId: 'T1',
+      workspaceId: 'proj-1',
     });
     expect(insertedValues).toContainEqual({
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       identifier: 'SLACK_BOT_TOKEN',
       name: 'SLACK_BOT_TOKEN',
       valueEnc: 'enc:xoxb-test',
+      scope: 'connector',
     });
     expect(insertedValues).toContainEqual({
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       identifier: 'SLACK_SIGNING_SECRET',
       name: 'SLACK_SIGNING_SECRET',
       valueEnc: 'enc:signing-secret',
+      scope: 'connector',
     });
   });
 });

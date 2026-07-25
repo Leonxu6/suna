@@ -4,19 +4,19 @@
  * We ship fast and we ship a lot. Some surfaces are real and usable but still
  * moving — they may change shape or break between versions. Rather than block
  * them behind a release or scatter one-off env flags, we expose them as
- * EXPERIMENTAL features that a project can opt into. This lets us soft-release:
- * push versions, dogfood, and let users try them per project — without treating
+ * EXPERIMENTAL features that a workspace can opt into. This lets us soft-release:
+ * push versions, dogfood, and let users try them per workspace — without treating
  * them as committed "prod" surface.
  *
  * Each feature has two gates:
  *   • available  — does the PLATFORM support it at all (operator env)? When a
- *                  feature is unavailable, the per-project toggle is hidden and
- *                  the surface stays dark no matter what a project has chosen.
- *   • enabled    — the EFFECTIVE per-project state: the project's explicit
- *                  choice (projects.metadata.experimental[key]) over the
+ *                  feature is unavailable, the per-workspace toggle is hidden and
+ *                  the surface stays dark no matter what a workspace has chosen.
+ *   • enabled    — the EFFECTIVE per-workspace state: the workspace's explicit
+ *                  choice (workspaces.metadata.experimental[key]) over the
  *                  operator default. `enabled` always implies `available`.
  *
- * Per-project state is DB-only (projects.metadata) — never in kortix.yaml. To
+ * Per-workspace state is DB-only (workspaces.metadata) — never in kortix.yaml. To
  * add a feature: append an entry below and gate its surface on
  * `resolveExperimentalFeature(metadata, key)`. The UI renders straight from
  * {@link buildExperimentalCatalog}, so a new entry lights up everywhere.
@@ -40,7 +40,7 @@ interface ExperimentalFeatureDef {
   stability: ExperimentalStability;
   /** Platform support gate (operator env). Hidden in UI when false. */
   available: () => boolean;
-  /** Per-project default when the project hasn't made an explicit choice. */
+  /** Per-workspace default when the workspace hasn't made an explicit choice. */
   platformDefault: () => boolean;
 }
 
@@ -65,7 +65,7 @@ const FEATURES: readonly ExperimentalFeatureDef[] = [
       'Browse and 1-click install skills from a marketplace of community & vendor registries (any SKILL.md repo). Sources, updates, and team scopes are still in flux.',
     stability: 'beta',
     available: () => true,
-    // On by default for every project — no longer gated behind an opt-in toggle.
+    // On by default for every workspace — no longer gated behind an opt-in toggle.
     platformDefault: () => true,
   },
   {
@@ -96,7 +96,7 @@ const FEATURES: readonly ExperimentalFeatureDef[] = [
       'Assign AgentMail inbox profiles to the agent so inbound email threads can start and continue Kortix sessions. Native email channels are still experimental.',
     stability: 'experimental',
     available: () => true,
-    // Explicit opt-in: hidden unless a project enables it in Settings.
+    // Explicit opt-in: hidden unless a workspace enables it in Settings.
     platformDefault: () => false,
   },
   {
@@ -105,26 +105,26 @@ const FEATURES: readonly ExperimentalFeatureDef[] = [
     description:
       'Let the agent join your calls — Google Meet, Zoom, or Microsoft Teams — and hold a real spoken conversation: it listens continuously, answers in its own voice, and hands work off to itself in the background while you keep talking. Powered by Recall.ai for the call and a realtime speech model for the conversation.',
     stability: 'experimental',
-    // Always listable; a project turns it on in Settings like any other
+    // Always listable; a workspace turns it on in Settings like any other
     // experiment. Credentials (RECALL_API_KEY, LIVEKIT_*) are still resolved
-    // server-side per project and a missing one surfaces as a connector error
+    // server-side per workspace and a missing one surfaces as a connector error
     // at spawn time — which is the right place to find out, rather than the
     // feature silently not existing.
     available: () => true,
-    // Explicit opt-in: a project enables voice in Settings.
+    // Explicit opt-in: a workspace enables voice in Settings.
     platformDefault: () => false,
   },
   {
     key: 'llm_gateway',
     name: 'LLM Gateway',
     description:
-      'Route this project through the managed Kortix LLM gateway. Toggling it refreshes active sandboxes so provider mode follows the project setting.',
+      'Route this workspace through the managed Kortix LLM gateway. Toggling it refreshes active sandboxes so provider mode follows the workspace setting.',
     stability: 'experimental',
-    // Master kill switch: when off, the feature disappears and every project
+    // Master kill switch: when off, the feature disappears and every workspace
     // falls back to native OpenCode provider behavior.
     available: () => config.LLM_GATEWAY_ENABLED,
     // Fleet rollout switch. Operators can default the gateway on for every
-    // project, while explicit project overrides still win and the master
+    // workspace, while explicit workspace overrides still win and the master
     // availability gate above remains the emergency kill switch.
     platformDefault: () => config.LLM_GATEWAY_DEFAULT_ENABLED,
   },
@@ -132,7 +132,7 @@ const FEATURES: readonly ExperimentalFeatureDef[] = [
     key: 'acp_runtime',
     name: 'ACP Runtime',
     description:
-      'Use the Agent Client Protocol for this project session interface. Disable this experiment to use the compatibility transport.',
+      'Use the Agent Client Protocol for this workspace session interface. Disable this experiment to use the compatibility transport.',
     stability: 'experimental',
     available: () => true,
     platformDefault: () => false,
@@ -144,9 +144,9 @@ const FEATURES: readonly ExperimentalFeatureDef[] = [
       'A friendly inbox for change requests, approvals, and agent outputs — review and act (approve, reject, ask for changes) from one place, on the web or from Slack. The surface and what feeds it are still expanding.',
     stability: 'experimental',
     // Pure web/DB surface — the routes + table ship with the app, so no operator
-    // env gates it. Always available; a project opts in per Settings.
+    // env gates it. Always available; a workspace opts in per Settings.
     available: () => true,
-    // Explicit opt-in: hidden unless a project enables it in Settings.
+    // Explicit opt-in: hidden unless a workspace enables it in Settings.
     platformDefault: () => false,
   },
 ];
@@ -163,14 +163,14 @@ export function isExperimentalFeatureKey(value: unknown): value is ExperimentalF
   );
 }
 
-/** Read the per-project explicit override map from a project's metadata. */
+/** Read the per-workspace explicit override map from a workspace's metadata. */
 function overridesOf(metadata: unknown): Record<string, unknown> {
   const meta = (metadata as Record<string, unknown> | null | undefined) ?? {};
   const exp = meta.experimental;
   return exp && typeof exp === 'object' ? (exp as Record<string, unknown>) : {};
 }
 
-/** Read a single project's explicit override for a feature. */
+/** Read a single workspace's explicit override for a feature. */
 function explicitOverride(metadata: unknown, key: ExperimentalFeatureKey): boolean | undefined {
   const fromMap = overridesOf(metadata)[key];
   if (typeof fromMap === 'boolean') return fromMap;
@@ -178,9 +178,9 @@ function explicitOverride(metadata: unknown, key: ExperimentalFeatureKey): boole
 }
 
 /**
- * Effective enablement for one feature: the project's explicit choice over the
+ * Effective enablement for one feature: the workspace's explicit choice over the
  * operator default, AND-gated by platform availability. An unavailable feature
- * is never enabled regardless of what a project chose.
+ * is never enabled regardless of what a workspace chose.
  */
 export function resolveExperimentalFeature(
   metadata: unknown,
@@ -200,10 +200,10 @@ export function resolveExperimentalFeatures(
   ) as Record<ExperimentalFeatureKey, boolean>;
 }
 
-/** Select the SDK client transport for one project.
+/** Select the SDK client transport for one workspace.
  *  `KORTIX_OPENCODE_TRANSPORT=acp` is the operator-wide rollout override.
- *  The normal rollout remains an explicit project `acp_runtime` opt-in. */
-export function resolveProjectRuntimeTransport(metadata: unknown): 'acp' | 'rest' {
+ *  The normal rollout remains an explicit workspace `acp_runtime` opt-in. */
+export function resolveWorkspaceRuntimeTransport(metadata: unknown): 'acp' | 'rest' {
   if (config.KORTIX_OPENCODE_TRANSPORT === 'acp') return 'acp';
   return resolveExperimentalFeature(metadata, 'acp_runtime') ? 'acp' : 'rest';
 }
@@ -216,14 +216,14 @@ export interface ExperimentalFeatureView {
   stability: ExperimentalStability;
   /** Platform supports it (operator env). When false the UI hides the toggle. */
   available: boolean;
-  /** Effective per-project state (the switch position). */
+  /** Effective per-workspace state (the switch position). */
   enabled: boolean;
-  /** True when this project set an explicit choice (vs inheriting the default). */
+  /** True when this workspace set an explicit choice (vs inheriting the default). */
   overridden: boolean;
 }
 
 /**
- * Build the full per-project catalog the web client renders. Self-contained so
+ * Build the full per-workspace catalog the web client renders. Self-contained so
  * the UI never hard-codes the feature list — add to FEATURES and it appears.
  */
 export function buildExperimentalCatalog(metadata: unknown): ExperimentalFeatureView[] {
@@ -239,7 +239,7 @@ export function buildExperimentalCatalog(metadata: unknown): ExperimentalFeature
 }
 
 /**
- * Apply a per-project override to a metadata object, returning the next
+ * Apply a per-workspace override to a metadata object, returning the next
  * metadata. `enabled: null` clears the override (falls back to the operator
  * default). Writes into `metadata.experimental[key]`.
  */

@@ -204,7 +204,7 @@ opsApp.openapi(
   async (c: any) => {
   const [
     accountCount,
-    projectCount,
+    workspaceCount,
     activeLegacySandboxes,
     sessionStatus,
     sandboxStatus,
@@ -219,7 +219,7 @@ opsApp.openapi(
     // degrades to a null/{} sentinel instead of rejecting the whole
     // Promise.all and 500-ing the dashboard. See safeCount's doc comment.
     safeCount('accounts', sql`SELECT count(*)::int AS count FROM kortix.accounts`),
-    safeCount('projects', sql`SELECT count(*)::int AS count FROM kortix.projects`),
+    safeCount('workspaces', sql`SELECT count(*)::int AS count FROM kortix.workspaces`),
     safeCount(
       'active_legacy_sandboxes',
       sql`
@@ -230,7 +230,7 @@ opsApp.openapi(
     ),
     safeGroup('sessions_by_status', sql`
       SELECT status AS key, count(*)::int AS count
-      FROM kortix.project_sessions
+      FROM kortix.workspace_sessions
       GROUP BY status
     `),
     safeGroup('sandboxes_by_status', sql`
@@ -243,7 +243,7 @@ opsApp.openapi(
       FROM kortix.session_sandboxes
       GROUP BY provider
     `),
-    // Triggers are file-defined (kortix.yaml) now; the project_trigger_events
+    // Triggers are file-defined (kortix.yaml) now; the workspace_trigger_events
     // table is gone and the git path doesn't persist events, so this is always
     // empty. Field kept for dashboard compatibility.
     Promise.resolve<Record<string, number>>({}),
@@ -278,7 +278,7 @@ opsApp.openapi(
     },
     totals: {
       accounts: accountCount,
-      projects: projectCount,
+      workspaces: workspaceCount,
       active_legacy_sandboxes: activeLegacySandboxes,
     },
     sessions: {

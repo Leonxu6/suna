@@ -30,12 +30,12 @@ export interface BuildableTemplate {
   image?: string;
   userDockerfile?: string;
   /**
-   * Per-project warm FAST PATH: a registry-addressable ref to an
+   * Per-workspace warm FAST PATH: a registry-addressable ref to an
    * already-built, active runtime image (the shared default) to `FROM`
    * instead of composing the full toolchain Dockerfile. When set, the
    * provider stages a minimal Dockerfile (see `stageWarmFromBaseContext`)
    * that only adds `warmRepo` on top — the toolchain (including the
-   * Chromium install that per-project bakes could otherwise re-download
+   * Chromium install that per-workspace bakes could otherwise re-download
    * under a build-cache miss) is INHERITED, not re-run. Only meaningful
    * together with `warmRepo`; providers that don't support this (no
    * `getSnapshotImageRef`) never receive it — the caller falls back to
@@ -48,10 +48,10 @@ export interface BuildableTemplate {
   spec: SandboxResourceSpec;
   /** Telemetry: caller-facing slug for logs. */
   slug: string;
-  /** Shared platform default (vs per-project). Every template is built cold. */
+  /** Shared platform default (vs per-workspace). Every template is built cold. */
   isShared?: boolean;
   /**
-   * Per-project COLD warm: bake the project's repo checkout into /workspace at
+   * Per-workspace COLD warm: bake the workspace's repo checkout into /workspace at
    * build time. Threaded straight to `stageBuildContext` (or, on the
    * `baseImageRef` fast path, `stageWarmFromBaseContext`) → the Dockerfile
    * layer, which clones the repo (build-time creds) and keeps /workspace. The
@@ -87,7 +87,7 @@ export interface BuildLogTap {
 
 /**
  * The exact provider-side identity a build produced. Threaded from the build
- * call straight to the transition / per-project-warm path so the runner can pin
+ * call straight to the transition / per-workspace-warm path so the runner can pin
  * the id the build PROVED (Platinum's `requireExternalTemplateId` — the id
  * already in hand at registration) instead of re-deriving it via a fragile,
  * truncation-prone name-list lookup. `externalTemplateId` is absent on providers
@@ -119,8 +119,8 @@ export interface SandboxProviderAdapter {
   /**
    * Optional: resolve a registry-addressable image reference for an
    * ALREADY-BUILT snapshot, for use as `BuildableTemplate.baseImageRef` on a
-   * later build (the per-project warm FAST PATH — see builder.ts
-   * `ensurePerProjectWarmImage`). Returns null when the snapshot doesn't exist,
+   * later build (the per-workspace warm FAST PATH — see builder.ts
+   * `ensurePerWorkspaceWarmImage`). Returns null when the snapshot doesn't exist,
    * the provider has no such reference to give, or on any lookup error — every
    * caller treats null as "fall back to the full rebuild path", never as a
    * hard failure. Absent on providers that don't expose an image reference at

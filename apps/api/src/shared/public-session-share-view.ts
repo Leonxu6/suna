@@ -12,21 +12,21 @@
  * remains the single 404/410/503 gate; this module only adds what happens
  * AFTER a token resolves.
  *
- * Sanitization mirrors `projects/lib/session-transcript.ts` (the
+ * Sanitization mirrors `workspaces/lib/session-transcript.ts` (the
  * authenticated per-session transcript digest used by
- * `GET /projects/:id/sessions/:sid/transcript`): only message role, text,
+ * `GET /workspaces/:id/sessions/:sid/transcript`): only message role, text,
  * tool NAME + status (no args/output), file NAME + mime (no content), and a
  * `reasoning_omitted` flag are ever returned — raw tool call arguments,
  * command output, and file contents never leave the sandbox. Kept as an
  * independent (small) implementation rather than importing that module's
  * private helpers, since this lives in a different ownership boundary
- * (anonymous/public surface vs. the authenticated project routes).
+ * (anonymous/public surface vs. the authenticated workspace routes).
  */
 
 import { eq } from 'drizzle-orm';
-import { projectSessions } from '@kortix/db';
+import { workspaceSessions } from '@kortix/db';
 import { db } from './db';
-import { sandboxOpencodeEndpoint, listSandboxOpencodeSessions, resolveRootSessionId } from '../projects/opencode-mapping';
+import { sandboxOpencodeEndpoint, listSandboxOpencodeSessions, resolveRootSessionId } from '../workspaces/opencode-mapping';
 import type { PublicShareRow } from './session-public-shares';
 
 const WORKSPACE_DIRECTORY = '/workspace';
@@ -50,14 +50,14 @@ export type PublicSessionInfoResult =
 export async function getPublicSessionInfo(sessionId: string): Promise<PublicSessionInfoResult> {
   const [row] = await db
     .select({
-      sessionId: projectSessions.sessionId,
-      status: projectSessions.status,
-      metadata: projectSessions.metadata,
-      createdAt: projectSessions.createdAt,
-      updatedAt: projectSessions.updatedAt,
+      sessionId: workspaceSessions.sessionId,
+      status: workspaceSessions.status,
+      metadata: workspaceSessions.metadata,
+      createdAt: workspaceSessions.createdAt,
+      updatedAt: workspaceSessions.updatedAt,
     })
-    .from(projectSessions)
-    .where(eq(projectSessions.sessionId, sessionId))
+    .from(workspaceSessions)
+    .where(eq(workspaceSessions.sessionId, sessionId))
     .limit(1);
   if (!row) return { ok: false, status: 404, error: 'Session not found' };
 
@@ -185,9 +185,9 @@ export async function getPublicSessionMessages(
   }
 
   const [sessionRow] = await db
-    .select({ opencodeSessionId: projectSessions.opencodeSessionId })
-    .from(projectSessions)
-    .where(eq(projectSessions.sessionId, row.sessionId))
+    .select({ opencodeSessionId: workspaceSessions.opencodeSessionId })
+    .from(workspaceSessions)
+    .where(eq(workspaceSessions.sessionId, row.sessionId))
     .limit(1);
   const pinnedRootId = sessionRow?.opencodeSessionId ?? null;
 

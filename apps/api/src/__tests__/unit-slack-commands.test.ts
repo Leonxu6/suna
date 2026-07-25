@@ -17,7 +17,7 @@ mock.module('../shared/db', () => ({
 }));
 
 // Controllable selection layer.
-let selection: unknown = { projectId: 'p1', agentName: null, opencodeModel: null };
+let selection: unknown = { workspaceId: 'p1', agentName: null, opencodeModel: null };
 let setAgentResult: { ok: true } | { ok: false; reason: 'no_binding' | 'unknown_agent' } = { ok: true };
 let setModelResult = true;
 const setAgentCalls: Array<string | null> = [];
@@ -26,7 +26,7 @@ mock.module('../channels/slack/selection', () => ({
   currentChannelSelection: async () => selection,
   setChannelAgent: async (_ctx: unknown, a: string | null) => { setAgentCalls.push(a); return setAgentResult; },
   setChannelModel: async (_ctx: unknown, m: string | null) => { setModelCalls.push(m); return setModelResult; },
-  listProjectAgents: async () => [{ name: 'reviewer', description: 'Reviews code', mode: null }],
+  listWorkspaceAgents: async () => [{ name: 'reviewer', description: 'Reviews code', mode: null }],
   RECOMMENDED_MODELS: [
     { id: 'anthropic/claude-opus-4-8', label: 'Claude Opus 4.8', hint: 'Most capable' },
     { id: 'openai/gpt-5.5', label: 'GPT-5.5', hint: 'OpenAI flagship' },
@@ -71,7 +71,7 @@ function actionIds(resp: any): string[] {
 beforeEach(() => {
   dbResults = [];
   identityRow = null;
-  selection = { projectId: 'p1', agentName: null, opencodeModel: null };
+  selection = { workspaceId: 'p1', agentName: null, opencodeModel: null };
   setAgentResult = { ok: true };
   setModelResult = true;
   setAgentCalls.length = 0;
@@ -121,8 +121,8 @@ describe('identity feature gated OFF', () => {
 });
 
 describe('/kortix models', () => {
-  test('renders a picker of recommended models + a project-default reset', async () => {
-    selection = { projectId: 'p1', agentName: null, opencodeModel: 'anthropic/claude-opus-4-8' };
+  test('renders a picker of recommended models + a workspace-default reset', async () => {
+    selection = { workspaceId: 'p1', agentName: null, opencodeModel: 'anthropic/claude-opus-4-8' };
     const resp = await handleSlashCommand('models', '', ctx);
     const ids = actionIds(resp);
     expect(ids).toContain('set_model_default');
@@ -133,7 +133,7 @@ describe('/kortix models', () => {
   test('unbound channel → prompts to switch', async () => {
     selection = null;
     const resp = await handleSlashCommand('models', '', ctx);
-    expect(allText(resp)).toContain('No project bound');
+    expect(allText(resp)).toContain('No workspace bound');
   });
 });
 
@@ -156,7 +156,7 @@ describe('/kortix model <id>', () => {
   test('unbound channel → prompts to switch, no write', async () => {
     selection = null;
     const resp = await handleSlashCommand('model', 'anthropic/claude-opus-4-8', ctx);
-    expect(resp.text).toContain('Bind a project first');
+    expect(resp.text).toContain('Bind a workspace first');
     expect(setModelCalls.length).toBe(0);
   });
 });
@@ -176,7 +176,7 @@ describe('/kortix agent <name>', () => {
     expect(resp.text).toContain('Usage');
     expect(setAgentCalls.length).toBe(0);
   });
-  test('unknown agent in a governed project → clear error, not the generic "bind a project" message', async () => {
+  test('unknown agent in a governed workspace → clear error, not the generic "bind a workspace" message', async () => {
     setAgentResult = { ok: false, reason: 'unknown_agent' };
     const resp = await handleSlashCommand('agent', 'ghost', ctx);
     expect(resp.text).toContain('is not a declared agent');
@@ -185,7 +185,7 @@ describe('/kortix agent <name>', () => {
   test('no binding → prompts to switch', async () => {
     setAgentResult = { ok: false, reason: 'no_binding' };
     const resp = await handleSlashCommand('agent', 'reviewer', ctx);
-    expect(resp.text).toContain('Bind a project first');
+    expect(resp.text).toContain('Bind a workspace first');
   });
 });
 
@@ -207,7 +207,7 @@ describe('/kortix session (singular)', () => {
     const ids = actionIds(resp);
     expect(ids).toContain('session_open');
     const txt = allText(resp);
-    expect(txt).toContain('/projects/p1/sessions/sess-9');
+    expect(txt).toContain('/workspaces/p1/sessions/sess-9');
     expect(txt).toContain('running');
   });
   test('no sessions yet → empty state', async () => {
@@ -218,15 +218,15 @@ describe('/kortix session (singular)', () => {
   test('unbound channel → prompts to switch', async () => {
     selection = null;
     const resp = await handleSlashCommand('session', '', ctx);
-    expect(allText(resp)).toContain('No project bound');
+    expect(allText(resp)).toContain('No workspace bound');
   });
 });
 
 describe('/kortix whoami', () => {
   test('surfaces the current agent + model', async () => {
-    selection = { projectId: 'p1', agentName: 'reviewer', opencodeModel: 'anthropic/claude-opus-4-8' };
-    // whoami also fetches the project row.
-    dbResults = [[{ projectId: 'p1', name: 'Proj', repoUrl: 'https://github.com/o/r' }]];
+    selection = { workspaceId: 'p1', agentName: 'reviewer', opencodeModel: 'anthropic/claude-opus-4-8' };
+    // whoami also fetches the workspace row.
+    dbResults = [[{ workspaceId: 'p1', name: 'Proj', repoUrl: 'https://github.com/o/r' }]];
     const resp = await handleSlashCommand('whoami', '', ctx);
     const txt = allText(resp);
     expect(txt).toContain('reviewer');

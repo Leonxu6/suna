@@ -21,10 +21,10 @@ import { Database } from 'bun:sqlite';
 import { sql } from 'drizzle-orm';
 import { db } from '../shared/db';
 import { getDaytona } from '../shared/daytona';
-import { normalizeAgentpressThread, type AgentpressMessageRow, type NormalizedMessage } from '../projects/suna-migration/agentpress-mapper';
-import { writeConversations, type SessionToWrite } from '../projects/suna-migration/opencode-db-writer';
-import { extractWorkspace, slugify } from '../projects/suna-migration/suna-extract';
-import { pushBundleAsRepo } from '../projects/suna-migration/suna-push';
+import { normalizeAgentpressThread, type AgentpressMessageRow, type NormalizedMessage } from '../workspaces/suna-migration/agentpress-mapper';
+import { writeConversations, type SessionToWrite } from '../workspaces/suna-migration/opencode-db-writer';
+import { extractWorkspace, slugify } from '../workspaces/suna-migration/suna-extract';
+import { pushBundleAsRepo } from '../workspaces/suna-migration/suna-push';
 
 function arg(flag: string): string | undefined {
   const i = Bun.argv.indexOf(flag);
@@ -154,9 +154,9 @@ async function main() {
     const repo = await pushBundleAsRepo(accountId!, pushDir!);
     console.log(`\n✓ pushed`);
     console.log(`  repo:       ${repo.upstreamUrl}`);
-    console.log(`  project_id: ${repo.projectId}`);
-    console.log(`  opencode.db kept aside: ${join(pushDir!, '..')}/${repo.projectId}.opencode.db`);
-    console.log(`\n  Next: create the kortix.projects row for ${repo.projectId} pointed at this repo,`);
+    console.log(`  workspace_id: ${repo.workspaceId}`);
+    console.log(`  opencode.db kept aside: ${join(pushDir!, '..')}/${repo.workspaceId}.opencode.db`);
+    console.log(`\n  Next: create the kortix.workspaces row for ${repo.workspaceId} pointed at this repo,`);
     console.log(`        then provision its sessions + ship the opencode.db (the API-side step).\n`);
     return;
   }
@@ -165,7 +165,7 @@ async function main() {
   //    → db). Needs the full infra (GitHub App, Daytona, reachable KORTIX_URL).
   //    Run against STAGING first, bounded with --limit. ──
   if (mode === 'apply') {
-    const { startSunaMigration, driveSunaMigration, latestSunaMigration } = await import('../projects/suna-migration/suna-migration-runner');
+    const { startSunaMigration, driveSunaMigration, latestSunaMigration } = await import('../workspaces/suna-migration/suna-migration-runner');
     console.log(`Starting migration (limit ${limit ?? 25}, offset ${offset ?? 0}) for ${accountId} …`);
     const { migration } = await startSunaMigration({
       database: db, accountId: accountId!, autoDrive: false,
@@ -173,9 +173,9 @@ async function main() {
     });
     await driveSunaMigration(db, migration.migrationId); // drive synchronously so the script reports the outcome
     const final = await latestSunaMigration(db, accountId!);
-    console.log(`\n  status: ${final?.status}  phase: ${final?.phase}  project_id: ${final?.projectId ?? '—'}`);
+    console.log(`\n  status: ${final?.status}  phase: ${final?.phase}  workspace_id: ${final?.workspaceId ?? '—'}`);
     if (final?.status === 'failed') { console.error(`  ✗ ${final.error}`); process.exit(1); }
-    console.log(`\n✓ ${final?.status}. Open the project to confirm chats rehydrate.\n`);
+    console.log(`\n✓ ${final?.status}. Open the workspace to confirm chats rehydrate.\n`);
     return;
   }
   process.exit(1);

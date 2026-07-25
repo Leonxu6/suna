@@ -1,4 +1,4 @@
-import { projectSessions, sandboxes } from '@kortix/db';
+import { workspaceSessions, sandboxes } from '@kortix/db';
 import { AUTO_TOPUP_DEFAULT_AMOUNT, AUTO_TOPUP_DEFAULT_THRESHOLD } from '@kortix/shared';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { config } from '../../config';
@@ -41,11 +41,11 @@ function metadataString(value: unknown): string | null {
 async function countActiveSessions(accountId: string): Promise<number> {
   const [row] = await db
     .select({ activeCount: sql<number>`count(*)::int` })
-    .from(projectSessions)
+    .from(workspaceSessions)
     .where(
       and(
-        eq(projectSessions.accountId, accountId),
-        inArray(projectSessions.status, [...ACTIVE_SESSION_STATUSES]),
+        eq(workspaceSessions.accountId, accountId),
+        inArray(workspaceSessions.status, [...ACTIVE_SESSION_STATUSES]),
       ),
     )
     .limit(1);
@@ -211,7 +211,7 @@ export async function buildMinimalAccountState(accountId: string): Promise<Accou
       | 'per_seat'
       | 'legacy',
     // Live member count = the seat quantity a per-seat subscribe bills for now
-    // (matches createPerSeatCheckoutSession). Drives the modal's projected total.
+    // (matches createPerSeatCheckoutSession). Drives the modal's workspaceed total.
     member_count: await countActiveMembers(accountId).catch(() => 1),
     seats: isPerSeatAccount(sub?.billingModel)
       ? {

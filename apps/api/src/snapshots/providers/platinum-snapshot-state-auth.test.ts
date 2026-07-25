@@ -21,7 +21,7 @@ setTestEnv('RECALL_BASE_URL', 'https://us-west-2.recall.ai/api/v1');
 
 const { platinumProvider } = await import('./platinum');
 const { isPermanentTransitionError } = await import(
-  '../../projects/provider-transition/provider-transition-core'
+  '../../workspaces/provider-transition/provider-transition-core'
 );
 
 const originalFetch = globalThis.fetch;

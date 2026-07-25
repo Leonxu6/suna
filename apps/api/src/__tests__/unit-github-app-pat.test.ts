@@ -7,7 +7,7 @@
  *   - `verifyPastedGithubAppInstallation` — validates an operator-pasted
  *     GitHub App (app id + private key + installation id) against GitHub
  *     BEFORE it's stored (POST /app), the same "fail loudly here, not at the
- *     first project creation" principle as exchangeManifestCode.
+ *     first workspace creation" principle as exchangeManifestCode.
  *
  * No DB access in this file (same "no mock.module" style as
  * unit-github-app-manifest.test.ts) — the PAT DB round-trip itself lives in

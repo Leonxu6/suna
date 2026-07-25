@@ -12,29 +12,29 @@
  */
 import { describe, expect, test, beforeAll, afterAll } from 'bun:test';
 import { and, eq, sql } from 'drizzle-orm';
-import { projectSessions, serviceAccounts } from '@kortix/db';
+import { workspaceSessions, serviceAccounts } from '@kortix/db';
 import { db } from '../shared/db';
-import { attributeFiredTriggerSession } from '../projects/lib/triggers';
-import type { ProjectRow } from '../projects/lib/serializers';
+import { attributeFiredTriggerSession } from '../workspaces/lib/triggers';
+import type { WorkspaceRow } from '../workspaces/lib/serializers';
 
-let ctx: { projectId: string; accountId: string } | null = null;
+let ctx: { workspaceId: string; accountId: string } | null = null;
 const SESSION_ID = `e2e-trigger-attr-${crypto.randomUUID()}`;
 const HUMAN_STAND_IN = crypto.randomUUID();
 const AGENT_NAME = `trigger-attr-agent-${crypto.randomUUID().slice(0, 8)}`;
 
 beforeAll(async () => {
   const rows = (await db.execute(
-    sql`select project_id, account_id from kortix.projects limit 1`,
-  )) as unknown as Array<{ project_id: string; account_id: string }>;
+    sql`select workspace_id, account_id from kortix.workspaces limit 1`,
+  )) as unknown as Array<{ workspace_id: string; account_id: string }>;
   if (!rows[0]) return;
-  ctx = { projectId: rows[0].project_id, accountId: rows[0].account_id };
+  ctx = { workspaceId: rows[0].workspace_id, accountId: rows[0].account_id };
 
-  // Seed a session as `createProjectSession` would leave it right after insert:
+  // Seed a session as `createWorkspaceSession` would leave it right after insert:
   // created_by = the human stand-in `resolveTriggerActor` resolves to today.
-  await db.insert(projectSessions).values({
+  await db.insert(workspaceSessions).values({
     sessionId: SESSION_ID,
     accountId: ctx.accountId,
-    projectId: ctx.projectId,
+    workspaceId: ctx.workspaceId,
     branchName: SESSION_ID,
     agentName: AGENT_NAME,
     status: 'provisioning',
@@ -46,13 +46,13 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!ctx) return;
-  await db.delete(projectSessions).where(eq(projectSessions.sessionId, SESSION_ID));
+  await db.delete(workspaceSessions).where(eq(workspaceSessions.sessionId, SESSION_ID));
   await db
     .delete(serviceAccounts)
     .where(
       and(
         eq(serviceAccounts.accountId, ctx.accountId),
-        eq(serviceAccounts.projectId, ctx.projectId),
+        eq(serviceAccounts.workspaceId, ctx.workspaceId),
         eq(serviceAccounts.agentName, AGENT_NAME),
       ),
     );
@@ -61,19 +61,19 @@ afterAll(async () => {
 describe('attributeFiredTriggerSession — trigger runs attributed to the agent SA', () => {
   test('created_by moves off the human stand-in onto the firing agent\'s service account; billing (account_id) untouched', async () => {
     if (!ctx) {
-      console.warn('[integration] no project in local DB — skipping');
+      console.warn('[integration] no workspace in local DB — skipping');
       return;
     }
     await attributeFiredTriggerSession({
-      project: { projectId: ctx.projectId, accountId: ctx.accountId } as ProjectRow,
+      workspace: { workspaceId: ctx.workspaceId, accountId: ctx.accountId } as WorkspaceRow,
       sessionId: SESSION_ID,
       agentName: AGENT_NAME,
     });
 
     const [session] = await db
       .select()
-      .from(projectSessions)
-      .where(eq(projectSessions.sessionId, SESSION_ID))
+      .from(workspaceSessions)
+      .where(eq(workspaceSessions.sessionId, SESSION_ID))
       .limit(1);
     expect(session).toBeTruthy();
     // Attribution changed...
@@ -88,7 +88,7 @@ describe('attributeFiredTriggerSession — trigger runs attributed to the agent 
       .where(
         and(
           eq(serviceAccounts.accountId, ctx.accountId),
-          eq(serviceAccounts.projectId, ctx.projectId),
+          eq(serviceAccounts.workspaceId, ctx.workspaceId),
           eq(serviceAccounts.agentName, AGENT_NAME),
         ),
       )
@@ -100,21 +100,21 @@ describe('attributeFiredTriggerSession — trigger runs attributed to the agent 
   test('idempotent: firing the fixup again keeps the same attributed identity', async () => {
     if (!ctx) return;
     const [before] = await db
-      .select({ createdBy: projectSessions.createdBy })
-      .from(projectSessions)
-      .where(eq(projectSessions.sessionId, SESSION_ID))
+      .select({ createdBy: workspaceSessions.createdBy })
+      .from(workspaceSessions)
+      .where(eq(workspaceSessions.sessionId, SESSION_ID))
       .limit(1);
 
     await attributeFiredTriggerSession({
-      project: { projectId: ctx.projectId, accountId: ctx.accountId } as ProjectRow,
+      workspace: { workspaceId: ctx.workspaceId, accountId: ctx.accountId } as WorkspaceRow,
       sessionId: SESSION_ID,
       agentName: AGENT_NAME,
     });
 
     const [after] = await db
-      .select({ createdBy: projectSessions.createdBy })
-      .from(projectSessions)
-      .where(eq(projectSessions.sessionId, SESSION_ID))
+      .select({ createdBy: workspaceSessions.createdBy })
+      .from(workspaceSessions)
+      .where(eq(workspaceSessions.sessionId, SESSION_ID))
       .limit(1);
     expect(after!.createdBy).toBe(before!.createdBy);
   });

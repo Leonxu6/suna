@@ -7,7 +7,7 @@ import {
 } from '@kortix/db';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
-import { decryptProjectSecret, encryptProjectSecret } from '../projects/secrets';
+import { decryptWorkspaceSecret, encryptWorkspaceSecret } from '../workspaces/secrets';
 import { db } from '../shared/db';
 import { upsertProfileCredential } from './credentials';
 import {
@@ -25,7 +25,7 @@ import {
 
 interface ProfileIdentity {
   accountId: string;
-  projectId: string;
+  workspaceId: string;
   connectorId: string;
   profileId: string;
 }
@@ -35,7 +35,7 @@ export async function saveOAuth2Application(
   application: OAuth2ApplicationInput,
   createdBy: string,
 ): Promise<void> {
-  const configEnc = encryptProjectSecret(identity.projectId, JSON.stringify(application));
+  const configEnc = encryptWorkspaceSecret(identity.workspaceId, JSON.stringify(application));
   await db
     .insert(executorOAuthApplications)
     .values({ ...identity, configEnc, createdBy })
@@ -48,7 +48,7 @@ export async function saveOAuth2Application(
 export async function loadOAuth2Application(profileId: string): Promise<{
   applicationId: string;
   accountId: string;
-  projectId: string;
+  workspaceId: string;
   connectorId: string;
   profileId: string;
   application: OAuth2ApplicationInput;
@@ -62,11 +62,11 @@ export async function loadOAuth2Application(profileId: string): Promise<{
   return {
     applicationId: row.applicationId,
     accountId: row.accountId,
-    projectId: row.projectId,
+    workspaceId: row.workspaceId,
     connectorId: row.connectorId,
     profileId: row.profileId,
     application: JSON.parse(
-      decryptProjectSecret(row.projectId, row.configEnc),
+      decryptWorkspaceSecret(row.workspaceId, row.configEnc),
     ) as OAuth2ApplicationInput,
   };
 }
@@ -103,12 +103,12 @@ export async function createAuthorizationCodeSession(input: {
   await db.insert(executorOAuthSessions).values({
     applicationId: loaded.applicationId,
     accountId: loaded.accountId,
-    projectId: loaded.projectId,
+    workspaceId: loaded.workspaceId,
     profileId: loaded.profileId,
     initiatedBy: input.initiatedBy,
     flow: 'authorization_code',
     stateHash: request.stateHash,
-    pkceVerifierEnc: encryptProjectSecret(loaded.projectId, request.pkceVerifier),
+    pkceVerifierEnc: encryptWorkspaceSecret(loaded.workspaceId, request.pkceVerifier),
     successRedirectUri: input.successRedirectUri,
     errorRedirectUri: input.errorRedirectUri,
     scopes: input.scopes ?? loaded.application.scopes,
@@ -165,11 +165,11 @@ export async function completeAuthorizationCodeSession(input: {
       {
         code: input.code,
         callbackUrl: input.callbackUrl,
-        pkceVerifier: decryptProjectSecret(claimed.projectId, claimed.pkceVerifierEnc),
+        pkceVerifier: decryptWorkspaceSecret(claimed.workspaceId, claimed.pkceVerifierEnc),
       },
     );
     await upsertProfileCredential({
-      projectId: loaded.projectId,
+      workspaceId: loaded.workspaceId,
       connectorId: loaded.connectorId,
       profileId: loaded.profileId,
       value: createStoredDelegatedCredential(loaded.application, token),
@@ -207,11 +207,11 @@ export async function createDeviceAuthorizationSession(input: {
     .values({
       applicationId: loaded.applicationId,
       accountId: loaded.accountId,
-      projectId: loaded.projectId,
+      workspaceId: loaded.workspaceId,
       profileId: loaded.profileId,
       initiatedBy: input.initiatedBy,
       flow: 'device_authorization',
-      deviceCodeEnc: encryptProjectSecret(loaded.projectId, started.deviceCode),
+      deviceCodeEnc: encryptWorkspaceSecret(loaded.workspaceId, started.deviceCode),
       scopes: application.scopes,
       intervalSeconds: started.intervalSeconds,
       nextPollAt: new Date(Date.now() + started.intervalSeconds * 1000),
@@ -258,7 +258,7 @@ export async function pollDeviceAuthorizationSession(input: {
     if (!loaded || !session.deviceCodeEnc) throw new Error('OAuth2 device session is incomplete');
     const result = await pollOAuth2DeviceAuthorization(
       { ...loaded.application, scopes: session.scopes ?? loaded.application.scopes },
-      decryptProjectSecret(session.projectId, session.deviceCodeEnc),
+      decryptWorkspaceSecret(session.workspaceId, session.deviceCodeEnc),
     );
     const interval = Math.min(
       300,
@@ -288,7 +288,7 @@ export async function pollDeviceAuthorizationSession(input: {
       return { status: 'error' as const, error_code: result.status };
     }
     await upsertProfileCredential({
-      projectId: loaded.projectId,
+      workspaceId: loaded.workspaceId,
       connectorId: loaded.connectorId,
       profileId: loaded.profileId,
       value: createStoredDelegatedCredential(loaded.application, result.token),
@@ -312,7 +312,7 @@ export async function oauth2ProfileStatus(profileId: string) {
     .select({
       valueEnc: executorCredentials.valueEnc,
       kind: executorCredentials.kind,
-      projectId: executorOAuthApplications.projectId,
+      workspaceId: executorOAuthApplications.workspaceId,
       profileStatus: executorConnectionProfiles.status,
     })
     .from(executorOAuthApplications)
@@ -329,7 +329,7 @@ export async function oauth2ProfileStatus(profileId: string) {
     return { status: 'ready' as const };
   }
   const stored = parseDelegatedCredential(
-    decryptProjectSecret(credential.projectId, credential.valueEnc),
+    decryptWorkspaceSecret(credential.workspaceId, credential.valueEnc),
   );
   if (!stored) return { status: 'error' as const, error_code: 'invalid_credential' };
   return {
@@ -349,7 +349,7 @@ export async function revokeProfileOAuth2(profileId: string): Promise<void> {
     .limit(1);
   if (credential) {
     const stored = parseDelegatedCredential(
-      decryptProjectSecret(loaded.projectId, credential.valueEnc),
+      decryptWorkspaceSecret(loaded.workspaceId, credential.valueEnc),
     );
     if (stored && loaded.application.revocation_url) {
       if (stored.token.refresh_token) {

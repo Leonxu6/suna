@@ -15,7 +15,7 @@ export interface AuditFilterInput {
   actor: string | null;
   /** action prefix (e.g. "iam.group"); null = no action filter. */
   actionPrefix: string | null;
-  /** resource_type prefix (e.g. "project_session"); null = any. */
+  /** resource_type prefix (e.g. "workspace_session"); null = any. */
   resourceType: string | null;
   /** ISO datetime — events at or after; null = unbounded. */
   sinceRaw: string | null;
@@ -49,8 +49,8 @@ export function buildFilters(accountId: string, input: AuditFilterInput): SQL[] 
   }
 
   if (input.resourceType) {
-    // Prefix match so a caller can pass "project" and catch project,
-    // project_session, etc. Plain `like` (case-sensitive by convention —
+    // Prefix match so a caller can pass "workspace" and catch workspace,
+    // workspace_session, etc. Plain `like` (case-sensitive by convention —
     // resource types are snake_case identifiers).
     push(like(auditEvents.resourceType, `${input.resourceType}%`));
   }

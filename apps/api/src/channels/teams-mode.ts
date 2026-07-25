@@ -11,7 +11,7 @@ export interface TeamsMode {
   byo: boolean;
 }
 
-export function teamsMode(baseUrl: string, opts?: { projectId?: string; byoAppId?: string | null }): TeamsMode {
+export function teamsMode(baseUrl: string, opts?: { workspaceId?: string; byoAppId?: string | null }): TeamsMode {
   const enabled = teamsChannelEnabled();
   const byo = Boolean(opts?.byoAppId);
   const appId = opts?.byoAppId || config.MICROSOFT_APP_ID || null;
@@ -20,8 +20,8 @@ export function teamsMode(baseUrl: string, opts?: { projectId?: string; byoAppId
   }
   const base = baseUrl.replace(/\/$/, '');
   const messagingEndpoint =
-    byo && opts?.projectId
-      ? `${base}/v1/webhooks/teams/${opts.projectId}/messages`
+    byo && opts?.workspaceId
+      ? `${base}/v1/webhooks/teams/${opts.workspaceId}/messages`
       : `${base}/v1/webhooks/teams/messages`;
   return {
     enabled,

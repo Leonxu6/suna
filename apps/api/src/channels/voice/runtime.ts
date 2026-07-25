@@ -33,7 +33,7 @@
  */
 import { and, asc, eq, gt } from 'drizzle-orm';
 import { voiceCallTurns } from '@kortix/db';
-import { continueSession } from '../../projects/session-lifecycle';
+import { continueSession } from '../../workspaces/session-lifecycle';
 import { config } from '../../config';
 import { db } from '../../shared/db';
 import { createRoom, deleteRoom, KORTIX_REPLY_TOPIC, roomNameForCall, sendRoomData } from './livekit';
@@ -54,7 +54,7 @@ export function availableVoices(): { voices: readonly string[]; default: string 
 
 export interface VoiceCall {
   callId: string;
-  projectId: string;
+  workspaceId: string;
   sessionId: string;
   botId: string | null;
   voice: string;
@@ -83,7 +83,7 @@ export function listCallsForSession(sessionId: string): VoiceCall[] {
  * with a consumer this file cannot rename.
  */
 export interface VoiceRoomMetadata {
-  project_id: string;
+  workspace_id: string;
   session_id: string;
   call_id: string;
   kortix_api_url: string;
@@ -93,7 +93,7 @@ export interface VoiceRoomMetadata {
 
 export interface StartCallInput {
   callId: string;
-  projectId: string;
+  workspaceId: string;
   sessionId: string;
   botId: string | null;
   botName: string;
@@ -109,7 +109,7 @@ export async function startCall(input: StartCallInput): Promise<VoiceCall> {
   const room = roomNameForCall(input.callId);
 
   const metadata: VoiceRoomMetadata = {
-    project_id: input.projectId,
+    workspace_id: input.workspaceId,
     session_id: input.sessionId,
     call_id: input.callId,
     kortix_api_url: config.KORTIX_URL,
@@ -124,7 +124,7 @@ export async function startCall(input: StartCallInput): Promise<VoiceCall> {
 
   const call: VoiceCall = {
     callId: input.callId,
-    projectId: input.projectId,
+    workspaceId: input.workspaceId,
     sessionId: input.sessionId,
     botId: input.botId,
     voice,
@@ -181,7 +181,7 @@ export function askKortix(call: VoiceCall, request: string): { ok: true } | { ok
 }
 
 export async function appendTurn(
-  call: Pick<VoiceCall, 'callId' | 'projectId' | 'sessionId'>,
+  call: Pick<VoiceCall, 'callId' | 'workspaceId' | 'sessionId'>,
   role: 'user' | 'agent',
   text: string,
   speaker?: string | null,
@@ -190,7 +190,7 @@ export async function appendTurn(
   if (!clean) return;
   await db.insert(voiceCallTurns).values({
     callId: call.callId,
-    projectId: call.projectId,
+    workspaceId: call.workspaceId,
     sessionId: call.sessionId,
     role,
     speaker: speaker ?? null,

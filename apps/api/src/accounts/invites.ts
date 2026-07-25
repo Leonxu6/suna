@@ -5,7 +5,7 @@ import {
   accountInvitations,
   accountMembers,
   accounts,
-  projectMembers,
+  workspaceMembers,
 } from '@kortix/db';
 import type { AppEnv } from '../types';
 import { db } from '../shared/db';
@@ -14,7 +14,7 @@ import { getSupabase } from '../shared/supabase';
 import { createInviteAcceptRateLimitMiddleware } from '../shared/rate-limit';
 import { onMemberAdded } from '../billing/services/seat-management';
 import { makeOpenApiApp, json, errors, auth, ErrorSchema } from '../openapi';
-import { normalizeProjectRole } from '../iam/role-perms';
+import { normalizeWorkspaceRole } from '../iam/role-perms';
 
 export const accountInvitesRouter = makeOpenApiApp<AppEnv>();
 
@@ -43,7 +43,7 @@ const InviteAcceptSchema = z
     account_role: z.string(),
     already_accepted: z.boolean(),
     bootstrap_grants_applied: z.array(
-      z.object({ project_id: z.string(), role: z.string() }),
+      z.object({ workspace_id: z.string(), role: z.string() }),
     ),
   })
   .openapi('InviteAccept');
@@ -70,15 +70,15 @@ async function lookupAuthEmail(userId: string | null): Promise<string | null> {
 //
 // The bootstrap_grants column is a jsonb array shape-enforced app-side
 // (no DB CHECK constraint) because the entries are typed as JSON. Today
-// only POST /v1/projects/:id/access/invite writes to it, and it
+// only POST /v1/workspaces/:id/access/invite writes to it, and it
 // constructs entries from validated inputs — so in practice we trust
 // what's there. The cost of being wrong, though, is that the accept
-// handler would feed garbage straight into projectMembers (e.g., a
-// non-UUID project_id would 22023 on the insert, or an out-of-range
+// handler would feed garbage straight into workspaceMembers (e.g., a
+// non-UUID workspace_id would 22023 on the insert, or an out-of-range
 // role would 22P02 on the enum cast). Validate defensively so an
 // unrelated future code path can't break invite acceptance.
 type ValidatedGrant = {
-  project_id: string;
+  workspace_id: string;
   role: 'manager' | 'editor' | 'member';
   expires_at: string | null;
 };
@@ -87,9 +87,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 function validateBootstrapGrant(raw: unknown): ValidatedGrant | null {
   if (!raw || typeof raw !== 'object') return null;
   const g = raw as Record<string, unknown>;
-  if (typeof g.project_id !== 'string' || !UUID_RE.test(g.project_id)) return null;
+  if (typeof g.workspace_id !== 'string' || !UUID_RE.test(g.workspace_id)) return null;
   if (typeof g.role !== 'string') return null;
-  const role = normalizeProjectRole(g.role);
+  const role = normalizeWorkspaceRole(g.role);
   if (!role) return null;
   // expires_at is optional; when present must parse to a real date.
   let expiresAt: string | null = null;
@@ -100,7 +100,7 @@ function validateBootstrapGrant(raw: unknown): ValidatedGrant | null {
     expiresAt = g.expires_at;
   }
   return {
-    project_id: g.project_id,
+    workspace_id: g.workspace_id,
     role,
     expires_at: expiresAt,
   };
@@ -108,7 +108,7 @@ function validateBootstrapGrant(raw: unknown): ValidatedGrant | null {
 
 // A `{ group_id }` bootstrap entry: a SCIM Group membership pushed for this user
 // while they were still a pending invite (see scim/groups.ts). Validated the same
-// defensive way as project grants so a bad jsonb write can't break acceptance.
+// defensive way as workspace grants so a bad jsonb write can't break acceptance.
 // Exported for unit tests.
 export function validateBootstrapGroup(raw: unknown): { group_id: string } | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -117,19 +117,19 @@ export function validateBootstrapGroup(raw: unknown): { group_id: string } | nul
   return { group_id: g.group_id };
 }
 
-// Apply the invite's bootstrap grants (the project_members rows the inviter
+// Apply the invite's bootstrap grants (the workspace_members rows the inviter
 // wanted this user to land on). Idempotent — onConflictDoUpdate means a
 // re-accept simply re-asserts the grant rather than erroring. Owners/admins
-// skip these: they already hold implicit Manager on every project, so a direct
+// skip these: they already hold implicit Manager on every workspace, so a direct
 // grant is redundant. Errors are best-effort and logged; the account
 // membership itself is already committed and shouldn't roll back because a
-// project no longer exists. Each entry is validated first (see
+// workspace no longer exists. Each entry is validated first (see
 // validateBootstrapGrant) so a bad jsonb write can't break acceptance.
 async function applyBootstrapGrants(
   invite: typeof accountInvitations.$inferSelect,
   userId: string,
-): Promise<Array<{ project_id: string; role: string }>> {
-  const applied: Array<{ project_id: string; role: string }> = [];
+): Promise<Array<{ workspace_id: string; role: string }>> {
+  const applied: Array<{ workspace_id: string; role: string }> = [];
   const rawBootstraps = invite.bootstrapGrants ?? [];
   if (rawBootstraps.length === 0 || invite.initialRole !== 'member') return applied;
 
@@ -162,29 +162,29 @@ async function applyBootstrapGrants(
     }
     try {
       await db
-        .insert(projectMembers)
+        .insert(workspaceMembers)
         .values({
           accountId: invite.accountId,
-          projectId: g.project_id,
+          workspaceId: g.workspace_id,
           userId,
-          projectRole: g.role,
+          workspaceRole: g.role,
           grantedBy: invite.invitedBy,
           expiresAt: g.expires_at ? new Date(g.expires_at) : null,
         })
         .onConflictDoUpdate({
-          target: [projectMembers.projectId, projectMembers.userId],
+          target: [workspaceMembers.workspaceId, workspaceMembers.userId],
           set: {
-            projectRole: g.role,
+            workspaceRole: g.role,
             grantedBy: invite.invitedBy,
             updatedAt: new Date(),
             ...(g.expires_at ? { expiresAt: new Date(g.expires_at) } : {}),
           },
         });
-      applied.push({ project_id: g.project_id, role: g.role });
+      applied.push({ workspace_id: g.workspace_id, role: g.role });
     } catch (err) {
       console.warn(
         '[accept-invite] failed to apply bootstrap grant',
-        { project_id: g.project_id, role: g.role },
+        { workspace_id: g.workspace_id, role: g.role },
         err,
       );
     }
@@ -348,7 +348,7 @@ accountInvitesRouter.openapi(
   // self-healing. Previously grants ran only on the first accept, AFTER
   // accepted_at was stamped and best-effort; any failure there (or a retried /
   // concurrent accept hitting the already-accepted early return) left the
-  // member with no project_members row, so the invited project was invisible
+  // member with no workspace_members row, so the invited workspace was invisible
   // to them and re-clicking the link never fixed it. applyBootstrapGrants is
   // idempotent, so re-running it on re-entry just heals the missing grant.
   const appliedGrants = await applyBootstrapGrants(invite, userId);

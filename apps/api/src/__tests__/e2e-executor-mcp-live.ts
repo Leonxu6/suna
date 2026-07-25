@@ -2,8 +2,8 @@
 /**
  * LIVE end-to-end test of the Executor MCP server against the running API.
  *
- *   seed a no-auth httpbin connector on a real project
- *   → mint a real project-scoped executor token
+ *   seed a no-auth httpbin connector on a real workspace
+ *   → mint a real workspace-scoped executor token
  *   → spawn the REAL `kortix executor mcp` stdio server pointed at the LIVE gateway
  *   → drive initialize → tools/list → connectors → discover → describe → call
  *   → assert the call made a real outbound request (httpbin echo)
@@ -19,7 +19,7 @@ import { executorConnectors, executorConnectorActions, executorExecutions } from
 import { createAccountToken } from '../repositories/account-tokens';
 
 const API_URL = process.env.LIVE_API_URL ?? 'http://localhost:8008/v1';
-const PROJECT_ID = process.env.LIVE_PROJECT_ID ?? '0e96d960-42ff-4f71-a65a-7026848c1d1d';
+const WORKSPACE_ID = process.env.LIVE_WORKSPACE_ID ?? '0e96d960-42ff-4f71-a65a-7026848c1d1d';
 const SLUG = 'httpbin-live';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const CLI_ENTRY = resolve(REPO_ROOT, 'apps/cli/src/index.ts');
@@ -33,16 +33,16 @@ function check(name: string, cond: boolean, detail?: unknown) {
 
 async function seed(): Promise<string> {
   const [proj] = await db.execute<{ account_id: string }>(
-    sql`select account_id from kortix.projects where project_id = ${PROJECT_ID} limit 1`,
+    sql`select account_id from kortix.workspaces where workspace_id = ${WORKSPACE_ID} limit 1`,
   ).then((r) => ((r as any).rows ?? r) as { account_id: string }[]);
-  if (!proj) throw new Error(`project ${PROJECT_ID} not found`);
+  if (!proj) throw new Error(`workspace ${WORKSPACE_ID} not found`);
   const accountId = proj.account_id;
 
   await db.delete(executorConnectors).where(
-    and(eq(executorConnectors.projectId, PROJECT_ID), eq(executorConnectors.slug, SLUG)),
+    and(eq(executorConnectors.workspaceId, WORKSPACE_ID), eq(executorConnectors.slug, SLUG)),
   );
   const [conn] = await db.insert(executorConnectors).values({
-    accountId, projectId: PROJECT_ID, slug: SLUG, name: 'HTTPBin (live e2e)',
+    accountId, workspaceId: WORKSPACE_ID, slug: SLUG, name: 'HTTPBin (live e2e)',
     providerType: 'http', enabled: true,
     config: { baseUrl: 'https://httpbin.org', auth: { type: 'none' } },
     shareScope: 'project', credentialMode: 'shared', status: 'active',
@@ -60,7 +60,7 @@ async function seed(): Promise<string> {
   if (!member) throw new Error(`no account_members for account ${accountId}`);
 
   const tok = await createAccountToken({
-    accountId: member.account_id, userId: member.user_id, projectId: PROJECT_ID, name: 'executor-mcp-live-e2e',
+    accountId: member.account_id, userId: member.user_id, workspaceId: WORKSPACE_ID, name: 'executor-mcp-live-e2e',
   });
   return tok.secretKey;
 }
@@ -128,16 +128,16 @@ async function verifyAudit() {
   const [row] = await db
     .select()
     .from(executorExecutions)
-    .where(and(eq(executorExecutions.projectId, PROJECT_ID), eq(executorExecutions.actionPath, `${SLUG}.get`)))
+    .where(and(eq(executorExecutions.workspaceId, WORKSPACE_ID), eq(executorExecutions.actionPath, `${SLUG}.get`)))
     .orderBy(desc(executorExecutions.createdAt))
     .limit(1);
   check('audit → execution row written (status=ok)', Boolean(row) && row.status === 'ok', row ? { status: row.status, actionPath: row.actionPath } : null);
 }
 
 async function main() {
-  console.log(`\n🌐 LIVE MCP e2e — gateway ${API_URL}, project ${PROJECT_ID}\n`);
+  console.log(`\n🌐 LIVE MCP e2e — gateway ${API_URL}, workspace ${WORKSPACE_ID}\n`);
   const token = await seed();
-  console.log('  • seeded httpbin-live connector + minted project-scoped token\n');
+  console.log('  • seeded httpbin-live connector + minted workspace-scoped token\n');
   await driveMcp(token);
   await verifyAudit();
   console.log(`\n${failed === 0 ? '✅ ALL LIVE CHECKS PASSED' : '❌ SOME CHECKS FAILED'} — ${passed} passed, ${failed} failed\n`);

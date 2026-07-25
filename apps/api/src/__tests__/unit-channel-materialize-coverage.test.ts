@@ -3,9 +3,9 @@ import { CHANNEL_PLATFORMS } from '@kortix/manifest-schema';
 
 /**
  * Connecting a channel writes an install; synthesizeChannelConnectors is what
- * turns that install into a connector the project can actually see. A platform
+ * turns that install into a connector the workspace can actually see. A platform
  * added to CHANNEL_PLATFORMS without a branch here connects "successfully" and
- * then shows up nowhere — the project just reports {"connectors":[]}.
+ * then shows up nowhere — the workspace just reports {"connectors":[]}.
  *
  * Assert from source so this needs no database.
  */

@@ -4,7 +4,7 @@
  *
  * Background: idle sandboxes never auto-stopped and their compute meter never
  * closed, so accounts were billed for wall-clock long after their last real
- * activity (see projects/sandbox-reaper.ts for the fix). This script makes the
+ * activity (see workspaces/sandbox-reaper.ts for the fix). This script makes the
  * affected accounts whole.
  *
  * Policy (decided): FULL refund of every AFFECTED (leaked) compute session —
@@ -25,7 +25,7 @@
  * Usage (run by a human, with prod env):
  *   dotenvx run -f apps/api/.env.prod -- bun apps/api/src/scripts/reimburse-compute-leak.ts            # dry-run report
  *   dotenvx run -f apps/api/.env.prod -- bun apps/api/src/scripts/reimburse-compute-leak.ts --apply    # close affected active rows + issue refunds
- *   ... [--ttl-minutes 15] [--account <uuid>] [--project <uuid>]
+ *   ... [--ttl-minutes 15] [--account <uuid>] [--workspace <uuid>]
  *
  * SAFETY: default is a read-only dry-run. `--apply` mutates billing (closes
  * compute rows + grants credits). Review the dry-run report first.
@@ -41,7 +41,7 @@ interface Args {
   apply: boolean;
   ttlMinutes: number;
   account?: string;
-  project?: string;
+  workspace?: string;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -51,7 +51,7 @@ function parseArgs(argv: string[]): Args {
     if (a === '--apply') args.apply = true;
     else if (a === '--ttl-minutes') args.ttlMinutes = Number(argv[++i]) || 15;
     else if (a === '--account') args.account = argv[++i];
-    else if (a === '--project') args.project = argv[++i];
+    else if (a === '--workspace') args.workspace = argv[++i];
   }
   return args;
 }
@@ -75,8 +75,8 @@ interface AffectedRow {
 async function loadAffected(args: Args): Promise<AffectedRow[]> {
   const graceSql = sql.raw(`interval '${Math.max(0, Math.floor(args.ttlMinutes))} minutes'`);
   const accountFilter = args.account ? sql`AND cs.account_id = ${args.account}::uuid` : sql``;
-  const projectFilter = args.project
-    ? sql`AND ss.project_id = ${args.project}::uuid`
+  const workspaceFilter = args.workspace
+    ? sql`AND ss.workspace_id = ${args.workspace}::uuid`
     : sql``;
 
   const rows: any = await db.execute(sql`
@@ -101,7 +101,7 @@ async function loadAffected(args: Args): Promise<AffectedRow[]> {
     LEFT JOIN usage u ON u.session_id = cs.session_id
     WHERE cs.cost_usd > 0
       ${accountFilter}
-      ${projectFilter}
+      ${workspaceFilter}
   `);
 
   const list: AffectedRow[] = [];
@@ -163,13 +163,13 @@ async function main() {
   // (compute_refund:v1:<account>) for only part of an account, making a later
   // full-org reimbursement skip the rest of that account as "already refunded".
   // Filters are for dry-run INSPECTION only; --apply is org-wide.
-  if (args.apply && (args.account || args.project)) {
-    console.error('[reimburse] REFUSING --apply with --account/--project — a partial apply would poison the account-wide idempotency key. Use filters for dry-run only; run --apply org-wide.');
+  if (args.apply && (args.account || args.workspace)) {
+    console.error('[reimburse] REFUSING --apply with --account/--workspace — a partial apply would poison the account-wide idempotency key. Use filters for dry-run only; run --apply org-wide.');
     process.exit(2);
   }
 
   console.log(`[reimburse] mode=${args.apply ? 'APPLY' : 'dry-run'} grace=${args.ttlMinutes}m` +
-    `${args.account ? ` account=${args.account}` : ''}${args.project ? ` project=${args.project}` : ''}`);
+    `${args.account ? ` account=${args.account}` : ''}${args.workspace ? ` workspace=${args.workspace}` : ''}`);
 
   const affected = await loadAffected(args);
 

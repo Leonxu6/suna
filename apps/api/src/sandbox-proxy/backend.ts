@@ -21,7 +21,7 @@
  */
 
 import { and, eq, ne, sql } from 'drizzle-orm';
-import { projectSessions, sessionSandboxes } from '@kortix/db';
+import { workspaceSessions, sessionSandboxes } from '@kortix/db';
 import { config } from '../config';
 import {
   getProvider,
@@ -46,11 +46,11 @@ export interface SandboxRecord {
   sandboxId: string;
   /** Provider-side id used in proxy URLs (`/v1/p/<externalId>/<port>`). */
   externalId: string;
-  /** Owning session — links to project_sessions for the launching identity. */
+  /** Owning session — links to workspace_sessions for the launching identity. */
   sessionId: string;
   /** Agent the sandbox executor token was minted for. */
   agentName: string | null;
-  projectId: string;
+  workspaceId: string;
   accountId: string;
   provider: string;
   status: string;
@@ -109,12 +109,12 @@ export async function loadSandbox(externalId: string): Promise<SandboxRecord | n
       externalId: sessionSandboxes.externalId,
       sessionId: sessionSandboxes.sessionId,
       agentName: sql<string | null>`(
-        select ${projectSessions.agentName}
-        from ${projectSessions}
-        where ${projectSessions.sessionId} = ${sessionSandboxes.sessionId}
+        select ${workspaceSessions.agentName}
+        from ${workspaceSessions}
+        where ${workspaceSessions.sessionId} = ${sessionSandboxes.sessionId}
         limit 1
       )`,
-      projectId: sessionSandboxes.projectId,
+      workspaceId: sessionSandboxes.workspaceId,
       accountId: sessionSandboxes.accountId,
       provider: sessionSandboxes.provider,
       status: sessionSandboxes.status,
@@ -137,7 +137,7 @@ export async function loadSandbox(externalId: string): Promise<SandboxRecord | n
     externalId: row.externalId ?? externalId,
     sessionId: row.sessionId,
     agentName: row.agentName ?? null,
-    projectId: row.projectId,
+    workspaceId: row.workspaceId,
     accountId: row.accountId,
     provider: row.provider,
     status: row.status,
@@ -328,9 +328,9 @@ export async function markSandboxUsed(sandboxId: string): Promise<void> {
     }
 
     await db
-      .update(projectSessions)
+      .update(workspaceSessions)
       .set({ status: 'running', updatedAt: now })
-      .where(eq(projectSessions.sessionId, row.sessionId));
+      .where(eq(workspaceSessions.sessionId, row.sessionId));
   } catch (err) {
     sandboxTouchCache.delete(sandboxId);
     console.warn('[PREVIEW] Failed to mark sandbox used:', err);

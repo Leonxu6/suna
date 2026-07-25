@@ -45,7 +45,7 @@ mock.module('../shared/db', () => ({
   },
 }));
 
-const { discoverExecutionKeepAliveEndpoint } = await import('../projects/execution-lease');
+const { discoverExecutionKeepAliveEndpoint } = await import('../workspaces/execution-lease');
 
 beforeEach(() => {
   resolveEndpointThrow = null;
@@ -63,7 +63,7 @@ describe('discoverExecutionKeepAliveEndpoint Daytona 429 guard', () => {
     const result = await discoverExecutionKeepAliveEndpoint({
       sandboxId: 'sb-1',
       sessionId: 'ses-1',
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
     });
     expect(result).toBeNull();
     expect(resolveEndpointCalls).toBe(1);
@@ -77,7 +77,7 @@ describe('discoverExecutionKeepAliveEndpoint Daytona 429 guard', () => {
     const result = await discoverExecutionKeepAliveEndpoint({
       sandboxId: 'sb-1',
       sessionId: 'ses-1',
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
     });
     expect(result).toBeNull();
   });
@@ -86,7 +86,7 @@ describe('discoverExecutionKeepAliveEndpoint Daytona 429 guard', () => {
     const result = await discoverExecutionKeepAliveEndpoint({
       sandboxId: 'sb-1',
       sessionId: 'ses-1',
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
     });
     expect(result).not.toBeNull();
     expect(result?.url).toBe('https://upstream.example.test');

@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   executorConnectionProfiles,
-  projectSessionConnectorBindings,
-  projectSessionPublicShares,
+  workspaceSessionConnectorBindings,
+  workspaceSessionPublicShares,
   sessionSandboxes,
 } from '@kortix/db';
 import { and, desc, eq } from 'drizzle-orm';
@@ -20,7 +20,7 @@ export const DEFAULT_PREVIEW_CANDIDATES = [
   { id: 'api-docs', label: 'API docs', port: 8001, path: '/', source: 'default' },
 ] as const;
 
-export type PublicShareRow = typeof projectSessionPublicShares.$inferSelect;
+export type PublicShareRow = typeof workspaceSessionPublicShares.$inferSelect;
 
 export interface PublicShareInput {
   preview_id?: unknown;
@@ -85,7 +85,7 @@ export function serializePublicShare(row: PublicShareRow, token?: string) {
   return {
     share_id: row.shareId,
     session_id: row.sessionId,
-    project_id: row.projectId,
+    workspace_id: row.workspaceId,
     resource_type: row.resourceType as PublicShareResourceType,
     label: row.label,
     port: row.port,
@@ -106,15 +106,15 @@ export function serializePublicShare(row: PublicShareRow, token?: string) {
 export async function listPublicSharesForSession(sessionId: string) {
   const rows = await db
     .select()
-    .from(projectSessionPublicShares)
-    .where(eq(projectSessionPublicShares.sessionId, sessionId))
-    .orderBy(desc(projectSessionPublicShares.createdAt));
+    .from(workspaceSessionPublicShares)
+    .where(eq(workspaceSessionPublicShares.sessionId, sessionId))
+    .orderBy(desc(workspaceSessionPublicShares.createdAt));
   return rows.map((row) => serializePublicShare(row));
 }
 
 export function buildPublicShareInsert(input: PublicShareInput, ctx: {
   sessionId: string;
-  projectId: string;
+  workspaceId: string;
   accountId: string;
   userId: string;
 }) {
@@ -177,7 +177,7 @@ function parseExpiresAt(value: unknown): Date | null | false {
 
 export async function createPublicShare(input: PublicShareInput, ctx: {
   sessionId: string;
-  projectId: string;
+  workspaceId: string;
   accountId: string;
   userId: string;
 }) {
@@ -187,12 +187,12 @@ export async function createPublicShare(input: PublicShareInput, ctx: {
   const shareId = randomUUID();
   const token = publicShareToken(shareId);
   const [row] = await db
-    .insert(projectSessionPublicShares)
+    .insert(workspaceSessionPublicShares)
     .values({
       shareId,
       tokenHash: publicShareTokenHash(token),
       sessionId: built.values.sessionId,
-      projectId: built.values.projectId,
+      workspaceId: built.values.workspaceId,
       accountId: built.values.accountId,
       createdBy: built.values.userId,
       resourceType: built.values.resourceType,
@@ -211,11 +211,11 @@ export async function createPublicShare(input: PublicShareInput, ctx: {
 
 export async function revokePublicShare(sessionId: string, shareId: string) {
   const [row] = await db
-    .update(projectSessionPublicShares)
+    .update(workspaceSessionPublicShares)
     .set({ revokedAt: new Date(), updatedAt: new Date() })
     .where(and(
-      eq(projectSessionPublicShares.shareId, shareId),
-      eq(projectSessionPublicShares.sessionId, sessionId),
+      eq(workspaceSessionPublicShares.shareId, shareId),
+      eq(workspaceSessionPublicShares.sessionId, sessionId),
     ))
     .returning();
   return row ? serializePublicShare(row) : null;
@@ -223,9 +223,9 @@ export async function revokePublicShare(sessionId: string, shareId: string) {
 
 export async function touchPublicShare(shareId: string) {
   await db
-    .update(projectSessionPublicShares)
+    .update(workspaceSessionPublicShares)
     .set({ lastUsedAt: new Date(), updatedAt: new Date() })
-    .where(eq(projectSessionPublicShares.shareId, shareId));
+    .where(eq(workspaceSessionPublicShares.shareId, shareId));
 }
 
 export async function resolvePublicShare(token: string) {
@@ -239,25 +239,25 @@ export async function resolvePublicShare(token: string) {
   // `session_sandboxes` (one row per session), so this never fans out.
   const [row] = await db
     .select({
-      shareId: projectSessionPublicShares.shareId,
-      sessionId: projectSessionPublicShares.sessionId,
-      projectId: projectSessionPublicShares.projectId,
-      accountId: projectSessionPublicShares.accountId,
-      resourceType: projectSessionPublicShares.resourceType,
-      label: projectSessionPublicShares.label,
-      port: projectSessionPublicShares.port,
-      path: projectSessionPublicShares.path,
-      filePath: projectSessionPublicShares.filePath,
-      mode: projectSessionPublicShares.mode,
-      allowWebsocket: projectSessionPublicShares.allowWebsocket,
-      expiresAt: projectSessionPublicShares.expiresAt,
-      revokedAt: projectSessionPublicShares.revokedAt,
+      shareId: workspaceSessionPublicShares.shareId,
+      sessionId: workspaceSessionPublicShares.sessionId,
+      workspaceId: workspaceSessionPublicShares.workspaceId,
+      accountId: workspaceSessionPublicShares.accountId,
+      resourceType: workspaceSessionPublicShares.resourceType,
+      label: workspaceSessionPublicShares.label,
+      port: workspaceSessionPublicShares.port,
+      path: workspaceSessionPublicShares.path,
+      filePath: workspaceSessionPublicShares.filePath,
+      mode: workspaceSessionPublicShares.mode,
+      allowWebsocket: workspaceSessionPublicShares.allowWebsocket,
+      expiresAt: workspaceSessionPublicShares.expiresAt,
+      revokedAt: workspaceSessionPublicShares.revokedAt,
       externalId: sessionSandboxes.externalId,
       sandboxStatus: sessionSandboxes.status,
     })
-    .from(projectSessionPublicShares)
-    .leftJoin(sessionSandboxes, eq(sessionSandboxes.sessionId, projectSessionPublicShares.sessionId))
-    .where(eq(projectSessionPublicShares.tokenHash, publicShareTokenHash(token)))
+    .from(workspaceSessionPublicShares)
+    .leftJoin(sessionSandboxes, eq(sessionSandboxes.sessionId, workspaceSessionPublicShares.sessionId))
+    .where(eq(workspaceSessionPublicShares.tokenHash, publicShareTokenHash(token)))
     .limit(1);
 
   if (!row) return { ok: false as const, status: 404, error: 'Share link not found' };
@@ -270,15 +270,15 @@ export async function resolvePublicShare(token: string) {
   // session runtime token, so it must never indirectly delegate a member's
   // private connector credentials.
   const [personalBinding] = await db
-    .select({ profileId: projectSessionConnectorBindings.profileId })
-    .from(projectSessionConnectorBindings)
+    .select({ profileId: workspaceSessionConnectorBindings.profileId })
+    .from(workspaceSessionConnectorBindings)
     .innerJoin(
       executorConnectionProfiles,
-      eq(executorConnectionProfiles.profileId, projectSessionConnectorBindings.profileId),
+      eq(executorConnectionProfiles.profileId, workspaceSessionConnectorBindings.profileId),
     )
     .where(
       and(
-        eq(projectSessionConnectorBindings.sessionId, row.sessionId),
+        eq(workspaceSessionConnectorBindings.sessionId, row.sessionId),
         eq(executorConnectionProfiles.ownerType, 'member'),
       ),
     )

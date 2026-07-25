@@ -28,7 +28,7 @@ describe('audit buildFilters', () => {
     const conds = buildFilters(ACCOUNT, {
       actor: ACTOR,
       actionPrefix: 'iam.group',
-      resourceType: 'project_session',
+      resourceType: 'workspace_session',
       sinceRaw: '2026-01-01T00:00:00Z',
       untilRaw: '2026-02-01T00:00:00Z',
       q: 'delete',
@@ -75,11 +75,11 @@ describe('audit buildFilters', () => {
     expect(conds).toHaveLength(2);
   });
 
-  test('resourceType is a prefix match (project → project, project_session, …)', () => {
+  test('resourceType is a prefix match (workspace → workspace, workspace_session, …)', () => {
     const conds = buildFilters(ACCOUNT, {
       actor: null,
       actionPrefix: null,
-      resourceType: 'project',
+      resourceType: 'workspace',
       sinceRaw: null,
       untilRaw: null,
       q: null,

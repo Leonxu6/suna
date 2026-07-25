@@ -1,4 +1,4 @@
-import { projects } from '@kortix/db';
+import { workspaces } from '@kortix/db';
 import { eq } from 'drizzle-orm';
 import {
   listAgentMailInstalls,
@@ -12,7 +12,7 @@ import { teamsChannelEnabled } from '../channels/teams-auth';
  * Auto-materialize channel connectors from platform installs.
  *
  * A channel connector (Slack today) doesn't need a `connectors:` entry in
- * kortix.yaml — connecting the platform IS the registration. When a project has
+ * kortix.yaml — connecting the platform IS the registration. When a workspace has
  * a Slack install but hasn't explicitly declared a `channel` connector for it,
  * we synthesize a ConnectorSpec here so the materializer treats it like any
  * other connector: it gets DB rows, a fixed action catalog, policies, and
@@ -20,8 +20,8 @@ import { teamsChannelEnabled } from '../channels/teams-auth';
  * existing install token (resolved server-side at call time) — no copy, no
  * executor_credentials row, no migration. See KORTIX-206.
  */
-import type { ChannelPlatform, ConnectorSpec } from '../projects/connectors';
-import { MANIFEST_FILENAME } from '../projects/triggers';
+import type { ChannelPlatform, ConnectorSpec } from '../workspaces/connectors';
+import { MANIFEST_FILENAME } from '../workspaces/triggers';
 import { db } from '../shared/db';
 import { channelDefaultSlug, channelLabel } from './channels';
 
@@ -70,13 +70,13 @@ function channelAlreadyDeclared(
 }
 
 /**
- * Synthetic channel ConnectorSpecs for platforms this project has installed but
+ * Synthetic channel ConnectorSpecs for platforms this workspace has installed but
  * not explicitly declared in kortix.yaml — connecting the platform IS the
  * registration. We never shadow an explicit declaration: a hand-written
  * `channel` connector (or anything already using the slug) keeps full control.
  */
 export async function synthesizeChannelConnectors(
-  projectId: string,
+  workspaceId: string,
   declared: ConnectorSpec[],
 ): Promise<ConnectorSpec[]> {
   const specs: ConnectorSpec[] = [];
@@ -87,40 +87,40 @@ export async function synthesizeChannelConnectors(
   // shadow the built-in Slack CLI's channel catalog.
   const slackSlug = channelDefaultSlug('slack');
   if (!channelAlreadyDeclared(declared, 'slack', slackSlug)) {
-    const install = await loadSlackInstall(projectId).catch(() => null);
+    const install = await loadSlackInstall(workspaceId).catch(() => null);
     if (install) specs.push(channelSpec('slack', slackSlug));
   }
 
   if (teamsChannelEnabled()) {
     const teamsSlug = channelDefaultSlug('teams');
     if (!channelAlreadyDeclared(declared, 'teams', teamsSlug)) {
-      const install = await loadTeamsInstall(projectId).catch(() => null);
+      const install = await loadTeamsInstall(workspaceId).catch(() => null);
       if (install) specs.push(channelSpec('teams', teamsSlug));
     }
   }
 
-  const [project] = await db
-    .select({ metadata: projects.metadata })
-    .from(projects)
-    .where(eq(projects.projectId, projectId))
+  const [workspace] = await db
+    .select({ metadata: workspaces.metadata })
+    .from(workspaces)
+    .where(eq(workspaces.workspaceId, workspaceId))
     .limit(1);
 
-  // Meet (Recall.ai) — gated on the per-project `meet` experimental flag. Like
+  // Meet (Recall.ai) — gated on the per-workspace `meet` experimental flag. Like
   // Slack, a resolvable Recall key IS the registration (no OAuth / no [[connectors]]).
-  if (project && resolveExperimentalFeature(project.metadata, 'voice')) {
+  if (workspace && resolveExperimentalFeature(workspace.metadata, 'voice')) {
     const meetSlug = channelDefaultSlug('voice');
     if (!channelAlreadyDeclared(declared, 'voice', meetSlug)) {
-      const install = await loadVoiceInstall(projectId).catch(() => null);
+      const install = await loadVoiceInstall(workspaceId).catch(() => null);
       if (install) specs.push(channelSpec('voice', meetSlug));
     }
   }
 
 
-  if (!project || !resolveExperimentalFeature(project.metadata, 'agentmail_email')) {
+  if (!workspace || !resolveExperimentalFeature(workspace.metadata, 'agentmail_email')) {
     return specs;
   }
 
-  const emailInstalls = await listAgentMailInstalls(projectId).catch(() => []);
+  const emailInstalls = await listAgentMailInstalls(workspaceId).catch(() => []);
   const canonicalEmailSlug = channelDefaultSlug('email');
   if (emailInstalls.length > 0 && !channelAlreadyDeclared(declared, 'email', canonicalEmailSlug)) {
     specs.push(channelSpec('email', canonicalEmailSlug, channelLabel('email')));

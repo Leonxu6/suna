@@ -6,12 +6,12 @@
  * agent ≤ user is preserved (the route's role check provides the ∩ user).
  */
 import { describe, expect, test } from 'bun:test';
-import { extractAgents, grantFromLoadedAgents } from '../projects/agents';
+import { extractAgents, grantFromLoadedAgents } from '../workspaces/agents';
 import { agentMayPerform, agentMayUseConnector, agentMayUseEnv, assertAgentScope } from '../iam/agent-scope';
-import { KNOWN_SCHEMA_VERSION, parseManifestString } from '../projects/triggers';
+import { KNOWN_SCHEMA_VERSION, parseManifestString } from '../workspaces/triggers';
 
 function loadAgents(body: string) {
-  return extractAgents(parseManifestString(`kortix_version = ${KNOWN_SCHEMA_VERSION}\n[project]\nname="t"\n${body}`));
+  return extractAgents(parseManifestString(`kortix_version = ${KNOWN_SCHEMA_VERSION}\n[workspace]\nname="t"\n${body}`));
 }
 
 describe('grantFromLoadedAgents — resolution rule', () => {
@@ -25,12 +25,12 @@ describe('grantFromLoadedAgents — resolution rule', () => {
 [[agents]]
 name = "release-bot"
 connectors = ["github"]
-kortix_cli = ["project.trigger.create", "project.cr.open"]
+kortix_cli = ["workspace.trigger.create", "workspace.cr.open"]
 `);
     expect(grantFromLoadedAgents('release-bot', loaded)).toEqual({
       agent: 'release-bot',
       connectors: ['github'],
-      kortixCli: ['project.trigger.create', 'project.cr.open'],
+      kortixCli: ['workspace.trigger.create', 'workspace.cr.open'],
       env: 'all', // env key omitted → defaults to 'all' (back-compat for the new dimension)
     });
   });
@@ -39,7 +39,7 @@ kortix_cli = ["project.trigger.create", "project.cr.open"]
     const loaded = loadAgents(`
 [[agents]]
 name = "release-bot"
-kortix_cli = ["project.trigger.create"]
+kortix_cli = ["workspace.trigger.create"]
 `);
     expect(grantFromLoadedAgents('some-other-agent', loaded)).toEqual({
       agent: 'some-other-agent',
@@ -54,7 +54,7 @@ kortix_cli = ["project.trigger.create"]
 [[agents]]
 name = "release-bot"
 enabled = false
-kortix_cli = ["project.trigger.create"]
+kortix_cli = ["workspace.trigger.create"]
 `);
     expect(grantFromLoadedAgents('release-bot', loaded)).toEqual({
       agent: 'release-bot',
@@ -80,7 +80,7 @@ kortix_cli = "all"
   });
 
   // Regression: a session that boots with the non-binding `default` sentinel in a
-  // GOVERNED project must NOT be default-denied. No agent is ever named `default`
+  // GOVERNED workspace must NOT be default-denied. No agent is ever named `default`
   // — the runtime resolves it to the configured `default_agent` (a GP agent), so
   // default-denying it stripped every connector and made `kortix executor
   // connectors` return [] (and hid synthetic channel/computer connectors). The
@@ -101,7 +101,7 @@ connectors = []
 
   // The security feature is preserved: an unlisted CONCRETE agent still denies.
   // Default-deny is total — no connectors, no Kortix-CLI, and (per the secrets-
-  // scoping rule) no project env either.
+  // scoping rule) no workspace env either.
   test('concrete unlisted agent under governance still default-denies (≠ sentinel)', () => {
     const loaded = loadAgents(`
 [[agents]]
@@ -127,7 +127,7 @@ describe('grantFromLoadedAgents — v2 `default_agent` sentinel resolution', () 
     const text = [
       'kortix_version: 2',
       `default_agent: ${opts.defaultAgent ?? 'support'}`,
-      'project:',
+      'workspace:',
       '  name: t',
       'agents:',
       agentsBody,
@@ -139,12 +139,12 @@ describe('grantFromLoadedAgents — v2 `default_agent` sentinel resolution', () 
     const loaded = loadAgentsV2(`
   support:
     connectors: [github]
-    kortix_cli: [project.cr.open]
+    kortix_cli: [workspace.cr.open]
 `);
     expect(grantFromLoadedAgents('default', loaded)).toEqual({
       agent: 'support',
       connectors: ['github'],
-      kortixCli: ['project.cr.open'],
+      kortixCli: ['workspace.cr.open'],
       env: [], // v2 deny-by-default (secrets omitted)
     });
   });
@@ -204,33 +204,33 @@ describe('agentMayUseEnv — per-agent secret gate', () => {
 
 describe('agentMayPerform — kortix_cli gate', () => {
   test('null grant (non-agent token) → allowed', () => {
-    expect(agentMayPerform(null, 'project.cr.merge')).toBe(true);
+    expect(agentMayPerform(null, 'workspace.cr.merge')).toBe(true);
   });
   test('"all" → allowed', () => {
-    expect(agentMayPerform({ agent: 'kortix', kortixCli: 'all', connectors: 'all' }, 'project.cr.merge')).toBe(true);
+    expect(agentMayPerform({ agent: 'kortix', kortixCli: 'all', connectors: 'all' }, 'workspace.cr.merge')).toBe(true);
   });
   test('granted action → allowed', () => {
-    expect(agentMayPerform({ agent: 'a', kortixCli: ['project.cr.open'], connectors: [] }, 'project.cr.open')).toBe(true);
+    expect(agentMayPerform({ agent: 'a', kortixCli: ['workspace.cr.open'], connectors: [] }, 'workspace.cr.open')).toBe(true);
   });
   test('non-granted action → denied (the cr.open-but-not-merge case)', () => {
-    const grant = { agent: 'a', kortixCli: ['project.cr.open'], connectors: [] };
-    expect(agentMayPerform(grant, 'project.cr.merge')).toBe(false);
+    const grant = { agent: 'a', kortixCli: ['workspace.cr.open'], connectors: [] };
+    expect(agentMayPerform(grant, 'workspace.cr.merge')).toBe(false);
   });
   test('empty grant → everything denied', () => {
-    expect(agentMayPerform({ agent: 'a', kortixCli: [], connectors: [] }, 'project.trigger.create')).toBe(false);
+    expect(agentMayPerform({ agent: 'a', kortixCli: [], connectors: [] }, 'workspace.trigger.create')).toBe(false);
   });
   test('cr.open ≡ gitops.push alias: holding either satisfies the other (no double-gate)', () => {
-    const crOnly = { agent: 'a', kortixCli: ['project.cr.open'], connectors: [] };
-    expect(agentMayPerform(crOnly, 'project.gitops.push')).toBe(true); // fold gates the commit as gitops.push
-    const pushOnly = { agent: 'a', kortixCli: ['project.gitops.push'], connectors: [] };
-    expect(agentMayPerform(pushOnly, 'project.cr.open')).toBe(true); // route gates CR-create as cr.open
+    const crOnly = { agent: 'a', kortixCli: ['workspace.cr.open'], connectors: [] };
+    expect(agentMayPerform(crOnly, 'workspace.gitops.push')).toBe(true); // fold gates the commit as gitops.push
+    const pushOnly = { agent: 'a', kortixCli: ['workspace.gitops.push'], connectors: [] };
+    expect(agentMayPerform(pushOnly, 'workspace.cr.open')).toBe(true); // route gates CR-create as cr.open
     // merge pair is independent — cr.open does NOT unlock merge
-    expect(agentMayPerform(crOnly, 'project.gitops.merge')).toBe(false);
-    expect(agentMayPerform(crOnly, 'project.cr.merge')).toBe(false);
+    expect(agentMayPerform(crOnly, 'workspace.gitops.merge')).toBe(false);
+    expect(agentMayPerform(crOnly, 'workspace.cr.merge')).toBe(false);
   });
   test('cr.merge ≡ gitops.merge alias', () => {
-    const mergeOnly = { agent: 'a', kortixCli: ['project.cr.merge'], connectors: [] };
-    expect(agentMayPerform(mergeOnly, 'project.gitops.merge')).toBe(true);
+    const mergeOnly = { agent: 'a', kortixCli: ['workspace.cr.merge'], connectors: [] };
+    expect(agentMayPerform(mergeOnly, 'workspace.gitops.merge')).toBe(true);
   });
 });
 
@@ -253,15 +253,15 @@ describe('assertAgentScope — throws 403 on deny', () => {
     return { get: (k: string) => (k === 'agentGrant' ? grant : undefined) } as any;
   }
   test('throws for a non-granted action', () => {
-    const c = fakeCtx({ agent: 'a', kortixCli: ['project.cr.open'], connectors: [] });
-    expect(() => assertAgentScope(c, 'project.cr.merge')).toThrow();
+    const c = fakeCtx({ agent: 'a', kortixCli: ['workspace.cr.open'], connectors: [] });
+    expect(() => assertAgentScope(c, 'workspace.cr.merge')).toThrow();
   });
   test('does not throw for a granted action', () => {
-    const c = fakeCtx({ agent: 'a', kortixCli: ['project.cr.open'], connectors: [] });
-    expect(() => assertAgentScope(c, 'project.cr.open')).not.toThrow();
+    const c = fakeCtx({ agent: 'a', kortixCli: ['workspace.cr.open'], connectors: [] });
+    expect(() => assertAgentScope(c, 'workspace.cr.open')).not.toThrow();
   });
   test('does not throw when there is no grant (human / laptop CLI)', () => {
     const c = fakeCtx(null);
-    expect(() => assertAgentScope(c, 'project.cr.merge')).not.toThrow();
+    expect(() => assertAgentScope(c, 'workspace.cr.merge')).not.toThrow();
   });
 });

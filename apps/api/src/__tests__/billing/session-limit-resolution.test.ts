@@ -4,7 +4,7 @@
  * `credit_accounts.max_concurrent_sessions` (operator-set per-account override)
  * → wins over the tier in both directions; otherwise the plan tier's
  * `TierConfig.concurrentSessionLimit`. The HTTP 429 enforcement of this number
- * lives in `e2e-project-session-contract.test.ts`.
+ * lives in `e2e-workspace-session-contract.test.ts`.
  */
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { getTier } from '../../billing/services/tiers';

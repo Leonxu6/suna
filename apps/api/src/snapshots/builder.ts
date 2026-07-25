@@ -2,29 +2,29 @@
  * Sandbox image builder — thin orchestrator over the template service and the
  * provider adapter.
  *
- *   1. Resolve `(project, slug)` → ResolvedTemplate via the template service.
+ *   1. Resolve `(workspace, slug)` → ResolvedTemplate via the template service.
  *   2. Compute the content-addressed snapshot name.
  *   3. Ask the provider: if active, return; else build inline.
  *
  * The boot path never trusts a DB row to decide "does this image exist?" —
  * it asks the provider every time. The DB row is a cache + audit log only.
  *
- * Build attempts are written to the append-only `project_snapshot_builds`
+ * Build attempts are written to the append-only `workspace_snapshot_builds`
  * table for UI display + "Fix with agent."
  */
 
 import { and, desc, eq, gt, inArray, lt, or } from 'drizzle-orm';
-import { projectSnapshotBuilds } from '@kortix/db';
+import { workspaceSnapshotBuilds } from '@kortix/db';
 import { db } from '../shared/db';
-import { resolveCommitSha, type GitBackedProject } from '../projects/git';
+import { resolveCommitSha, type GitBackedWorkspace } from '../workspaces/git';
 import { getSandboxProvider, type BuildLogTap, type BuildSnapshotResult, type ProviderState, type SandboxProviderAdapter } from './providers';
 import { config, type SandboxProviderName } from '../config';
-import { warmPrebakeProviders } from '../projects/lib/provider-precedence';
-import { PPWARM_REAP_PROTECT_MS, excludePinnedTargets, legacyPerProjectWarmImageName, perProjectWarmImageName, ppwarmReapTargets, warmBuildSlug } from './ppwarm-names';
+import { warmPrebakeProviders } from '../workspaces/lib/provider-precedence';
+import { PPWARM_REAP_PROTECT_MS, excludePinnedTargets, legacyPerWorkspaceWarmImageName, perWorkspaceWarmImageName, ppwarmReapTargets, warmBuildSlug } from './ppwarm-names';
 import { collectPinnedImageRefs } from './pinned-images';
 import {
   computeTemplateIdentity,
-  listTemplatesForProject,
+  listTemplatesForWorkspace,
   recordTemplateBuilt,
   recordTemplateFailed,
   refreshTemplateState,
@@ -56,7 +56,7 @@ class SnapshotBuildError extends Error {
 
 export type SnapshotBuildSource =
   | 'session-start'
-  | 'project-create'
+  | 'workspace-create'
   | 'cr-merge'
   | 'manual'
   | 'background'
@@ -96,14 +96,14 @@ export interface EnsureSandboxImageResult {
 }
 
 /**
- * Whether `template` is allowed to get a per-project WARM image on
+ * Whether `template` is allowed to get a per-workspace WARM image on
  * `buildProvider` (the read-side gate for `ensureSandboxImage`'s warm-HIT
  * lookup, and by extension the write-side bake it kicks on a miss).
  *
  * The shared default is always eligible — it's the pre-existing, already-safe
  * 66%-hit-rate path. A CUSTOM (non-default-slug) template is eligible only on
  * a provider allowlisted via `KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS`
- * (default: platinum only). Platinum's per-project templates warm-MISS 100% of
+ * (default: platinum only). Platinum's per-workspace templates warm-MISS 100% of
  * the time today precisely because this gate used to be `template.isShared`
  * unconditionally; Daytona's shared-default path is untouched by default and
  * stays that way until its quota-gc cache-floor math (quota-gc-select.ts) is
@@ -114,7 +114,7 @@ export interface EnsureSandboxImageResult {
  * bounded, self-healing — not blockers):
  *  (a) TOCTOU: `computeTemplateIdentity` → `resolveUserDockerfile` reads the
  *      Dockerfile at a commit sha it resolves internally (templates.ts), and
- *      `ensurePerProjectWarmImage` resolves the warmRepo tip via its OWN,
+ *      `ensurePerWorkspaceWarmImage` resolves the warmRepo tip via its OWN,
  *      separate `resolveCommitSha` call. For the shared default this is inert
  *      (constant Dockerfile, zero git I/O). For a custom template, a push that
  *      lands in that sub-second window between the two reads can bake
@@ -124,11 +124,11 @@ export interface EnsureSandboxImageResult {
  *  (b) ppwarm-names.ts's `tpl8` (sha256(slug).slice(0,8)) scope key has no
  *      collision backstop, unlike `proj8` (protected by
  *      `excludePinnedTargets`) — see ppwarm-names.ts:94-104. Accepted as
- *      negligible at realistic per-project template cardinality (1-3);
+ *      negligible at realistic per-workspace template cardinality (1-3);
  *      widening it now would force a second full warm-image-invalidating
  *      name-format migration for a currently negligible risk.
  */
-export function perProjectWarmEligible(
+export function perWorkspaceWarmEligible(
   template: Pick<ResolvedTemplate, 'isShared'>,
   buildProvider: string,
 ): boolean {
@@ -137,11 +137,11 @@ export function perProjectWarmEligible(
 }
 
 /**
- * Make sure a provider-side snapshot exists for `(project, slug)` and return
+ * Make sure a provider-side snapshot exists for `(workspace, slug)` and return
  * its name. Builds inline if the provider doesn't have it yet.
  */
 export async function ensureSandboxImage(
-  project: GitBackedProject,
+  workspace: GitBackedWorkspace,
   opts: {
     slug?: string;
     accountId?: string;
@@ -162,7 +162,7 @@ export async function ensureSandboxImage(
     provider?: string;
   } = {},
 ): Promise<EnsureSandboxImageResult> {
-  const template = await resolveTemplateBySlug(project, opts.slug);
+  const template = await resolveTemplateBySlug(workspace, opts.slug);
   const buildProvider = opts.provider ?? template.provider;
 
   const provider = getSandboxProvider(buildProvider);
@@ -170,9 +170,9 @@ export async function ensureSandboxImage(
     throw new SnapshotBuildError(`Sandbox provider ${buildProvider} is not configured`);
   }
 
-  const identity = await computeTemplateIdentity(project, template);
+  const identity = await computeTemplateIdentity(workspace, template);
 
-  // Per-project warm preference. On a session boot, if a per-project warm image
+  // Per-workspace warm preference. On a session boot, if a per-workspace warm image
   // — same runtime identity, current default-branch tip, repo baked into
   // /workspace — is already active on this provider, boot off it (no clone at
   // boot). On a MISS, kick a fire-and-forget background bake so the next
@@ -181,16 +181,16 @@ export async function ensureSandboxImage(
   if (
     config.KORTIX_WARM_SNAPSHOT_ENABLED &&
     (opts.source ?? 'session-start') === 'session-start' &&
-    perProjectWarmEligible(template, buildProvider)
+    perWorkspaceWarmEligible(template, buildProvider)
   ) {
     try {
-      const warmTip = await resolveCommitSha(project, project.defaultBranch);
+      const warmTip = await resolveCommitSha(workspace, workspace.defaultBranch);
       if (warmTip) {
-        const warmName = perProjectWarmImageName(project.projectId, warmTip, identity.snapshotName, template.slug);
+        const warmName = perWorkspaceWarmImageName(workspace.workspaceId, warmTip, identity.snapshotName, template.slug);
         if ((await provider.getSnapshotState(warmName)) === 'active') {
           console.log(
-            `[snapshots] per-project warm HIT: booting ${template.slug} from ${warmName} ` +
-            `(project ${project.projectId.slice(0, 8)}, tip ${warmTip.slice(0, 8)}, provider ${buildProvider})`,
+            `[snapshots] per-workspace warm HIT: booting ${template.slug} from ${warmName} ` +
+            `(workspace ${workspace.workspaceId.slice(0, 8)}, tip ${warmTip.slice(0, 8)}, provider ${buildProvider})`,
           );
           return {
             snapshotName: warmName,
@@ -201,17 +201,17 @@ export async function ensureSandboxImage(
           };
         }
         // LEGACY-FORMAT FALLBACK. The ppwarm name gained a `<tpl8>` segment when
-        // warm images became (project, template)-scoped, so no image baked before
+        // warm images became (workspace, template)-scoped, so no image baked before
         // that release can be recomputed under the new name. Without this lookup,
         // that release would invalidate EVERY warm image simultaneously: ~65% of
-        // Daytona sessions currently hit one, so the first session per project
+        // Daytona sessions currently hit one, so the first session per workspace
         // would miss, clone cold, and kick a bake — a fleet-wide bake burst inside
         // one deploy window, against a hard 100-snapshot org cap and with a
         // 2026-07-22 storm already on record.
         //
         // A legacy image is already built and — for the SHARED DEFAULT only —
-        // already exactly right: same project, same tip, same base identity. Serve
-        // it. It keeps serving until this project's default branch actually moves,
+        // already exactly right: same workspace, same tip, same base identity. Serve
+        // it. It keeps serving until this workspace's default branch actually moves,
         // at which point the new-format name misses and bakes once; the stale
         // legacy tip then ages out through quota-gc's idle/LRU rules (which match
         // both name shapes). The fleet migrates at the natural rate of pushes
@@ -221,15 +221,15 @@ export async function ensureSandboxImage(
         // caller that ever minted one passed the default slug, so resolving it for
         // a custom template would hand that template a different one's image.
         if (template.isShared) {
-          const legacyName = legacyPerProjectWarmImageName(
-            project.projectId,
+          const legacyName = legacyPerWorkspaceWarmImageName(
+            workspace.workspaceId,
             warmTip,
             identity.snapshotName,
           );
           if ((await provider.getSnapshotState(legacyName)) === 'active') {
             console.log(
-              `[snapshots] per-project warm HIT (legacy name): booting ${template.slug} from ` +
-              `${legacyName} (project ${project.projectId.slice(0, 8)}, tip ${warmTip.slice(0, 8)}, ` +
+              `[snapshots] per-workspace warm HIT (legacy name): booting ${template.slug} from ` +
+              `${legacyName} (workspace ${workspace.workspaceId.slice(0, 8)}, tip ${warmTip.slice(0, 8)}, ` +
               `provider ${buildProvider}) — pre-dates template scoping; will re-bake under the ` +
               `new name when this branch next moves`,
             );
@@ -242,10 +242,10 @@ export async function ensureSandboxImage(
             };
           }
         }
-        // MISS — no warm image for this (project, tip) yet. Kick a fire-and-forget
+        // MISS — no warm image for this (workspace, tip) yet. Kick a fire-and-forget
         // background bake so the NEXT session on this commit boots warm, and fall
         // through to the cold path for THIS session (never block a boot on a bake).
-        kickBackgroundWarmBuild(project, {
+        kickBackgroundWarmBuild(workspace, {
           accountId: opts.accountId,
           provider: buildProvider,
           snapshotName: warmName,
@@ -253,7 +253,7 @@ export async function ensureSandboxImage(
         });
       }
     } catch (err) {
-      console.warn(`[snapshots] per-project warm lookup failed (falling back to cold):`, err);
+      console.warn(`[snapshots] per-workspace warm lookup failed (falling back to cold):`, err);
     }
   }
 
@@ -318,7 +318,7 @@ export async function ensureSandboxImage(
   ) {
     const lastGood = await provider.getSnapshotState(template.providerSnapshotName);
     if (lastGood === 'active') {
-      kickBackgroundRebuild(project, {
+      kickBackgroundRebuild(workspace, {
         slug: opts.slug,
         accountId: opts.accountId,
         provider: buildProvider,
@@ -369,7 +369,7 @@ export async function ensureSandboxImage(
   }
 
   // ─── Inline build (deduped across ALL sources) ───────────────────────────
-  // A burst of triggers for the same snapshot identity — e.g. a project-create
+  // A burst of triggers for the same snapshot identity — e.g. a workspace-create
   // pre-build, the first session boot, and a background rebuild all landing
   // within the same build window — must produce exactly ONE provider build and
   // ONE build-log row. `daytona.snapshot.create` calls racing under the same
@@ -386,7 +386,7 @@ export async function ensureSandboxImage(
   const existing = inflightBuilds.get(buildKey);
   if (existing) return existing;
 
-  const buildPromise = runInlineBuild(project, template, identity, {
+  const buildPromise = runInlineBuild(workspace, template, identity, {
     state,
     accountId: opts.accountId,
     source: opts.source ?? 'session-start',
@@ -456,7 +456,7 @@ async function maybeSwapAgent(
  * `inflightBuilds` dedup in `ensureSandboxImage` — never directly.
  */
 async function runInlineBuild(
-  project: GitBackedProject,
+  workspace: GitBackedWorkspace,
   template: ResolvedTemplate,
   identity: TemplateIdentity,
   opts: { state: ProviderState; accountId?: string; source: SnapshotBuildSource; buildProvider?: string },
@@ -471,7 +471,7 @@ async function runInlineBuild(
   const buildId = opts.accountId
     ? await openBuildLog({
         accountId: opts.accountId,
-        projectId: project.projectId,
+        workspaceId: workspace.workspaceId,
         slug: template.slug,
         snapshotName: identity.snapshotName,
         contentHash: identity.contentHash,
@@ -575,12 +575,12 @@ const inflightBuilds = new Map<string, Promise<EnsureSandboxImageResult>>();
  * response either way — the warm image is re-baked from it.
  */
 export async function deleteSandboxImage(
-  project: GitBackedProject,
+  workspace: GitBackedWorkspace,
   opts: { slug?: string; provider?: string } = {},
 ): Promise<{ deleted: boolean; snapshotName: string; slug: string }> {
-  const template = await resolveTemplateForBuildSlug(project, opts.slug);
+  const template = await resolveTemplateForBuildSlug(workspace, opts.slug);
   const provider = getSandboxProvider(opts.provider ?? template.provider);
-  const identity = await computeTemplateIdentity(project, template);
+  const identity = await computeTemplateIdentity(workspace, template);
   const before = await provider.getSnapshotState(identity.snapshotName);
   await provider.deleteSnapshot(identity.snapshotName);
   // Reflect on the template row.
@@ -598,7 +598,7 @@ export async function deleteSandboxImage(
   };
 }
 
-/** Stateless view of every template available to the project + live state. */
+/** Stateless view of every template available to the workspace + live state. */
 export interface SandboxTemplateView {
   templateId: string | null;
   slug: string;
@@ -627,26 +627,26 @@ export interface SandboxTemplateView {
 }
 
 export async function listSandboxTemplates(
-  project: GitBackedProject,
+  workspace: GitBackedWorkspace,
   opts: {
-    /** Explicit project pin. null means Automatic routing across enabled providers. */
+    /** Explicit workspace pin. null means Automatic routing across enabled providers. */
     selectedProvider?: SandboxTemplateProvider | null;
     includeProviderCoverage?: boolean;
   } = {},
 ): Promise<SandboxTemplateView[]> {
-  const items = await listTemplatesForProject(project);
-  return Promise.all(items.map((t) => toView(project, t, opts)));
+  const items = await listTemplatesForWorkspace(workspace);
+  return Promise.all(items.map((t) => toView(workspace, t, opts)));
 }
 
 async function toView(
-  project: GitBackedProject,
+  workspace: GitBackedWorkspace,
   t: ResolvedTemplate,
   opts: {
     selectedProvider?: SandboxTemplateProvider | null;
     includeProviderCoverage?: boolean;
   },
 ): Promise<SandboxTemplateView> {
-  const identity = await computeTemplateIdentity(project, t);
+  const identity = await computeTemplateIdentity(workspace, t);
   let state: string = t.providerState ?? 'missing';
   let providerCoverage: SandboxTemplateProviderCoverage[] | undefined;
   if (opts.includeProviderCoverage) {
@@ -698,9 +698,9 @@ export { resolveTemplateBySlug as resolveTemplate };
 
 // ─── Build log (UI-only, never read on boot) ─────────────────────────────
 
-export interface ProjectSnapshotBuildSummary {
+export interface WorkspaceSnapshotBuildSummary {
   buildId: string;
-  projectId: string;
+  workspaceId: string;
   slug: string;
   snapshotName: string;
   contentHash: string;
@@ -713,12 +713,12 @@ export interface ProjectSnapshotBuildSummary {
   finishedAt: Date | null;
 }
 
-function rowToSummary(row: typeof projectSnapshotBuilds.$inferSelect): ProjectSnapshotBuildSummary {
+function rowToSummary(row: typeof workspaceSnapshotBuilds.$inferSelect): WorkspaceSnapshotBuildSummary {
   const meta = (row.metadata ?? {}) as Record<string, unknown>;
   const slug = typeof meta.slug === 'string' ? meta.slug : row.branch || DEFAULT_SANDBOX_SLUG;
   return {
     buildId: row.buildId,
-    projectId: row.projectId,
+    workspaceId: row.workspaceId,
     slug,
     snapshotName: row.snapshotName,
     contentHash: row.contentHash,
@@ -735,15 +735,15 @@ function rowToSummary(row: typeof projectSnapshotBuilds.$inferSelect): ProjectSn
 }
 
 export async function listSnapshotBuilds(
-  projectId: string,
+  workspaceId: string,
   opts: { limit?: number } = {},
-): Promise<ProjectSnapshotBuildSummary[]> {
+): Promise<WorkspaceSnapshotBuildSummary[]> {
   const limit = Math.max(1, Math.min(opts.limit ?? 25, 100));
   const rows = await db
     .select()
-    .from(projectSnapshotBuilds)
-    .where(eq(projectSnapshotBuilds.projectId, projectId))
-    .orderBy(desc(projectSnapshotBuilds.startedAt))
+    .from(workspaceSnapshotBuilds)
+    .where(eq(workspaceSnapshotBuilds.workspaceId, workspaceId))
+    .orderBy(desc(workspaceSnapshotBuilds.startedAt))
     .limit(limit);
   return rows.map(rowToSummary);
 }
@@ -764,20 +764,20 @@ const STALE_BUILD_MS = 20 * 60 * 1000;
 const STALE_BUILD_BATCH = 50;
 
 export async function reconcileStaleBuilds(
-  opts: { projectId?: string; olderThanMs?: number } = {},
+  opts: { workspaceId?: string; olderThanMs?: number } = {},
 ): Promise<{ checked: number; closedReady: number; closedFailed: number }> {
   const cutoff = new Date(Date.now() - (opts.olderThanMs ?? STALE_BUILD_MS));
   const conds = [
-    eq(projectSnapshotBuilds.status, 'building'),
-    lt(projectSnapshotBuilds.startedAt, cutoff),
+    eq(workspaceSnapshotBuilds.status, 'building'),
+    lt(workspaceSnapshotBuilds.startedAt, cutoff),
   ];
-  if (opts.projectId) conds.push(eq(projectSnapshotBuilds.projectId, opts.projectId));
+  if (opts.workspaceId) conds.push(eq(workspaceSnapshotBuilds.workspaceId, opts.workspaceId));
 
   const rows = await db
     .select()
-    .from(projectSnapshotBuilds)
+    .from(workspaceSnapshotBuilds)
     .where(and(...conds))
-    .orderBy(desc(projectSnapshotBuilds.startedAt))
+    .orderBy(desc(workspaceSnapshotBuilds.startedAt))
     .limit(STALE_BUILD_BATCH);
   if (rows.length === 0) return { checked: 0, closedReady: 0, closedFailed: 0 };
 
@@ -846,7 +846,7 @@ export function shouldReconcileProviderState(state: ProviderState): boolean {
 
 async function openBuildLog(args: {
   accountId: string;
-  projectId: string;
+  workspaceId: string;
   slug: string;
   snapshotName: string;
   contentHash: string;
@@ -856,22 +856,22 @@ async function openBuildLog(args: {
 }): Promise<string | null> {
   try {
     const [row] = await db
-      .insert(projectSnapshotBuilds)
+      .insert(workspaceSnapshotBuilds)
       .values({
         accountId: args.accountId,
-        projectId: args.projectId,
+        workspaceId: args.workspaceId,
         commitSha: args.commitSha ?? '',
         branch: args.slug,
         snapshotName: args.snapshotName,
         contentHash: args.contentHash,
         status: 'building',
-        // FIX-K-lite forward hygiene: record the FULL projectId as first-class
-        // snapshot build metadata (alongside the projectId column), so a warm
-        // image's owning project is recoverable beyond the lossy 8-hex proj8 in
+        // FIX-K-lite forward hygiene: record the FULL workspaceId as first-class
+        // snapshot build metadata (alongside the workspaceId column), so a warm
+        // image's owning workspace is recoverable beyond the lossy 8-hex proj8 in
         // its name. Forward-only — legacy warm images churn out on the next commit.
-        metadata: { source: args.source, slug: args.slug, provider: args.provider, projectId: args.projectId },
+        metadata: { source: args.source, slug: args.slug, provider: args.provider, workspaceId: args.workspaceId },
       })
-      .returning({ buildId: projectSnapshotBuilds.buildId });
+      .returning({ buildId: workspaceSnapshotBuilds.buildId });
     return row?.buildId ?? null;
   } catch (err) {
     console.warn('[snapshots] failed to open build log:', err instanceof Error ? err.message : err);
@@ -881,9 +881,9 @@ async function openBuildLog(args: {
 
 async function closeBuildLogReady(buildId: string): Promise<void> {
   await db
-    .update(projectSnapshotBuilds)
+    .update(workspaceSnapshotBuilds)
     .set({ status: 'ready', finishedAt: new Date(), error: null, errorCategory: null })
-    .where(eq(projectSnapshotBuilds.buildId, buildId))
+    .where(eq(workspaceSnapshotBuilds.buildId, buildId))
     .catch((err) =>
       console.warn('[snapshots] failed to close build log (ready):', err instanceof Error ? err.message : err),
     );
@@ -891,14 +891,14 @@ async function closeBuildLogReady(buildId: string): Promise<void> {
 
 async function closeBuildLogFailed(buildId: string, message: string): Promise<void> {
   await db
-    .update(projectSnapshotBuilds)
+    .update(workspaceSnapshotBuilds)
     .set({
       status: 'failed',
       error: message.slice(0, 2000),
       errorCategory: classifySnapshotError(message),
       finishedAt: new Date(),
     })
-    .where(eq(projectSnapshotBuilds.buildId, buildId))
+    .where(eq(workspaceSnapshotBuilds.buildId, buildId))
     .catch((err) =>
       console.warn('[snapshots] failed to close build log (failed):', err instanceof Error ? err.message : err),
     );
@@ -929,14 +929,14 @@ async function recentlyBuiltSnapshotNames(
   try {
     const cutoff = new Date(Date.now() - withinMs);
     const rows = await db
-      .select({ snapshotName: projectSnapshotBuilds.snapshotName })
-      .from(projectSnapshotBuilds)
+      .select({ snapshotName: workspaceSnapshotBuilds.snapshotName })
+      .from(workspaceSnapshotBuilds)
       .where(
         and(
-          inArray(projectSnapshotBuilds.snapshotName, snapshotNames),
+          inArray(workspaceSnapshotBuilds.snapshotName, snapshotNames),
           or(
-            and(eq(projectSnapshotBuilds.status, 'ready'), gt(projectSnapshotBuilds.finishedAt, cutoff)),
-            and(eq(projectSnapshotBuilds.status, 'building'), gt(projectSnapshotBuilds.startedAt, cutoff)),
+            and(eq(workspaceSnapshotBuilds.status, 'ready'), gt(workspaceSnapshotBuilds.finishedAt, cutoff)),
+            and(eq(workspaceSnapshotBuilds.status, 'building'), gt(workspaceSnapshotBuilds.startedAt, cutoff)),
           ),
         ),
       );
@@ -969,13 +969,13 @@ export function backgroundBuildKey(provider: string, snapshotName: string): stri
  * retries (it'll keep booting last-good until this lands).
  */
 function kickBackgroundRebuild(
-  project: GitBackedProject,
+  workspace: GitBackedWorkspace,
   opts: { slug?: string; accountId?: string; provider: string; snapshotName: string },
 ): void {
   const key = backgroundBuildKey(opts.provider, opts.snapshotName);
   if (inflightBackgroundBuilds.has(key)) return;
   inflightBackgroundBuilds.add(key);
-  void ensureSandboxImage(project, {
+  void ensureSandboxImage(workspace, {
     slug: opts.slug,
     accountId: opts.accountId,
     source: 'background',
@@ -983,7 +983,7 @@ function kickBackgroundRebuild(
   })
     .catch((err) =>
       console.warn(
-        `[snapshots] background rebuild of ${opts.snapshotName} failed for ${project.projectId}:`,
+        `[snapshots] background rebuild of ${opts.snapshotName} failed for ${workspace.workspaceId}:`,
         err instanceof Error ? err.message : err,
       ),
     )
@@ -991,11 +991,11 @@ function kickBackgroundRebuild(
 }
 
 /**
- * Minimum spacing between warm-bake STARTS per (project, provider). The warm
+ * Minimum spacing between warm-bake STARTS per (workspace, provider). The warm
  * image is a pure boot-latency cache, yet every default-branch push (and every
  * session-start warm miss) used to kick a full multi-minute image bake, per
- * enabled provider, with no pacing. A busy project pushing every few minutes
- * baked continuously — observed live 2026-07-22: one prod project baked a new
+ * enabled provider, with no pacing. A busy workspace pushing every few minutes
+ * baked continuously — observed live 2026-07-22: one prod workspace baked a new
  * warm image every 3-8 minutes, ×2 providers, 227 builds/24h, which also
  * rate-limited the whole Daytona org (429 ThrottlerException). Skipping a kick
  * only delays warmth: the next kick after the window bakes the CURRENT tip.
@@ -1007,19 +1007,19 @@ const WARM_BAKE_COOLDOWN_MS = (() => {
 const warmBakeLastKickAt = new Map<string, number>();
 
 /**
- * True — and the kick is recorded — when a warm bake for (project, provider)
+ * True — and the kick is recorded — when a warm bake for (workspace, provider)
  * is allowed to start now; false while a prior kick is inside the cooldown.
  * Pure given injected `now`/`registry` (exported for tests).
  */
 export function warmBakeCooldownGate(
-  projectId: string,
+  workspaceId: string,
   provider: string,
   opts: { now?: number; cooldownMs?: number; registry?: Map<string, number> } = {},
 ): boolean {
   const now = opts.now ?? Date.now();
   const cooldownMs = opts.cooldownMs ?? WARM_BAKE_COOLDOWN_MS;
   const registry = opts.registry ?? warmBakeLastKickAt;
-  const key = `${projectId}:${provider}`;
+  const key = `${workspaceId}:${provider}`;
   const last = registry.get(key);
   if (last !== undefined && now - last < cooldownMs) return false;
   registry.set(key, now);
@@ -1027,11 +1027,11 @@ export function warmBakeCooldownGate(
 }
 
 /**
- * Warm bakes currently running, keyed by (project, provider) — a hot project
+ * Warm bakes currently running, keyed by (workspace, provider) — a hot workspace
  * whose tip moves mid-bake must NOT start a second concurrent bake for the new
  * tip (the name-keyed inflight set can't see that: new tip = new name).
  */
-const inflightWarmBakesByProject = new Set<string>();
+const inflightWarmBakesByWorkspace = new Set<string>();
 
 /**
  * Cluster-wide cooldown: the in-memory gate above is per-replica (the api runs
@@ -1043,7 +1043,7 @@ const inflightWarmBakesByProject = new Set<string>();
  * (same-name races are still collapsed by provider-truth 'building' checks).
  */
 async function warmBakeRecentlyStartedCluster(
-  projectId: string,
+  workspaceId: string,
   provider: string,
   slug: string,
   withinMs: number,
@@ -1051,15 +1051,15 @@ async function warmBakeRecentlyStartedCluster(
   try {
     const cutoff = new Date(Date.now() - withinMs);
     const rows = await db
-      .select({ metadata: projectSnapshotBuilds.metadata })
-      .from(projectSnapshotBuilds)
+      .select({ metadata: workspaceSnapshotBuilds.metadata })
+      .from(workspaceSnapshotBuilds)
       .where(
         and(
-          eq(projectSnapshotBuilds.projectId, projectId),
-          gt(projectSnapshotBuilds.startedAt, cutoff),
+          eq(workspaceSnapshotBuilds.workspaceId, workspaceId),
+          gt(workspaceSnapshotBuilds.startedAt, cutoff),
         ),
       )
-      .orderBy(desc(projectSnapshotBuilds.startedAt))
+      .orderBy(desc(workspaceSnapshotBuilds.startedAt))
       .limit(25);
     const warmSlug = warmBuildSlug(slug);
     return rows.some((row) => {
@@ -1072,51 +1072,51 @@ async function warmBakeRecentlyStartedCluster(
 }
 
 /**
- * Pure scope key for per-(project, template) warm-bake pacing: the component
+ * Pure scope key for per-(workspace, template) warm-bake pacing: the component
  * `kickBackgroundWarmBuild` feeds as `warmBakeCooldownGate`'s first argument
  * (opaque to that gate — see its own doc) and folds into
- * `inflightWarmBakesByProject`'s key. `slug` defaults to `DEFAULT_SANDBOX_SLUG`
+ * `inflightWarmBakesByWorkspace`'s key. `slug` defaults to `DEFAULT_SANDBOX_SLUG`
  * so every pre-existing (default-slug) caller computes the EXACT SAME key as
  * before a custom `slug` was ever threaded through — the cooldown/inflight
  * pacing for the default template is byte-identical in behavior. A distinct
  * `slug` gets its own independent budget instead of sharing (and fighting
- * over) the default template's cooldown slot on the same (project, provider).
+ * over) the default template's cooldown slot on the same (workspace, provider).
  * Exported for unit coverage; not meant to be called outside this module.
  */
-export function warmBakeScopeId(projectId: string, slug?: string): string {
-  return `${projectId}:${slug ?? DEFAULT_SANDBOX_SLUG}`;
+export function warmBakeScopeId(workspaceId: string, slug?: string): string {
+  return `${workspaceId}:${slug ?? DEFAULT_SANDBOX_SLUG}`;
 }
 
 /**
- * Fire-and-forget per-project warm bake, off the session hot path. Deduped by the
+ * Fire-and-forget per-workspace warm bake, off the session hot path. Deduped by the
  * target warm snapshot name (via the same inflight set) so a burst of sessions on
- * the same (project, tip) kicks exactly one bake, single-flighted per
- * (project, provider), and paced by {@link warmBakeCooldownGate}. Best-effort: a
+ * the same (workspace, tip) kicks exactly one bake, single-flighted per
+ * (workspace, provider), and paced by {@link warmBakeCooldownGate}. Best-effort: a
  * skipped or failed kick just means the next session/push retries; sessions keep
  * booting cold until a bake lands.
  */
 function kickBackgroundWarmBuild(
-  project: GitBackedProject,
+  workspace: GitBackedWorkspace,
   opts: { accountId?: string; provider: string; snapshotName: string; slug?: string },
 ): void {
   const key = backgroundBuildKey(opts.provider, opts.snapshotName);
   if (inflightBackgroundBuilds.has(key)) return;
   const slug = opts.slug ?? DEFAULT_SANDBOX_SLUG;
-  const scopedProjectId = warmBakeScopeId(project.projectId, slug);
-  const projectKey = `${scopedProjectId}:${opts.provider}`;
-  if (inflightWarmBakesByProject.has(projectKey)) return;
-  if (!warmBakeCooldownGate(scopedProjectId, opts.provider)) return;
+  const scopedWorkspaceId = warmBakeScopeId(workspace.workspaceId, slug);
+  const workspaceKey = `${scopedWorkspaceId}:${opts.provider}`;
+  if (inflightWarmBakesByWorkspace.has(workspaceKey)) return;
+  if (!warmBakeCooldownGate(scopedWorkspaceId, opts.provider)) return;
   inflightBackgroundBuilds.add(key);
-  inflightWarmBakesByProject.add(projectKey);
+  inflightWarmBakesByWorkspace.add(workspaceKey);
   void (async () => {
-    if (await warmBakeRecentlyStartedCluster(project.projectId, opts.provider, slug, WARM_BAKE_COOLDOWN_MS)) {
+    if (await warmBakeRecentlyStartedCluster(workspace.workspaceId, opts.provider, slug, WARM_BAKE_COOLDOWN_MS)) {
       console.log(
-        `[snapshots] warm bake for ${project.projectId.slice(0, 8)} (${opts.provider}) skipped: ` +
+        `[snapshots] warm bake for ${workspace.workspaceId.slice(0, 8)} (${opts.provider}) skipped: ` +
         `another replica started one inside the cooldown window`,
       );
       return;
     }
-    await ensurePerProjectWarmImage(project, {
+    await ensurePerWorkspaceWarmImage(workspace, {
       accountId: opts.accountId,
       provider: opts.provider,
       source: 'background',
@@ -1125,19 +1125,19 @@ function kickBackgroundWarmBuild(
   })()
     .catch((err) =>
       console.warn(
-        `[snapshots] background warm bake of ${opts.snapshotName} failed for ${project.projectId}:`,
+        `[snapshots] background warm bake of ${opts.snapshotName} failed for ${workspace.workspaceId}:`,
         err instanceof Error ? err.message : err,
       ),
     )
     .finally(() => {
       inflightBackgroundBuilds.delete(key);
-      inflightWarmBakesByProject.delete(projectKey);
+      inflightWarmBakesByWorkspace.delete(workspaceKey);
     });
 }
 
 /**
- * Build-on-push warm prebake. Fire-and-forget: when a commit lands on a project's
- * default branch (a successful push to the managed git), kick the per-project warm
+ * Build-on-push warm prebake. Fire-and-forget: when a commit lands on a workspace's
+ * default branch (a successful push to the managed git), kick the per-workspace warm
  * bake for the CURRENT tip so the FIRST session on the new commit boots warm —
  * instead of waiting for a session to MISS and trigger the bake on demand (which
  * leaves that first session cold). Reuses the exact resolve-tip + dedup path the
@@ -1147,85 +1147,85 @@ function kickBackgroundWarmBuild(
  * active) or a bake for it is already in flight. Best-effort: never throws, never
  * blocks the push; the session-start on-demand trigger remains the fallback.
  *
- * PROVIDER PARITY: a push must pre-warm the provider(s) a session on this project
+ * PROVIDER PARITY: a push must pre-warm the provider(s) a session on this workspace
  * could actually land on — NOT just the default provider. With `opts.provider`
  * set, warm exactly that one (the pre-existing single-provider behaviour, kept
  * byte-identical for callers that already target a provider). Otherwise resolve
- * the target set from the project's provider PIN, exactly as session creation does
+ * the target set from the workspace's provider PIN, exactly as session creation does
  * (`warmPrebakeProviders`): an enabled pin ⇒ that one provider; no/stale pin ⇒
  * every enabled provider (the weighted balancer can route a session to any of
  * them). This closes the gap where a git push only warmed the default provider
  * while a Platinum-routed (or Platinum-pinned) session still baked lazily on its
  * first miss.
  */
-export async function kickProjectWarmPrebake(
-  project: GitBackedProject,
-  opts: { accountId?: string; provider?: string; projectPin?: string | null } = {},
+export async function kickWorkspaceWarmPrebake(
+  workspace: GitBackedWorkspace,
+  opts: { accountId?: string; provider?: string; workspacePin?: string | null } = {},
 ): Promise<void> {
   if (!config.KORTIX_WARM_SNAPSHOT_ENABLED) return;
 
   const providers = opts.provider
     ? [opts.provider]
     : warmPrebakeProviders({
-        // Pre-warm the provider(s) a session on this project could land on —
+        // Pre-warm the provider(s) a session on this workspace could land on —
         // exactly what session creation resolves from the pin (an enabled pin ⇒
         // that provider; no/stale pin ⇒ every enabled provider).
-        projectPin: opts.projectPin ?? null,
+        workspacePin: opts.workspacePin ?? null,
         allowed: config.ALLOWED_SANDBOX_PROVIDERS,
         isEnabled: (p) => config.isProviderEnabled(p as SandboxProviderName),
       });
   // Per-provider: content-addressed name, own getSnapshotState check, own dedup
   // in kickBackgroundWarmBuild. Independent + best-effort — one provider failing
   // (or being unconfigured) must not skip the others, so each is its own try.
-  await Promise.all(providers.map((buildProvider) => prebakeForProvider(project, buildProvider, opts.accountId)));
+  await Promise.all(providers.map((buildProvider) => prebakeForProvider(workspace, buildProvider, opts.accountId)));
 }
 
 async function prebakeForProvider(
-  project: GitBackedProject,
+  workspace: GitBackedWorkspace,
   buildProvider: string,
   accountId?: string,
 ): Promise<void> {
   try {
-    const template = await resolveTemplateBySlug(project, undefined);
+    const template = await resolveTemplateBySlug(workspace, undefined);
     if (!template.isShared) return; // same gate as the session-start warm trigger
     const provider = getSandboxProvider(buildProvider);
     if (!provider.isConfigured()) return;
-    const identity = await computeTemplateIdentity(project, template);
-    const tip = await resolveCommitSha(project, project.defaultBranch);
+    const identity = await computeTemplateIdentity(workspace, template);
+    const tip = await resolveCommitSha(workspace, workspace.defaultBranch);
     if (!tip) return;
-    const warmName = perProjectWarmImageName(project.projectId, tip, identity.snapshotName, template.slug);
+    const warmName = perWorkspaceWarmImageName(workspace.workspaceId, tip, identity.snapshotName, template.slug);
     // Tip unchanged (or already warm for this commit) → nothing to do.
     if ((await provider.getSnapshotState(warmName)) === 'active') return;
-    kickBackgroundWarmBuild(project, { accountId, provider: buildProvider, snapshotName: warmName });
+    kickBackgroundWarmBuild(workspace, { accountId, provider: buildProvider, snapshotName: warmName });
     console.log(
-      `[snapshots] warm prebake-on-push kicked: project ${project.projectId.slice(0, 8)} ` +
+      `[snapshots] warm prebake-on-push kicked: workspace ${workspace.workspaceId.slice(0, 8)} ` +
       `tip ${tip.slice(0, 8)} (${buildProvider})`,
     );
   } catch (err) {
     console.warn(
-      `[snapshots] warm prebake-on-push skipped for ${project.projectId} (${buildProvider}):`,
+      `[snapshots] warm prebake-on-push skipped for ${workspace.workspaceId} (${buildProvider}):`,
       err instanceof Error ? err.message : err,
     );
   }
 }
 
 /**
- * Fire-and-forget pre-build. Used at project-create and CR-merge time so the
+ * Fire-and-forget pre-build. Used at workspace-create and CR-merge time so the
  * first session for a new commit can boot off a cache hit.
  */
 export function kickPreBuild(
-  project: GitBackedProject,
+  workspace: GitBackedWorkspace,
   opts: { slug?: string; accountId: string; source: SnapshotBuildSource; provider?: string },
 ): void {
-  void ensureSandboxImage(project, opts).catch((err) =>
+  void ensureSandboxImage(workspace, opts).catch((err) =>
     console.warn(
-      `[snapshots] pre-build failed for ${project.projectId} (slug=${opts.slug ?? 'default'}, ${opts.source}):`,
+      `[snapshots] pre-build failed for ${workspace.workspaceId} (slug=${opts.slug ?? 'default'}, ${opts.source}):`,
       err instanceof Error ? err.message : err,
     ),
   );
 }
 
-/** Providers a project can route a new session to for proactive template builds. */
+/** Providers a workspace can route a new session to for proactive template builds. */
 export function templateBuildProviders(): SandboxTemplateProvider[] {
   return enabledTemplateBuildProviders({
     allowed: config.ALLOWED_SANDBOX_PROVIDERS,
@@ -1235,7 +1235,7 @@ export function templateBuildProviders(): SandboxTemplateProvider[] {
 
 /** Fire the same content-addressed build independently on every routed provider. */
 export function kickRoutedPreBuild(
-  project: GitBackedProject,
+  workspace: GitBackedWorkspace,
   opts: {
     slug?: string;
     accountId: string;
@@ -1243,7 +1243,7 @@ export function kickRoutedPreBuild(
   },
 ): void {
   for (const provider of templateBuildProviders()) {
-    kickPreBuild(project, {
+    kickPreBuild(workspace, {
       slug: opts.slug,
       accountId: opts.accountId,
       source: opts.source,
@@ -1252,20 +1252,20 @@ export function kickRoutedPreBuild(
   }
 }
 
-// ─── Platform default (global, project-independent) ──────────────────────────
+// ─── Platform default (global, workspace-independent) ──────────────────────────
 
 /**
- * The platform default image is content-addressed and shared by EVERY project,
+ * The platform default image is content-addressed and shared by EVERY workspace,
  * user, and session — its identity is a constant Dockerfile, independent of any
- * repo. So its build belongs to the platform lifecycle, not the project
+ * repo. So its build belongs to the platform lifecycle, not the workspace
  * lifecycle: we build it once per process at startup (a no-op cache hit after
  * the first global build, or after a release bumps the runtime fingerprint),
- * and the session-boot graceful path is the lazy fallback. project-create no
- * longer triggers it. No build-log row is written (it's global, not project-
- * scoped). A throwaway project shell is fine — the default path never reads it.
+ * and the session-boot graceful path is the lazy fallback. workspace-create no
+ * longer triggers it. No build-log row is written (it's global, not workspace-
+ * scoped). A throwaway workspace shell is fine — the default path never reads it.
  */
-const PLATFORM_PROJECT_SHELL: GitBackedProject = {
-  projectId: '',
+const PLATFORM_WORKSPACE_SHELL: GitBackedWorkspace = {
+  workspaceId: '',
   repoUrl: '',
   defaultBranch: '',
   manifestPath: '',
@@ -1274,7 +1274,7 @@ const PLATFORM_PROJECT_SHELL: GitBackedProject = {
 async function ensurePlatformDefaultImage(
   opts: { source?: SnapshotBuildSource; provider: string },
 ): Promise<EnsureSandboxImageResult> {
-  return ensureSandboxImage(PLATFORM_PROJECT_SHELL, {
+  return ensureSandboxImage(PLATFORM_WORKSPACE_SHELL, {
     slug: DEFAULT_SANDBOX_SLUG,
     source: opts.source ?? 'startup',
     provider: opts.provider,
@@ -1310,28 +1310,28 @@ export function kickStartupPreBuild(): void {
 // ─── Custom (toml / UI) templates — explicit rebuilds ────────────────────────
 
 /**
- * Reconcile a project's OWN templates (never the shared default): for each
+ * Reconcile a workspace's OWN templates (never the shared default): for each
  * custom template whose built image is stale or missing relative to its
- * currently-computed identity, kick a pre-build. Driven by project-create and
+ * currently-computed identity, kick a pre-build. Driven by workspace-create and
  * CR-merge so a Dockerfile or spec change lands a fresh image proactively
  * instead of stalling the next session that boots the slug. Forces a TOML sync
  * so a `[[sandbox.templates]]` edit in the just-merged commit is picked up.
  */
-async function reconcileProjectTemplates(
-  project: GitBackedProject,
+async function reconcileWorkspaceTemplates(
+  workspace: GitBackedWorkspace,
   opts: { accountId: string; source: SnapshotBuildSource },
 ): Promise<{ checked: number; rebuilt: number }> {
-  const templates = await listTemplatesForProject(project, { forceTomlSync: true });
+  const templates = await listTemplatesForWorkspace(workspace, { forceTomlSync: true });
   const providers = templateBuildProviders();
   let rebuilt = 0;
   for (const t of templates) {
     if (t.isShared) continue; // the platform default is built globally
     let identity: TemplateIdentity;
     try {
-      identity = await computeTemplateIdentity(project, t);
+      identity = await computeTemplateIdentity(workspace, t);
     } catch (err) {
       console.warn(
-        `[snapshots] reconcile: cannot compute identity for ${project.projectId}/${t.slug}:`,
+        `[snapshots] reconcile: cannot compute identity for ${workspace.workspaceId}/${t.slug}:`,
         err instanceof Error ? err.message : err,
       );
       continue;
@@ -1340,7 +1340,7 @@ async function reconcileProjectTemplates(
       const provider = getSandboxProvider(providerId);
       const state = await provider.getSnapshotState(identity.snapshotName);
       if (!shouldReconcileProviderState(state)) continue;
-      kickPreBuild(project, {
+      kickPreBuild(workspace, {
         slug: t.slug,
         accountId: opts.accountId,
         source: opts.source,
@@ -1352,25 +1352,25 @@ async function reconcileProjectTemplates(
   return { checked: templates.length, rebuilt };
 }
 
-/** Fire-and-forget wrapper around {@link reconcileProjectTemplates}. */
-export function kickProjectTemplatePrebuilds(
-  project: GitBackedProject,
+/** Fire-and-forget wrapper around {@link reconcileWorkspaceTemplates}. */
+export function kickWorkspaceTemplatePrebuilds(
+  workspace: GitBackedWorkspace,
   opts: { accountId: string; source: SnapshotBuildSource },
 ): void {
-  void reconcileProjectTemplates(project, opts).catch((err) =>
+  void reconcileWorkspaceTemplates(workspace, opts).catch((err) =>
     console.warn(
-      `[snapshots] project-template reconcile failed for ${project.projectId} (${opts.source}):`,
+      `[snapshots] workspace-template reconcile failed for ${workspace.workspaceId} (${opts.source}):`,
       err instanceof Error ? err.message : err,
     ),
   );
 }
 
-// ─── Per-project COLD rootfs warm ────────────────────────────────────────────
+// ─── Per-workspace COLD rootfs warm ────────────────────────────────────────────
 
-/** Managed name prefix for per-project COLD warm images. Reapable, disjoint
+/** Managed name prefix for per-workspace COLD warm images. Reapable, disjoint
  *  from the shared-default (`kortix-default-`) and custom (`kortix-tpl-`) names.
  *  Provider-agnostic: the SAME cold image builds on Daytona and Platinum. */
-export interface PerProjectWarmResult {
+export interface PerWorkspaceWarmResult {
   snapshotName: string;
   tip: string;
   built: boolean;
@@ -1385,9 +1385,9 @@ export interface PerProjectWarmResult {
 }
 
 /**
- * Build (or reuse) a project's COLD warm image: the requested template's runtime
+ * Build (or reuse) a workspace's COLD warm image: the requested template's runtime
  * (`opts.slug`, defaulting to the shared default) with
- * the project's repo checkout baked into /workspace at the default-branch tip.
+ * the workspace's repo checkout baked into /workspace at the default-branch tip.
  * capture:'none' — NO memory snapshot, NO stateful CH; BOTH Daytona and Platinum
  * boot it cold and the daemon (git.ts) fast-paths the baked `.git` with no clone.
  *
@@ -1397,8 +1397,8 @@ export interface PerProjectWarmResult {
  * session in by booting `snapshotName`. `provider` defaults to the platform
  * default provider so it's testable on either backend.
  */
-export async function ensurePerProjectWarmImage(
-  project: GitBackedProject,
+export async function ensurePerWorkspaceWarmImage(
+  workspace: GitBackedWorkspace,
   opts: {
     accountId?: string;
     provider?: string;
@@ -1415,8 +1415,8 @@ export async function ensurePerProjectWarmImage(
      *  a long build never lets the caller's lease TTL lapse. */
     heartbeat?: () => void | Promise<void>;
   } = {},
-): Promise<PerProjectWarmResult> {
-  if (!project.repoUrl) throw new SnapshotBuildError('project has no repo url — cannot bake per-project warm image');
+): Promise<PerWorkspaceWarmResult> {
+  if (!workspace.repoUrl) throw new SnapshotBuildError('workspace has no repo url — cannot bake per-workspace warm image');
   const buildProvider = opts.provider ?? config.getDefaultProvider();
   const provider = getSandboxProvider(buildProvider);
   if (!provider.isConfigured()) throw new SnapshotBuildError(`Sandbox provider ${buildProvider} is not configured`);
@@ -1430,23 +1430,23 @@ export async function ensurePerProjectWarmImage(
   // `ensureSandboxImage` path already does for that same template. So the warm
   // runtime is byte-identical to what a cold boot of THIS template would
   // produce, whichever template that is. Naming (`warmBuildSlug`,
-  // `perProjectWarmImageName`) below must stay keyed on `template.slug`, not a
+  // `perWorkspaceWarmImageName`) below must stay keyed on `template.slug`, not a
   // hardcoded default, or Retry-build / Fix-with-agent's build-slug round-trip
   // breaks for a custom template's warm bake.
-  const template = await resolveTemplateBySlug(project, opts.slug ?? DEFAULT_SANDBOX_SLUG);
-  const baseIdentity = await computeTemplateIdentity(project, template);
+  const template = await resolveTemplateBySlug(workspace, opts.slug ?? DEFAULT_SANDBOX_SLUG);
+  const baseIdentity = await computeTemplateIdentity(workspace, template);
 
-  const tip = await resolveCommitSha(project, project.defaultBranch);
-  if (!tip) throw new SnapshotBuildError(`could not resolve ${project.defaultBranch} tip for per-project warm`);
+  const tip = await resolveCommitSha(workspace, workspace.defaultBranch);
+  if (!tip) throw new SnapshotBuildError(`could not resolve ${workspace.defaultBranch} tip for per-workspace warm`);
 
-  const snapshotName = perProjectWarmImageName(project.projectId, tip, baseIdentity.snapshotName, template.slug);
+  const snapshotName = perWorkspaceWarmImageName(workspace.workspaceId, tip, baseIdentity.snapshotName, template.slug);
 
-  // Idempotency: active image under this (project, tip, runtime) → reuse it.
+  // Idempotency: active image under this (workspace, tip, runtime) → reuse it.
   // Still reap here — this path also runs when a prior bake's reap failed or a
   // moved-then-restored tip races to active, so it cleans lingering old tips.
   const existingState = await provider.getSnapshotState(snapshotName);
   if (existingState === 'active') {
-    await reapOldPerProjectWarm(project.projectId, snapshotName, buildProvider);
+    await reapOldPerWorkspaceWarm(workspace.workspaceId, snapshotName, buildProvider);
     return { snapshotName, tip, built: false, provider: buildProvider };
   }
   if (existingState === 'building') {
@@ -1467,14 +1467,14 @@ export async function ensurePerProjectWarmImage(
   // Pin the warm bake to the EXACT tip the cache key (`snapshotName`) is keyed on,
   // so the staged checkout can never drift to a newer branch tip mid-bake and
   // poison the content-addressed image (SHA_X name ⇒ SHA_X content).
-  const warmRepo = await resolveWarmRepoContext(project, tip);
+  const warmRepo = await resolveWarmRepoContext(workspace, tip);
   const buildTap: BuildLogTap | undefined = opts.heartbeat ? { heartbeat: opts.heartbeat } : undefined;
 
   // FAST PATH: FROM the already-built shared default image instead of
   // recomposing + rebuilding the full ~15-layer toolchain (apt/pip/opencode/
-  // bun/agent-browser+Chromium). This is what actually stops per-project warm
+  // bun/agent-browser+Chromium). This is what actually stops per-workspace warm
   // bakes from re-downloading Chromium under concurrency — see
-  // buildPerProjectWarmFromBaseDockerfile (dockerfile-layer.ts) for the full
+  // buildPerWorkspaceWarmFromBaseDockerfile (dockerfile-layer.ts) for the full
   // rationale. Only attempted when the provider can report a usable image ref
   // AND the base snapshot is confirmed `active`; a `FROM` of a not-yet-built
   // image would fail the whole bake, so this must never guess.
@@ -1483,7 +1483,7 @@ export async function ensurePerProjectWarmImage(
   const buildId = opts.accountId
     ? await openBuildLog({
         accountId: opts.accountId,
-        projectId: project.projectId,
+        workspaceId: workspace.workspaceId,
         slug: warmBuildSlug(template.slug),
         snapshotName,
         contentHash: baseIdentity.contentHash,
@@ -1495,12 +1495,12 @@ export async function ensurePerProjectWarmImage(
 
   try {
     console.log(
-      `[snapshots] per-project warm: baking ${snapshotName} (project ${project.projectId.slice(0, 8)}, ` +
+      `[snapshots] per-workspace warm: baking ${snapshotName} (workspace ${workspace.workspaceId.slice(0, 8)}, ` +
       `tip ${tip.slice(0, 8)}, base ${baseIdentity.snapshotName}, provider=${buildProvider}, ` +
       `fastPath=${baseImageRef ? 'from-base' : 'full-rebuild'})`,
     );
     // COLD build (capture:'none' — buildSnapshot on this branch never captures a
-    // memory snapshot). The only per-project delta over the shared default is
+    // memory snapshot). The only per-workspace delta over the shared default is
     // warmRepo, which bakes /workspace at build time — either on top of a full
     // rebuild of the toolchain, or (fast path) on top of the base image FROM'd
     // verbatim.
@@ -1525,7 +1525,7 @@ export async function ensurePerProjectWarmImage(
         // path strictly additive: worst case is the pre-existing behavior.
         const msg = fastPathErr instanceof Error ? fastPathErr.message : String(fastPathErr);
         console.warn(
-          `[snapshots] per-project warm: FROM-base fast path failed for ${snapshotName} ` +
+          `[snapshots] per-workspace warm: FROM-base fast path failed for ${snapshotName} ` +
           `(base=${baseImageRef}) — falling back to full rebuild: ${msg.slice(0, 200)}`,
         );
         buildResult = await provider.buildSnapshot(fullRebuildInput, buildTap);
@@ -1534,7 +1534,7 @@ export async function ensurePerProjectWarmImage(
       buildResult = await provider.buildSnapshot(fullRebuildInput, buildTap);
     }
     if (buildId) await closeBuildLogReady(buildId);
-    await reapOldPerProjectWarm(project.projectId, snapshotName, buildProvider);
+    await reapOldPerWorkspaceWarm(workspace.workspaceId, snapshotName, buildProvider);
     // FIX-B: carry the build-proven external template id up to the transition runner.
     return { snapshotName, tip, built: true, provider: buildProvider, externalTemplateId: buildResult?.externalTemplateId };
   } catch (err) {
@@ -1555,8 +1555,8 @@ export function shouldAttemptWarmFromBase(baseState: ProviderState): boolean {
 /**
  * Resolve a registry-addressable ref for the already-built base image of the
  * template being warmed, for use as `BuildableTemplate.baseImageRef` — the
- * per-project warm fast path. Generic over the template: this used to serve only
- * the shared default, but since `perProjectWarmEligible` allows custom templates
+ * per-workspace warm fast path. Generic over the template: this used to serve only
+ * the shared default, but since `perWorkspaceWarmEligible` allows custom templates
  * on the providers in KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS, the caller
  * passes whichever template's base identity it is warming. Returns undefined (never throws) whenever the
  * fast path isn't available: the provider doesn't implement
@@ -1578,81 +1578,81 @@ export async function resolveWarmBaseImageRef(
 }
 
 /**
- * Resolve the build-time clone credentials + runtime proxy origin for a project's
- * per-project warm bake. Reads the full project row (the GitBackedProject subset
- * lacks the fields `resolveProjectUpstream` needs). The build-time auth header is
+ * Resolve the build-time clone credentials + runtime proxy origin for a workspace's
+ * per-workspace warm bake. Reads the full workspace row (the GitBackedWorkspace subset
+ * lacks the fields `resolveWorkspaceUpstream` needs). The build-time auth header is
  * a short-lived git-host credential embedded ONLY in a one-shot RUN; origin is
  * reset to the Kortix proxy so the daemon re-auths per session at runtime.
  */
-async function resolveWarmRepoContext(project: GitBackedProject, tip: string): Promise<WarmRepoContext> {
-  const { projects } = await import('@kortix/db');
-  const { resolveProjectUpstream } = await import('../projects/lib/git');
-  const { proxyGitUrl } = await import('../projects/lib/sessions');
+async function resolveWarmRepoContext(workspace: GitBackedWorkspace, tip: string): Promise<WarmRepoContext> {
+  const { workspaces } = await import('@kortix/db');
+  const { resolveWorkspaceUpstream } = await import('../workspaces/lib/git');
+  const { proxyGitUrl } = await import('../workspaces/lib/sessions');
 
-  const [row] = await db.select().from(projects).where(eq(projects.projectId, project.projectId)).limit(1);
-  if (!row) throw new SnapshotBuildError(`project ${project.projectId} not found for warm-repo resolution`);
+  const [row] = await db.select().from(workspaces).where(eq(workspaces.workspaceId, workspace.workspaceId)).limit(1);
+  if (!row) throw new SnapshotBuildError(`workspace ${workspace.workspaceId} not found for warm-repo resolution`);
 
-  const upstream = await resolveProjectUpstream(row as never, 'read');
-  if (!upstream?.url) throw new SnapshotBuildError('no git upstream configured for project — cannot bake per-project warm');
+  const upstream = await resolveWorkspaceUpstream(row as never, 'read');
+  if (!upstream?.url) throw new SnapshotBuildError('no git upstream configured for workspace — cannot bake per-workspace warm');
 
   return {
     cloneUrl: upstream.url,
     cloneHeaders: upstream.headers ?? {},
-    branch: project.defaultBranch,
+    branch: workspace.defaultBranch,
     // Pin to the EXACT tip the snapshot name is keyed on (not just the branch),
     // so the staged checkout is byte-identical to the cache key.
     tip,
-    originUrl: proxyGitUrl(project.projectId),
+    originUrl: proxyGitUrl(workspace.workspaceId),
   };
 }
 
 /**
- * On-bake reap of a project's SUPERSEDED per-project warm images — the aggressive
- * cleanup prod does (warm-project.ts `reapOldProjectWarm` / `…Platinum`). A moved
+ * On-bake reap of a workspace's SUPERSEDED per-workspace warm images — the aggressive
+ * cleanup prod does (warm-workspace.ts `reapOldWorkspaceWarm` / `…Platinum`). A moved
  * tip orphans the old content-addressed image; `REAPABLE_SNAPSHOT_PREFIXES` lets
  * the *general* reaper sweep it eventually, but on Daytona (which has a
  * snapshot-COUNT quota) that lag piles up, so we delete superseded tips the moment
- * the new one is active — keeping ~1 image per active project, exactly like prod.
+ * the new one is active — keeping ~1 image per active workspace, exactly like prod.
  * Best-effort: a reap failure (list/delete error, provider hiccup) NEVER fails the
  * bake. Listing/deletion are provider-adapter capabilities, so cleanup remains
  * identical for Daytona, Platinum, and E2B.
  */
-async function reapOldPerProjectWarm(projectId: string, currentName: string, buildProvider: string): Promise<void> {
+async function reapOldPerWorkspaceWarm(workspaceId: string, currentName: string, buildProvider: string): Promise<void> {
   try {
     const provider = getSandboxProvider(buildProvider);
     const names = (await provider.listSnapshots()).map((snapshot) => snapshot.name);
-    const rawTargets = ppwarmReapTargets(projectId, currentName, names);
+    const rawTargets = ppwarmReapTargets(workspaceId, currentName, names);
     if (rawTargets.length === 0) return;
-    // FIX-K-lite: proj8 is only the first 8 hex of the projectId, so this prefix-
-    // scoped selection over an ORG-WIDE list could pick another project's LIVE
+    // FIX-K-lite: proj8 is only the first 8 hex of the workspaceId, so this prefix-
+    // scoped selection over an ORG-WIDE list could pick another workspace's LIVE
     // pinned image on a proj8 collision. Cross-check against the active pins of
-    // EVERY project and never delete one — a collision then just skips a reap.
+    // EVERY workspace and never delete one — a collision then just skips a reap.
     const pinned = await collectPinnedImageRefs();
     const targets = excludePinnedTargets(rawTargets, pinned);
     for (const name of rawTargets) {
       if (pinned.has(name)) {
-        console.log(`[snapshots] per-project warm: keeping ${name} (it is another project's ACTIVE pinned image)`);
+        console.log(`[snapshots] per-workspace warm: keeping ${name} (it is another workspace's ACTIVE pinned image)`);
       }
     }
     if (targets.length === 0) return;
     // A "superseded" name built minutes ago is very likely another live code
     // version's CURRENT warm image (different runtime fingerprint → different
-    // base identity → different warm name for the SAME project+tip). Deleting
+    // base identity → different warm name for the SAME workspace+tip). Deleting
     // it makes that runtime re-bake — and its reap symmetrically deletes OURS:
     // an infinite loop of full image builds. Freshly-built names are skipped;
     // once a name stops being rebuilt it ages out and is reaped normally.
     const recent = await recentlyBuiltSnapshotNames(targets, PPWARM_REAP_PROTECT_MS);
     for (const name of targets) {
       if (recent.has(name)) {
-        console.log(`[snapshots] per-project warm: keeping ${name} (built recently — likely a live runtime's current tip)`);
+        console.log(`[snapshots] per-workspace warm: keeping ${name} (built recently — likely a live runtime's current tip)`);
         continue;
       }
       await provider.deleteSnapshot(name);
-      console.log(`[snapshots] per-project warm: reaped superseded ${name}`);
+      console.log(`[snapshots] per-workspace warm: reaped superseded ${name}`);
     }
   } catch (err) {
     console.warn(
-      `[snapshots] per-project warm: supersession reap skipped: ${err instanceof Error ? err.message : String(err)}`,
+      `[snapshots] per-workspace warm: supersession reap skipped: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }

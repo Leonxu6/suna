@@ -1,18 +1,18 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
-const PROJECT_ID = '4967754f-867c-45b1-b647-da56f99a55d9';
+const WORKSPACE_ID = '4967754f-867c-45b1-b647-da56f99a55d9';
 const USER_ID = '49851790-41b5-4c3e-a39e-a022d0976255';
-const WORKSPACE_ID = 'T123';
+const PROVIDER_WORKSPACE_ID = 'T123';
 
-let projectRows: Array<{ projectId: string }> = [];
+let workspaceRows: Array<{ workspaceId: string }> = [];
 let saveError: Error | null = null;
 const saveCalls: Array<Record<string, unknown>> = [];
 
 function makeSelectChain(): any {
   const chain: any = {};
   for (const method of ['from', 'where', 'limit']) chain[method] = () => chain;
-  chain.then = (resolve: (rows: Array<{ projectId: string }>) => unknown) =>
-    Promise.resolve(resolve(projectRows));
+  chain.then = (resolve: (rows: Array<{ workspaceId: string }>) => unknown) =>
+    Promise.resolve(resolve(workspaceRows));
   return chain;
 }
 
@@ -40,7 +40,7 @@ mock.module('../channels/install-store', () => ({
     saveCalls.push(input);
     if (saveError) throw saveError;
   },
-  loadSlackTokenForProject: async () => null,
+  loadSlackTokenForWorkspace: async () => null,
 }));
 
 mock.module('../executor/sync', () => ({
@@ -50,7 +50,7 @@ mock.module('../executor/sync', () => ({
 const realFetch = globalThis.fetch;
 
 beforeEach(() => {
-  projectRows = [{ projectId: PROJECT_ID }];
+  workspaceRows = [{ workspaceId: WORKSPACE_ID }];
   saveError = null;
   saveCalls.length = 0;
   globalThis.fetch = (async () =>
@@ -58,7 +58,7 @@ beforeEach(() => {
       ok: true,
       access_token: 'xoxb-new-token',
       bot_user_id: 'U_BOT',
-      team: { id: WORKSPACE_ID, name: 'KortixDev' },
+      team: { id: PROVIDER_WORKSPACE_ID, name: 'KortixDev' },
     }), {
       status: 200,
       headers: { 'content-type': 'application/json' },
@@ -72,7 +72,7 @@ afterEach(() => {
 const { slackOauthApp, buildSlackInstallUrl } = await import('../channels/slack-oauth');
 
 function stateFromInstallUrl(): string {
-  const url = new URL(buildSlackInstallUrl(PROJECT_ID, USER_ID));
+  const url = new URL(buildSlackInstallUrl(WORKSPACE_ID, USER_ID));
   const state = url.searchParams.get('state');
   if (!state) throw new Error('missing state');
   return state;
@@ -85,16 +85,16 @@ function redirectLocation(res: Response): string {
 }
 
 describe('Slack OAuth callback', () => {
-  test('saves a project-scoped install and redirects to the project connectors page', async () => {
+  test('saves a workspace-scoped install and redirects to the workspace connectors page', async () => {
     const res = await slackOauthApp.request(`/callback?code=code-1&state=${stateFromInstallUrl()}`);
 
     expect(res.status).toBe(302);
     expect(redirectLocation(res)).toBe(
-      `https://dev.kortix.com/projects/${PROJECT_ID}?projectId=${PROJECT_ID}&success=1&customize=connectors`,
+      `https://dev.kortix.com/workspaces/${WORKSPACE_ID}?workspaceId=${WORKSPACE_ID}&success=1&customize=connectors`,
     );
     expect(saveCalls).toEqual([{
-      projectId: PROJECT_ID,
       workspaceId: WORKSPACE_ID,
+      providerWorkspaceId: PROVIDER_WORKSPACE_ID,
       botToken: 'xoxb-new-token',
       botUserId: 'U_BOT',
       teamName: 'KortixDev',
@@ -108,12 +108,12 @@ describe('Slack OAuth callback', () => {
 
     expect(res.status).toBe(302);
     expect(redirectLocation(res)).toBe(
-      `https://dev.kortix.com/projects/${PROJECT_ID}?projectId=${PROJECT_ID}&error=slack_install_save_failed&customize=connectors`,
+      `https://dev.kortix.com/workspaces/${WORKSPACE_ID}?workspaceId=${WORKSPACE_ID}&error=slack_install_save_failed&customize=connectors`,
     );
     expect(saveCalls).toHaveLength(1);
   });
 
-  test('redirects to the project when Slack token exchange fails unexpectedly', async () => {
+  test('redirects to the workspace when Slack token exchange fails unexpectedly', async () => {
     globalThis.fetch = (async () => {
       throw new Error('slack unavailable');
     }) as any;
@@ -122,12 +122,12 @@ describe('Slack OAuth callback', () => {
 
     expect(res.status).toBe(302);
     expect(redirectLocation(res)).toBe(
-      `https://dev.kortix.com/projects/${PROJECT_ID}?projectId=${PROJECT_ID}&error=oauth_exchange_failed&customize=connectors`,
+      `https://dev.kortix.com/workspaces/${WORKSPACE_ID}?workspaceId=${WORKSPACE_ID}&error=oauth_exchange_failed&customize=connectors`,
     );
     expect(saveCalls).toHaveLength(0);
   });
 
-  test('redirects to the project when Slack rejects the authorization code', async () => {
+  test('redirects to the workspace when Slack rejects the authorization code', async () => {
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({ ok: false, error: 'invalid_code' }), {
         status: 200,
@@ -138,7 +138,7 @@ describe('Slack OAuth callback', () => {
 
     expect(res.status).toBe(302);
     expect(redirectLocation(res)).toBe(
-      `https://dev.kortix.com/projects/${PROJECT_ID}?projectId=${PROJECT_ID}&error=invalid_code&customize=connectors`,
+      `https://dev.kortix.com/workspaces/${WORKSPACE_ID}?workspaceId=${WORKSPACE_ID}&error=invalid_code&customize=connectors`,
     );
     expect(saveCalls).toHaveLength(0);
   });

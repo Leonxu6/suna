@@ -9,7 +9,7 @@
  * JSON (see `shared/public-session-share-view.ts`).
  *
  * `:shareId` is the share's raw `share_id` (the uuid primary key on
- * `project_session_public_shares` — the same value the CRUD routes call
+ * `workspace_session_public_shares` — the same value the CRUD routes call
  * `share_id` and the frontend's `[shareId]` route param already is), NOT the
  * `kps_...` public token. Every other public-share surface
  * (`/v1/p/public-share/:token`, `public_path: /share/session/:token`) is
@@ -33,7 +33,7 @@
 
 import { createRoute, z } from '@hono/zod-openapi';
 import { errors, json, makeOpenApiApp } from '../openapi';
-import { UUID_V4_REGEX } from '../projects/lib/serializers';
+import { UUID_V4_REGEX } from '../workspaces/lib/serializers';
 import { createPublicSessionShareRateLimitMiddleware } from '../shared/rate-limit';
 import { publicShareToken, resolvePublicShare } from '../shared/session-public-shares';
 import { getPublicSessionInfo, getPublicSessionMessages } from '../shared/public-session-share-view';
@@ -76,7 +76,7 @@ publicSessionSharesApp.openapi(
       share: {
         share_id: resolved.row.shareId,
         session_id: resolved.row.sessionId,
-        project_id: resolved.row.projectId,
+        workspace_id: resolved.row.workspaceId,
         resource_type: resolved.row.resourceType,
         label: resolved.row.label,
         sandbox_status: resolved.row.sandboxStatus,

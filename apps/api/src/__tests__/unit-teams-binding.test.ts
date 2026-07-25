@@ -31,7 +31,7 @@ mock.module('../shared/db', () => ({
   hasDatabase: () => true,
 }));
 
-const { resolveConversationProject, setConversationProject } = await import(
+const { resolveConversationWorkspace, setConversationWorkspace } = await import(
   '../channels/teams/binding'
 );
 
@@ -41,38 +41,38 @@ beforeEach(() => {
 });
 
 describe('Teams conversation binding', () => {
-  test('ignores a stale binding to a project that is no longer installed for the tenant', async () => {
-    dbResults = [[{ projectId: 'proj-stale' }], [], [{ projectId: 'proj-installed' }]];
+  test('ignores a stale binding to a workspace that is no longer installed for the tenant', async () => {
+    dbResults = [[{ workspaceId: 'proj-stale' }], [], [{ workspaceId: 'proj-installed' }]];
 
-    await expect(resolveConversationProject('tenant-1', 'conv-1')).resolves.toBe('proj-installed');
+    await expect(resolveConversationWorkspace('tenant-1', 'conv-1')).resolves.toBe('proj-installed');
   });
 
-  test('refuses to bind a project that is not installed for the tenant', async () => {
+  test('refuses to bind a workspace that is not installed for the tenant', async () => {
     dbResults = [[]];
-    const switched = await setConversationProject({
+    const switched = await setConversationWorkspace({
       tenantId: 'tenant-1',
       conversationId: 'conv-1',
-      projectId: 'proj-other',
+      workspaceId: 'proj-other',
     });
 
     expect(switched).toBe(false);
     expect(dbWrites.some((w) => w.op === 'insert.values')).toBe(false);
   });
 
-  test('binds the conversation when the project is installed for the tenant', async () => {
-    dbResults = [[{ projectId: 'proj-1' }], []];
-    const switched = await setConversationProject({
+  test('binds the conversation when the workspace is installed for the tenant', async () => {
+    dbResults = [[{ workspaceId: 'proj-1' }], []];
+    const switched = await setConversationWorkspace({
       tenantId: 'tenant-1',
       conversationId: 'conv-1',
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
     });
 
     expect(switched).toBe(true);
     expect(dbWrites.find((w) => w.op === 'insert.values')?.payload).toMatchObject({
       platform: 'teams',
-      workspaceId: 'tenant-1',
+      providerWorkspaceId: 'tenant-1',
       channelId: 'conv-1',
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
     });
   });
 });

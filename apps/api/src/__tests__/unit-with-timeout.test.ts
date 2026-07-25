@@ -5,7 +5,7 @@
  * Regression context: a hung `snapshot.get` behind the `/sandbox-health`
  * polling endpoint left the request pending until the frontend's 30s client
  * timeout fired, surfacing as the Sentry/Better Stack error
- * "ApiError — Request timed out after 30s: /projects/<id>/sandbox-health".
+ * "ApiError — Request timed out after 30s: /workspaces/<id>/sandbox-health".
  * The guard turns that unbounded hang into a fast, catchable rejection so the
  * handler can degrade gracefully.
  */

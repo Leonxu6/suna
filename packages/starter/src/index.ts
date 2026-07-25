@@ -67,14 +67,34 @@ export function isKortixManagedSkillName(name: string): name is KortixManagedSki
   return KORTIX_MANAGED_SKILL_NAME_SET.has(name);
 }
 
-export interface StarterVars {
-  /** Human display name for the project (e.g. "Company OS"). */
-  projectName: string;
+interface StarterVarsBase {
   /** "owner/repo" GitHub identifier. Optional — defaults to "your-org/your-repo". */
   repoFullName?: string;
   /** Starter kit. Defaults to the one user-facing kit
    *  (`general-knowledge-worker`). `minimal` is an internal base-only build. */
   template?: StarterTemplateId;
+}
+
+export type StarterVars = StarterVarsBase &
+  (
+    | {
+        /** Human display name for the workspace (for example, "Company OS"). */
+        workspaceName: string;
+        /** @deprecated Use `workspaceName`. */
+        projectName?: string;
+      }
+    | {
+        /** @deprecated Use `workspaceName`. */
+        projectName: string;
+        workspaceName?: string;
+      }
+  );
+
+interface ResolvedStarterVars {
+  workspaceName: string;
+  projectName: string;
+  repoFullName: string;
+  template: StarterTemplateId;
 }
 
 /** Absolute path to the bundled base template directory. */
@@ -133,8 +153,10 @@ export function listGeneralKnowledgeWorkerSkills(): string[] {
  * ordering — both the API and CLI rely on that.
  */
 export function getStarterFiles(vars: StarterVars): StarterFile[] {
-  const resolvedVars: Required<StarterVars> = {
-    projectName: vars.projectName,
+  const workspaceName = (vars.workspaceName ?? vars.projectName)!;
+  const resolvedVars: ResolvedStarterVars = {
+    workspaceName,
+    projectName: workspaceName,
     repoFullName: vars.repoFullName ?? 'your-org/your-repo',
     template: normalizeStarterTemplateId(vars.template),
   };
@@ -180,6 +202,9 @@ export function getProjectTemplateFiles(): StarterFile[] {
     a.path.localeCompare(b.path),
   );
 }
+
+/** Canonical name for `getProjectTemplateFiles`. */
+export const getWorkspaceTemplateFiles = getProjectTemplateFiles;
 
 /**
  * Map of every bundled-catalog file path → its real repo-relative source path
@@ -240,7 +265,7 @@ export function interpolateVars(input: string, vars: Record<string, string>): st
   });
 }
 
-function interpolate(input: string, vars: Required<StarterVars>): string {
+function interpolate(input: string, vars: ResolvedStarterVars): string {
   return interpolateVars(input, vars as unknown as Record<string, string>);
 }
 

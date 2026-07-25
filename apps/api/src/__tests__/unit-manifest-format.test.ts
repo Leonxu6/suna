@@ -3,10 +3,10 @@
 // the same file in the same format. (Read RESOLUTION is exercised against a live
 // git mirror in ke2e; here we cover the pure parse/serialize dispatch.)
 import { describe, expect, test } from 'bun:test';
-import { parseManifestString, serializeManifest } from '../projects/triggers';
+import { parseManifestString, serializeManifest } from '../workspaces/triggers';
 
 const YAML = `kortix_version: 1
-project:
+workspace:
   name: demo
 triggers:
   - slug: nightly
@@ -17,7 +17,7 @@ triggers:
 
 // Legacy v1 manifest format (kortix.toml).
 const LEGACY_TOML = `kortix_version = 1
-[project]
+[workspace]
 name = "demo"
 `;
 
@@ -27,13 +27,13 @@ describe('parseManifestString / serializeManifest dual-format', () => {
     expect(m.format).toBe('yaml');
     expect(m.path).toBe('kortix.yaml');
     expect(m.schemaVersion).toBe(1);
-    expect((m.raw.project as { name: string }).name).toBe('demo');
+    expect((m.raw.workspace as { name: string }).name).toBe('demo');
 
     const out = serializeManifest(m);
     expect(out.trimStart().startsWith('kortix_version')).toBe(true);
     // A yaml manifest serializes to yaml, never toml table headers.
-    expect(out).toContain('project:');
-    expect(out).not.toContain('[project]');
+    expect(out).toContain('workspace:');
+    expect(out).not.toContain('[workspace]');
     // Serialized text re-parses to the same object.
     expect(parseManifestString(out, 'yaml', 'kortix.yaml').raw).toEqual(m.raw);
   });
@@ -43,8 +43,8 @@ describe('parseManifestString / serializeManifest dual-format', () => {
     expect(m.format).toBe('toml');
     expect(m.path).toBe('kortix.toml');
     const out = serializeManifest(m);
-    expect(out).toContain('[project]');
-    expect(out).not.toContain('project:');
+    expect(out).toContain('[workspace]');
+    expect(out).not.toContain('workspace:');
   });
 
   test('a mutation survives the yaml round-trip', () => {

@@ -193,7 +193,7 @@ describe('createPerSeatCheckoutSession', () => {
     const result = await createPerSeatCheckoutSession({
       accountId: 'acc_test_123',
       email: 'test@example.com',
-      successUrl: 'https://example.com/projects?team_signup=success',
+      successUrl: 'https://example.com/workspaces?team_signup=success',
       cancelUrl: 'https://example.com/cancel',
     });
 

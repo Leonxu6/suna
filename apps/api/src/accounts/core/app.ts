@@ -51,7 +51,7 @@ export const AccountDetailSchema = z
     account_id: z.string(),
     name: z.string(),
     member_count: z.number(),
-    project_count: z.number(),
+    workspace_count: z.number(),
     role: z.string(),
     /** Account-wide MFA enforcement flag — drives the members-list MFA badges. */
     mfa_required: z.boolean().optional(),
@@ -66,7 +66,7 @@ export const AccountMemberSchema = z
     email: z.string().nullable(),
     account_role: z.string(),
     is_super_admin: z.boolean(),
-    explicit_project_count: z.number(),
+    explicit_workspace_count: z.number(),
     groups: z.array(z.object({ group_id: z.string(), name: z.string() })),
     active_pat_count: z.number(),
     has_verified_mfa: z.boolean(),
@@ -78,7 +78,7 @@ export const AccountTokenSchema = z
   .object({
     token_id: z.string(),
     name: z.string(),
-    project_id: z.string().nullable().optional(),
+    workspace_id: z.string().nullable().optional(),
     public_key: z.string(),
     status: z.string(),
     expires_at: z.string().nullable(),
@@ -110,7 +110,7 @@ export const MeSchema = z
     token_context: z
       .object({
         auth_type: z.string().nullable(),
-        project_id: z.string().nullable(),
+        workspace_id: z.string().nullable(),
         session_id: z.string().nullable(),
         agent: z.string().nullable(),
         connectors: z.union([z.literal('all'), z.array(z.string())]).nullable(),
@@ -226,7 +226,7 @@ export async function lookupEmailsByUserIds(
 // Display names for a batch of accounts, deriving the fallback for unnamed
 // (placeholder-named) accounts from the account OWNER's email — not the
 // caller's. Deriving from the caller made every unnamed account a user was
-// invited into render as "<caller>'s Account", so shared projects looked like
+// invited into render as "<caller>'s Account", so shared workspaces looked like
 // they lived in the caller's own personal account.
 export async function resolveAccountDisplayNames(
   rows: Array<{ accountId: string; name: string | null }>,
@@ -289,9 +289,9 @@ export function serializeAccount(row: typeof accounts.$inferSelect) {
 // is stamped so subsequent calls are no-ops. Errors are swallowed — auto-claim is
 // best-effort and must never block account listing.
 //
-// Project invites (the ones carrying bootstrap grants) are deliberately left
+// Workspace invites (the ones carrying bootstrap grants) are deliberately left
 // untouched: they must go through the explicit accept/decline dialog so the
-// recipient consents AND the project_members grant actually gets applied. See
+// recipient consents AND the workspace_members grant actually gets applied. See
 // the per-invite skip in the loop below.
 export async function autoClaimPendingInvites(userId: string, email: string): Promise<void> {
   if (!email) return;
@@ -311,12 +311,12 @@ export async function autoClaimPendingInvites(userId: string, email: string): Pr
       );
 
     for (const invite of pending) {
-      // Project invites carry bootstrap grants and MUST go through the explicit
+      // Workspace invites carry bootstrap grants and MUST go through the explicit
       // accept flow (POST /account-invites/:id/accept) — that's the only path
-      // that applies the project_members grants. Silently auto-claiming one here
+      // that applies the workspace_members grants. Silently auto-claiming one here
       // stamps accepted_at and adds the account membership but never grants
-      // project access, so the inviter sees "accepted" while the invitee joins
-      // the account, can't see the project, and is never shown the accept/decline
+      // workspace access, so the inviter sees "accepted" while the invitee joins
+      // the account, can't see the workspace, and is never shown the accept/decline
       // dialog. Leave grant-carrying invites pending for the recipient to act on.
       if ((invite.bootstrapGrants ?? []).length > 0) continue;
       try {

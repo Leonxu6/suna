@@ -68,68 +68,80 @@ export const SANDBOX_DISK_BOUNDS = { min: 1, max: 500 } as const;
  * Account-scoped admin actions (member.*, billing.*, token.*, project.create, …)
  * are excluded here — but omission from this list is NOT the mechanism
  * that keeps an agent off them. The actual enforcement is that every
- * agent-session token is project-scoped (`account_tokens.project_id`):
+ * agent-session token is workspace-scoped (`account_tokens.project_id`):
  * apps/api's IAM v2 engine (`iam/engine-v2.ts`'s `computeTokenScope`) refuses
  * ANY account-scope action outright for a project-bound token — BEFORE the
  * agent's `kortix_cli` grant is even loaded or consulted. This list is a
  * curation/UX surface (what the CLI/dashboard editor OFFER as grantable, and
  * what `validateGrantList` flags as a bad `kortix_cli` entry), not the
  * security boundary itself — grant-omission alone would not stop a
- * hypothetical non-project-scoped token from calling an account action.
+ * hypothetical non-workspace-scoped token from calling an account action.
  *
  * The channel.* resource actions (channel.send, …) and the
- * project.gateway.routing.edit / project.session.exec / project.schedule.* /
- * project.webhook.* leaves were removed from the catalog (IAM enforcement
+ * workspace.gateway.routing.edit / workspace.session.exec /
+ * workspace.schedule.* / workspace.webhook.* leaves were removed from the
+ * catalog (IAM enforcement
  * audit, 2026-07): none of them were ever asserted on any route, so granting
  * or omitting them was a silent no-op.
  */
 // MUST stay in sync with apps/api iam/actions.ts GRANTABLE_KORTIX_CLI (=
-// Object.values(PROJECT_ACTIONS)). The unit-agents-parse drift-guard test
+// Object.values(WORKSPACE_ACTIONS)). The unit-agents-parse drift-guard test
 // fails loudly if these diverge (this package can't import apps/api).
 export const GRANTABLE_KORTIX_CLI_ACTIONS: readonly string[] = [
-  'project.read',
-  'project.write',
-  'project.delete',
-  'project.cr.open',
-  'project.cr.merge',
-  'project.session.read',
-  'project.session.start',
-  'project.session.stop',
-  'project.session.bindings.write',
-  'project.members.read',
-  'project.members.manage',
-  'project.trigger.read',
-  'project.trigger.create',
-  'project.trigger.update',
-  'project.trigger.delete',
-  'project.trigger.fire',
-  'project.gateway.logs.read',
-  'project.gateway.spend.read',
-  'project.gateway.budget.set',
-  'project.gateway.keys.manage',
+  'workspace.read',
+  'workspace.write',
+  'workspace.delete',
+  'workspace.cr.open',
+  'workspace.cr.merge',
+  'workspace.session.read',
+  'workspace.session.start',
+  'workspace.session.stop',
+  'workspace.session.bindings.write',
+  'workspace.members.read',
+  'workspace.members.manage',
+  'workspace.trigger.read',
+  'workspace.trigger.create',
+  'workspace.trigger.update',
+  'workspace.trigger.delete',
+  'workspace.trigger.fire',
+  'workspace.gateway.logs.read',
+  'workspace.gateway.spend.read',
+  'workspace.gateway.budget.set',
+  'workspace.gateway.keys.manage',
   // IAM v1 per-capability leaves.
-  'project.agent.read',
-  'project.agent.write',
-  'project.skill.read',
-  'project.skill.write',
-  'project.command.read',
-  'project.command.write',
-  'project.file.read',
-  'project.file.write',
-  'project.customize.read',
-  'project.customize.write',
-  'project.gitops.read',
-  'project.gitops.push',
-  'project.gitops.merge',
-  'project.secret.read',
-  'project.secret.write',
-  'project.connector.read',
-  'project.connector.profiles.manage',
-  'project.connector.write',
-  'project.review.read',
-  'project.review.submit',
-  'project.review.act',
+  'workspace.agent.read',
+  'workspace.agent.write',
+  'workspace.skill.read',
+  'workspace.skill.write',
+  'workspace.command.read',
+  'workspace.command.write',
+  'workspace.file.read',
+  'workspace.file.write',
+  'workspace.customize.read',
+  'workspace.customize.write',
+  'workspace.gitops.read',
+  'workspace.gitops.push',
+  'workspace.gitops.merge',
+  'workspace.secret.read',
+  'workspace.secret.write',
+  'workspace.connector.read',
+  'workspace.connector.profiles.manage',
+  'workspace.connector.write',
+  'workspace.review.read',
+  'workspace.review.submit',
+  'workspace.review.act',
 ];
+
+/** Deprecated aliases accepted from existing manifests. */
+export const LEGACY_PROJECT_KORTIX_CLI_ACTIONS: readonly string[] =
+  GRANTABLE_KORTIX_CLI_ACTIONS.map((action) =>
+    action.replace(/^workspace\./, 'project.'),
+  );
+
+export function canonicalizeKortixCliAction(action: string): string {
+  if (!LEGACY_PROJECT_KORTIX_CLI_ACTIONS.includes(action)) return action;
+  return action.replace(/^project\./, 'workspace.');
+}
 
 /**
  * Actions removed from the enforcement catalog (IAM dead-catalog cleanup,

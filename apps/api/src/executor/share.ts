@@ -1,19 +1,19 @@
 /**
  * Generic "who can use it" member/group sharing — the mechanism session
- * visibility (project_session_grants) uses. Three dashboard options map onto
+ * visibility (workspace_session_grants) uses. Three dashboard options map onto
  * one mechanism:
  *
- *   Project wide   → visibility='project'                 (everyone)
+ *   Workspace wide   → visibility='workspace'                 (everyone)
  *   Select members → visibility='restricted' + grants     (members and/or groups)
  *   Just me        → visibility='private'                 (owner only)
  *
- * Rule (Marko): empty allow-list = whole project; ≥1 grant = restricted.
+ * Rule (Marko): empty allow-list = whole workspace; ≥1 grant = restricted.
  * Pure logic here is unit-tested; DB helpers feed the session CRUD.
  *
- * Project SECRETS no longer use this — secret sharing was retired (a secret is
- * always project-wide; see migration 20260706_secrets_v2_identifier_model.sql
- * and projects/secrets.ts). CONNECTORS no longer use this either — a connector
- * is always project-wide visible; the only access gate is the agent-side
+ * Workspace SECRETS no longer use this — secret sharing was retired (a secret is
+ * always workspace-wide; see migration 20260706_secrets_v2_identifier_model.sql
+ * and workspaces/secrets.ts). CONNECTORS no longer use this either — a connector
+ * is always workspace-wide visible; the only access gate is the agent-side
  * `[[agents]].connectors` grant (iam/agent-scope.ts). This file keeps the
  * generic pure helpers + session DB helpers only.
  *
@@ -22,12 +22,13 @@
 import { eq, inArray } from 'drizzle-orm';
 import {
   accountGroupMembers,
-  projectSessionGrants,
-  projectSessions,
+  workspaceSessionGrants,
+  workspaceSessions,
 } from '@kortix/db';
 import { db } from '../shared/db';
+import { toPersistedSessionVisibility } from '../workspaces/lib/persistence';
 
-export type ShareScope = 'project' | 'restricted';
+export type ShareScope = 'workspace' | 'restricted';
 
 export interface SecretGrant {
   principalType: 'member' | 'group';
@@ -42,14 +43,14 @@ export interface ShareSubject {
 
 /** Pure: may this subject use a `restricted`-allow-list resource with the given
  *  scope + grants? (Despite the name, this is now generic — session visibility
- *  is the remaining caller; project secrets and connectors both dropped
+ *  is the remaining caller; workspace secrets and connectors both dropped
  *  restricted sharing entirely — see the file doc comment.) */
 export function isSecretUsableBy(
   shareScope: ShareScope,
   grants: SecretGrant[],
   subject: ShareSubject,
 ): boolean {
-  if (shareScope === 'project') return true;
+  if (shareScope === 'workspace') return true;
   for (const g of grants) {
     if (g.principalType === 'member' && g.principalId === subject.userId) return true;
     if (g.principalType === 'group' && subject.groupIds.includes(g.principalId)) return true;
@@ -59,7 +60,7 @@ export function isSecretUsableBy(
 
 /** The dashboard's three sharing options, before persistence. */
 export type SharingIntent =
-  | { mode: 'project' }
+  | { mode: 'workspace' }
   | { mode: 'private'; ownerId: string }
   | { mode: 'members'; memberIds?: readonly string[]; groupIds?: readonly string[] };
 
@@ -68,7 +69,7 @@ export function intentToScope(intent: SharingIntent): {
   shareScope: ShareScope;
   grants: SecretGrant[];
 } {
-  if (intent.mode === 'project') return { shareScope: 'project', grants: [] };
+  if (intent.mode === 'workspace') return { shareScope: 'workspace', grants: [] };
   if (intent.mode === 'private') {
     return { shareScope: 'restricted', grants: [{ principalType: 'member', principalId: intent.ownerId }] };
   }
@@ -76,14 +77,14 @@ export function intentToScope(intent: SharingIntent): {
     ...(intent.memberIds ?? []).map((id) => ({ principalType: 'member' as const, principalId: id })),
     ...(intent.groupIds ?? []).map((id) => ({ principalType: 'group' as const, principalId: id })),
   ];
-  // Empty allow-list collapses to project-wide (Marko's rule).
-  if (grants.length === 0) return { shareScope: 'project', grants: [] };
+  // Empty allow-list collapses to workspace-wide (Marko's rule).
+  if (grants.length === 0) return { shareScope: 'workspace', grants: [] };
   return { shareScope: 'restricted', grants };
 }
 
 /** Inverse of intentToScope — for rendering the dashboard's current selection. */
 export function scopeToIntent(shareScope: ShareScope, grants: SecretGrant[]): SharingIntent {
-  if (shareScope === 'project') return { mode: 'project' };
+  if (shareScope === 'workspace') return { mode: 'workspace' };
   const memberIds = grants.filter((g) => g.principalType === 'member').map((g) => g.principalId);
   const groupIds = grants.filter((g) => g.principalType === 'group').map((g) => g.principalId);
   if (memberIds.length === 1 && groupIds.length === 0) return { mode: 'private', ownerId: memberIds[0]! };
@@ -97,7 +98,7 @@ export function scopeToIntent(shareScope: ShareScope, grants: SecretGrant[]): Sh
  */
 export function parseSharingIntent(body: any, fallbackOwner: string): SharingIntent | null {
   const mode = typeof body?.mode === 'string' ? body.mode : '';
-  if (mode === 'project') return { mode: 'project' };
+  if (mode === 'workspace') return { mode: 'workspace' };
   if (mode === 'private') {
     const ownerId = typeof body?.ownerId === 'string' && body.ownerId ? body.ownerId : fallbackOwner;
     return { mode: 'private', ownerId };
@@ -125,12 +126,12 @@ export async function resolveShareSubject(userId: string): Promise<ShareSubject>
  *
  * Same allow-list mechanism as secrets, but sessions have a first-class
  * `private` visibility (owner only) instead of modelling it as restricted+owner.
- * The dashboard's SharingIntent maps: project→project, private→private,
+ * The dashboard's SharingIntent maps: workspace→workspace, private→private,
  * members→restricted+grants (empty members collapses back to private).
  * See docs/specs/iam.md.
  */
 
-export type SessionVisibility = 'private' | 'project' | 'restricted';
+export type SessionVisibility = 'private' | 'workspace' | 'restricted';
 
 /** Pure: can this subject see/open the session? The owner always can. */
 export function isSessionVisibleTo(
@@ -140,7 +141,7 @@ export function isSessionVisibleTo(
   subject: ShareSubject,
 ): boolean {
   if (ownerId && ownerId === subject.userId) return true;
-  if (visibility === 'project') return true;
+  if (visibility === 'workspace') return true;
   if (visibility === 'restricted') {
     for (const g of grants) {
       if (g.principalType === 'member' && g.principalId === subject.userId) return true;
@@ -155,7 +156,7 @@ export function sessionIntentToVisibility(intent: SharingIntent): {
   visibility: SessionVisibility;
   grants: SecretGrant[];
 } {
-  if (intent.mode === 'project') return { visibility: 'project', grants: [] };
+  if (intent.mode === 'workspace') return { visibility: 'workspace', grants: [] };
   if (intent.mode === 'private') return { visibility: 'private', grants: [] };
   const grants: SecretGrant[] = [
     ...(intent.memberIds ?? []).map((id) => ({ principalType: 'member' as const, principalId: id })),
@@ -168,7 +169,7 @@ export function sessionIntentToVisibility(intent: SharingIntent): {
 
 /** Inverse of sessionIntentToVisibility — for rendering the current selection. */
 export function visibilityToIntent(visibility: SessionVisibility, grants: SecretGrant[]): SharingIntent {
-  if (visibility === 'project') return { mode: 'project' };
+  if (visibility === 'workspace') return { mode: 'workspace' };
   if (visibility === 'private') return { mode: 'private', ownerId: '' };
   const memberIds = grants.filter((g) => g.principalType === 'member').map((g) => g.principalId);
   const groupIds = grants.filter((g) => g.principalType === 'group').map((g) => g.principalId);
@@ -181,12 +182,12 @@ export async function loadSessionGrants(sessionIds: string[]): Promise<Map<strin
   if (sessionIds.length === 0) return out;
   const rows = await db
     .select({
-      sessionId: projectSessionGrants.sessionId,
-      principalType: projectSessionGrants.principalType,
-      principalId: projectSessionGrants.principalId,
+      sessionId: workspaceSessionGrants.sessionId,
+      principalType: workspaceSessionGrants.principalType,
+      principalId: workspaceSessionGrants.principalId,
     })
-    .from(projectSessionGrants)
-    .where(inArray(projectSessionGrants.sessionId, sessionIds));
+    .from(workspaceSessionGrants)
+    .where(inArray(workspaceSessionGrants.sessionId, sessionIds));
   for (const r of rows) {
     const list = out.get(r.sessionId) ?? [];
     list.push({ principalType: r.principalType as 'member' | 'group', principalId: r.principalId });
@@ -198,10 +199,13 @@ export async function loadSessionGrants(sessionIds: string[]): Promise<Map<strin
 /** Persist a session's sharing: set visibility + replace its grants. */
 export async function setSessionSharing(sessionId: string, intent: SharingIntent): Promise<void> {
   const { visibility, grants } = sessionIntentToVisibility(intent);
-  await db.update(projectSessions).set({ visibility, updatedAt: new Date() }).where(eq(projectSessions.sessionId, sessionId));
-  await db.delete(projectSessionGrants).where(eq(projectSessionGrants.sessionId, sessionId));
+  await db
+    .update(workspaceSessions)
+    .set({ visibility: toPersistedSessionVisibility(visibility), updatedAt: new Date() })
+    .where(eq(workspaceSessions.sessionId, sessionId));
+  await db.delete(workspaceSessionGrants).where(eq(workspaceSessionGrants.sessionId, sessionId));
   if (grants.length > 0) {
-    await db.insert(projectSessionGrants).values(
+    await db.insert(workspaceSessionGrants).values(
       grants.map((g) => ({ sessionId, principalType: g.principalType, principalId: g.principalId })),
     );
   }

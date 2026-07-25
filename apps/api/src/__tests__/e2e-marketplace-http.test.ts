@@ -32,7 +32,7 @@ describe('marketplace HTTP contract', () => {
     server?.stop(true);
   });
 
-  test('GET /marketplace/items surfaces the starter project + its skills; managed kortix-* skills stay internal', async () => {
+  test('GET /marketplace/items surfaces the starter workspace + its skills; managed kortix-* skills stay internal', async () => {
     const res = await fetch(`${baseUrl}/marketplace/items?source=kortix`, {
       headers: { Authorization: 'Bearer test-token' },
     });
@@ -47,9 +47,9 @@ describe('marketplace HTTP contract', () => {
       expect(body.items.find((item) => item.name === name)).toBeUndefined();
     }
 
-    // Browse leads with the "Kortix Starter" project AND lists the individual
+    // Browse leads with the "Kortix Starter" workspace AND lists the individual
     // kortix-starter skills (agent-browser, pdf, …) as their own top-level
-    // tiles again — each one carries a `partOfProject` badge back to the project.
+    // tiles again — each one carries a `partOfProject` badge back to the workspace.
     expect(body.items.find((item) => item.id === 'kortix-projects:starter')).toBeTruthy();
     const agentBrowser = body.items.find((item) => item.name === 'agent-browser');
     expect(agentBrowser).toBeTruthy();
@@ -81,7 +81,7 @@ describe('marketplace HTTP contract', () => {
     expect(authCalls).toBeGreaterThan(0);
   });
 
-  test('GET /marketplace/items/:id exposes the starter project detail and its skills; managed system skills stay unreachable', async () => {
+  test('GET /marketplace/items/:id exposes the starter workspace detail and its skills; managed system skills stay unreachable', async () => {
     const detail = await fetch(`${baseUrl}/marketplace/items/${encodeURIComponent('kortix-projects:starter')}`, {
       headers: { Authorization: 'Bearer test-token' },
     });
@@ -100,7 +100,7 @@ describe('marketplace HTTP contract', () => {
     expect(body.dependencyItems.some((d) => d.name === 'pdf')).toBe(true);
 
     // A starter skill is also reachable as its own browse-and-install card, at
-    // its own id, badged back to the project it also ships inside of.
+    // its own id, badged back to the workspace it also ships inside of.
     const skillDetail = await fetch(`${baseUrl}/marketplace/items/${encodeURIComponent('kortix-starter:agent-browser')}`, {
       headers: { Authorization: 'Bearer test-token' },
     });

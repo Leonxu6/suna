@@ -27,7 +27,7 @@ import {
  * member joins account_group_members immediately; a pending invite can't (no user
  * row exists) so we park the group on the invite's bootstrap_grants and it
  * materializes on acceptance (accounts/invites.ts applyBootstrapGrants), the same
- * ride-along used for project grants. Values matching neither are ignored (RFC
+ * ride-along used for workspace grants. Values matching neither are ignored (RFC
  * 7644 tolerates unknown members). Insert-only — removals are handled by the
  * caller.
  */
@@ -142,7 +142,7 @@ export function resolveInviteMemberAction(args: {
 
 /**
  * Pure: strip a parked `{group_id}` entry from an invite's bootstrap_grants.
- * Exported for unit tests. Project grants and other groups pass through.
+ * Exported for unit tests. Workspace grants and other groups pass through.
  */
 export function stripGroupGrant(
   grants: Array<Record<string, unknown>> | null | undefined,

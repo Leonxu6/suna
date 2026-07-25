@@ -43,11 +43,11 @@ mock.module('../channels/slack/turn', () => ({
   rowToHandle: () => ({ sessionId: '', channel: 'C1', token: 'xoxb', ts: '', steps: [] }),
 }));
 mock.module('../channels/install-store', () => ({
-  loadSlackBotUserIdForProject: async () => 'B1',
-  loadSlackTokenForProject: async () => 'xoxb-test',
-  loadSlackSigningSecretForProject: async () => null,
-  loadSlackTeamNameForProject: async () => null,
-  listProjectsForWorkspace: async () => ['proj-1'],
+  loadSlackBotUserIdForWorkspace: async () => 'B1',
+  loadSlackTokenForWorkspace: async () => 'xoxb-test',
+  loadSlackSigningSecretForWorkspace: async () => null,
+  loadSlackTeamNameForWorkspace: async () => null,
+  listWorkspacesForWorkspace: async () => ['proj-1'],
   loadSlackInstall: async () => null,
 }));
 mock.module('../channels/slack-api', () => ({

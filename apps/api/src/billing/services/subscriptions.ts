@@ -218,7 +218,7 @@ export async function createCheckoutSession(params: {
 
         // Legacy auto-provision of a per-account sandbox at checkout time
         // has been removed — sandboxes are now per-session, provisioned on
-        // demand under /v1/projects/:id/sessions.
+        // demand under /v1/workspaces/:id/sessions.
         void serverType;
         void location;
         void tierKey;

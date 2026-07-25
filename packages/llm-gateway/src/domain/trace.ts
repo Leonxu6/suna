@@ -6,6 +6,8 @@ export interface GatewayTrace {
   startedAt: string;
   accountId: string;
   actorUserId: string;
+  workspaceId?: string;
+  /** @deprecated Use `workspaceId`. */
   projectId?: string;
   sessionId?: string;
   keyId?: string;

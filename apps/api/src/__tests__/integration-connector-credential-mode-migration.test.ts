@@ -16,7 +16,7 @@
 import { describe, expect, test, beforeAll, afterAll } from 'bun:test';
 import { sql, eq, inArray } from 'drizzle-orm';
 import { db } from '../shared/db';
-import { projects, executorConnectors, executorCredentials } from '@kortix/db';
+import { workspaces, executorConnectors, executorCredentials } from '@kortix/db';
 
 const CONN_SHARED_ALREADY = 'bbbbbbbb-1111-4000-8000-000000000001';
 const CONN_PER_USER_WITH_SHARED = 'bbbbbbbb-1111-4000-8000-000000000002';
@@ -25,7 +25,7 @@ const CONNECTOR_IDS = [CONN_SHARED_ALREADY, CONN_PER_USER_WITH_SHARED, CONN_PER_
 
 const CONSTRAINT_NAME = 'executor_connectors_credential_mode_shared_only';
 
-let projectId = '';
+let workspaceId = '';
 let accountId = '';
 let memberUserId = '';
 let seeded = false;
@@ -61,14 +61,14 @@ async function restoreCheckConstraint(): Promise<void> {
 
 beforeAll(async () => {
   const rows = (await db.execute(
-    sql`select project_id, account_id from kortix.projects limit 1`,
-  )) as unknown as Array<{ project_id: string; account_id: string }>;
+    sql`select workspace_id, account_id from kortix.workspaces limit 1`,
+  )) as unknown as Array<{ workspace_id: string; account_id: string }>;
   const proj = rows[0];
   if (!proj) {
-    console.warn('[integration] no project in local DB — skipping credential-mode migration test');
+    console.warn('[integration] no workspace in local DB — skipping credential-mode migration test');
     return;
   }
-  projectId = proj.project_id;
+  workspaceId = proj.workspace_id;
   accountId = proj.account_id;
   memberUserId = accountId; // any real uuid works as the "member" for this fixture
 
@@ -80,7 +80,7 @@ beforeAll(async () => {
     {
       connectorId: CONN_SHARED_ALREADY,
       accountId,
-      projectId,
+      workspaceId,
       slug: 'migration-test-shared',
       name: 'Migration Test Shared',
       providerType: 'pipedream',
@@ -89,7 +89,7 @@ beforeAll(async () => {
     {
       connectorId: CONN_PER_USER_WITH_SHARED,
       accountId,
-      projectId,
+      workspaceId,
       slug: 'migration-test-peruser-with-shared',
       name: 'Migration Test PerUser w/ shared',
       providerType: 'pipedream',
@@ -98,7 +98,7 @@ beforeAll(async () => {
     {
       connectorId: CONN_PER_USER_NO_SHARED,
       accountId,
-      projectId,
+      workspaceId,
       slug: 'migration-test-peruser-no-shared',
       name: 'Migration Test PerUser no shared',
       providerType: 'pipedream',

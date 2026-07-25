@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test';
 
 // Account display names must fall back to the account OWNER's email, not the
 // caller's — otherwise every unnamed account a user is invited into renders
-// as "<caller>'s Account" and shared projects look like they live in the
+// as "<caller>'s Account" and shared workspaces look like they live in the
 // caller's personal account.
 
 let dbResults: unknown[][] = [];

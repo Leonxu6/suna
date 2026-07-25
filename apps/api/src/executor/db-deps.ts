@@ -4,10 +4,10 @@ import {
   executorConnectorPolicies,
   executorConnectors,
   executorExecutions,
-  executorProjectPolicies,
-  executorProjectSettings,
-  projectSessions,
-  projects,
+  executorWorkspacePolicies,
+  executorWorkspaceSettings,
+  workspaceSessions,
+  workspaces,
   sessionToolApprovals,
 } from '@kortix/db';
 import { sanitizeConnectorHeaders } from '@kortix/manifest-schema';
@@ -24,28 +24,28 @@ import { resolveAgentMailApiKey } from '../channels/agentmail-api';
 import { config } from '../config';
 import {
   loadAgentMailApiKeyForInbox,
-  loadAgentMailApiKeyForProject,
+  loadAgentMailApiKeyForWorkspace,
   loadAgentMailInstall,
   loadVoiceInstall,
-  loadVoiceTokenForProject,
+  loadVoiceTokenForWorkspace,
   loadSlackInstall,
-  loadSlackTokenForProject,
+  loadSlackTokenForWorkspace,
   loadTeamsBotCredentials,
   loadTeamsInstall,
-  loadTeamsTenantForProject,
+  loadTeamsTenantForWorkspace,
 } from '../channels/install-store';
 import { bridgePageUrl, mintAccessToken, roomNameForCall } from '../channels/voice/livekit';
-import { resolveProjectBotName } from '../channels/voice-identity';
+import { resolveWorkspaceBotName } from '../channels/voice-identity';
 import { voiceJoinPatch } from '../channels/voice-join';
 import { authorize } from '../iam';
 import { agentMayUseConnector } from '../iam/agent-scope';
-import type { ChannelPlatform } from '../projects/connectors';
-import { invalidateProjectMirror } from '../projects/git';
-import { loadProjectForUser } from '../projects/lib/access';
+import type { ChannelPlatform } from '../workspaces/connectors';
+import { invalidateWorkspaceMirror } from '../workspaces/git';
+import { loadWorkspaceForUser } from '../workspaces/lib/access';
 import {
   publicConnectorAlias,
   resolveSessionConnectorProfile,
-} from '../projects/lib/session-connector-bindings';
+} from '../workspaces/lib/session-connector-bindings';
 import { validateAccountToken } from '../repositories/account-tokens';
 import { db } from '../shared/db';
 import { executeComputerCall } from '../tunnel/core/rpc-core';
@@ -66,13 +66,13 @@ import {
   deleteConnectorFromManifest,
   getConnectorConfigFromManifest,
   getConnectorPoliciesFromManifest,
-  getProjectPoliciesFromManifest,
+  getWorkspacePoliciesFromManifest,
   setConnectorCredentialModeInManifest,
   setConnectorCredentialShared,
   setConnectorNameInManifest,
   setConnectorPoliciesInManifest,
   setConnectorSensitiveInManifest,
-  setProjectPoliciesInManifest,
+  setWorkspacePoliciesInManifest,
   upsertConnectorInManifest,
 } from './manifest-crud';
 import { graphToken } from '../channels/teams-auth';
@@ -95,7 +95,7 @@ import type {
 } from './router';
 import { resolveShareSubject } from './share';
 import { getIntegrationCatalogDetail, listIntegrationCatalog } from './integration-catalog';
-import { discoverDraftConnectorAuth, syncProjectConnectors } from './sync';
+import { discoverDraftConnectorAuth, syncWorkspaceConnectors } from './sync';
 import type { ActionBinding, Risk } from './types';
 
 const DEFAULT_AUTH: ExecutorAuth = { type: 'none', in: 'header', name: null, prefix: null };
@@ -274,7 +274,7 @@ export async function markApprovalConsumed(executionId: string): Promise<void> {
  *  Idempotent: a repeat of the same (session, connector, action) is a no-op. */
 export async function recordSessionToolApproval(input: {
   sessionId: string;
-  projectId: string;
+  workspaceId: string;
   connectorId: string;
   actionPath: string;
   grantedBy: string | null;
@@ -283,7 +283,7 @@ export async function recordSessionToolApproval(input: {
     .insert(sessionToolApprovals)
     .values({
       sessionId: input.sessionId,
-      projectId: input.projectId,
+      workspaceId: input.workspaceId,
       connectorId: input.connectorId,
       actionPath: input.actionPath,
       grantedBy: input.grantedBy,
@@ -348,34 +348,34 @@ function channelPlatform(config: ConnectorRow['config'] | null): string | null {
 }
 
 async function channelToken(
-  projectId: string,
+  workspaceId: string,
   platform: string | null,
   slug?: string | null,
 ): Promise<string | null> {
-  if (platform === 'slack') return loadSlackTokenForProject(projectId);
+  if (platform === 'slack') return loadSlackTokenForWorkspace(workspaceId);
   if (platform === 'teams') {
-    const tenant = await loadTeamsTenantForProject(projectId);
+    const tenant = await loadTeamsTenantForWorkspace(workspaceId);
     if (!tenant) return null;
-    const creds = await loadTeamsBotCredentials(projectId);
+    const creds = await loadTeamsBotCredentials(workspaceId);
     return graphToken(tenant, creds).catch(() => null);
   }
   if (platform === 'email')
-    return resolveAgentMailApiKey(await loadAgentMailApiKeyForProject(projectId, slug));
-  if (platform === 'voice') return loadVoiceTokenForProject(projectId);
+    return resolveAgentMailApiKey(await loadAgentMailApiKeyForWorkspace(workspaceId, slug));
+  if (platform === 'voice') return loadVoiceTokenForWorkspace(workspaceId);
   return null;
 }
 
 /** Cheap "is it connected?" — the install exists (no decrypt). */
 async function channelInstalled(
-  projectId: string,
+  workspaceId: string,
   platform: string | null,
   slug?: string | null,
 ): Promise<boolean> {
-  if (platform === 'slack') return (await loadSlackInstall(projectId).catch(() => null)) != null;
-  if (platform === 'teams') return (await loadTeamsInstall(projectId).catch(() => null)) != null;
+  if (platform === 'slack') return (await loadSlackInstall(workspaceId).catch(() => null)) != null;
+  if (platform === 'teams') return (await loadTeamsInstall(workspaceId).catch(() => null)) != null;
   if (platform === 'email')
-    return (await loadAgentMailInstall(projectId, slug).catch(() => null)) != null;
-  if (platform === 'voice') return (await loadVoiceInstall(projectId).catch(() => null)) != null;
+    return (await loadAgentMailInstall(workspaceId, slug).catch(() => null)) != null;
+  if (platform === 'voice') return (await loadVoiceInstall(workspaceId).catch(() => null)) != null;
   return false;
 }
 
@@ -398,11 +398,11 @@ async function connectorConnected(
       typeof profile?.metadata.connector_slug === 'string'
         ? profile.metadata.connector_slug
         : row.slug;
-    if (!(await channelInstalled(row.projectId, channelPlatform(row.config), profileSlug))) {
+    if (!(await channelInstalled(row.workspaceId, channelPlatform(row.config), profileSlug))) {
       return false;
     }
     if (channelPlatform(row.config) === 'email' && typeof profile?.metadata.inbox_id === 'string') {
-      const install = await loadAgentMailInstall(row.projectId, profileSlug).catch(() => null);
+      const install = await loadAgentMailInstall(row.workspaceId, profileSlug).catch(() => null);
       return install?.inboxId === profile.metadata.inbox_id;
     }
     return true;
@@ -457,16 +457,16 @@ const nodeFetch: FetchImpl = async (url, init) => {
 
 export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
   return {
-    loadConnectorBySlug: async (projectId, slug) => {
+    loadConnectorBySlug: async (workspaceId, slug) => {
       const [row] = await db
         .select()
         .from(executorConnectors)
-        .where(and(eq(executorConnectors.projectId, projectId), eq(executorConnectors.slug, slug)))
+        .where(and(eq(executorConnectors.workspaceId, workspaceId), eq(executorConnectors.slug, slug)))
         .limit(1);
       if (!row) return null;
       const profile = await resolveSessionConnectorProfile({
         accountId: principal.accountId,
-        projectId,
+        workspaceId,
         sessionId: principal.sessionId,
         alias: slug,
       });
@@ -500,7 +500,7 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
       if (connector.provider === 'channel') {
         const [row] = await db
           .select({
-            projectId: executorConnectors.projectId,
+            workspaceId: executorConnectors.workspaceId,
             slug: executorConnectors.slug,
             config: executorConnectors.config,
           })
@@ -511,7 +511,7 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
           typeof connector.profileMetadata?.connector_slug === 'string'
             ? connector.profileMetadata.connector_slug
             : row?.slug;
-        return row ? channelToken(row.projectId, channelPlatform(row.config), profileSlug) : null;
+        return row ? channelToken(row.workspaceId, channelPlatform(row.config), profileSlug) : null;
       }
       if (connector.profileId) {
         const credential = await resolveProfileCredentialValue({
@@ -529,15 +529,15 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
     // for inbox, thread, or message identifiers. A future channel-owned binding
     // may provide this context; until then callers must pass explicit action args.
     loadEmailSessionContext: async () => null,
-    loadEmailConnectorContext: async (projectId, connectorSlug) => {
-      const install = await loadAgentMailInstall(projectId, connectorSlug).catch(() => null);
+    loadEmailConnectorContext: async (workspaceId, connectorSlug) => {
+      const install = await loadAgentMailInstall(workspaceId, connectorSlug).catch(() => null);
       return install?.inboxId ? { inboxId: install.inboxId } : null;
     },
-    resolveEmailCredentialForInbox: async (projectId, inboxId) =>
-      resolveAgentMailApiKey(await loadAgentMailApiKeyForInbox(projectId, inboxId)),
-    resolveVoiceJoinContext: async (projectId, sessionId) => {
+    resolveEmailCredentialForInbox: async (workspaceId, inboxId) =>
+      resolveAgentMailApiKey(await loadAgentMailApiKeyForInbox(workspaceId, inboxId)),
+    resolveVoiceJoinContext: async (workspaceId, sessionId) => {
       if (!sessionId) return null;
-      const botName = await resolveProjectBotName(projectId);
+      const botName = await resolveWorkspaceBotName(workspaceId);
       // The call id IS the session id (see runtime.ts / routes.ts), so the room
       // name is derivable without touching the call registry — this stays
       // decoupled from runtime.ts on purpose, same as it was decoupled from the
@@ -549,18 +549,18 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
         canPublish: true, // publishes the meeting's captured audio into the room
         canSubscribe: true, // plays the worker's TTS audio back into the meeting
       });
-      const patch = voiceJoinPatch(projectId, sessionId, bridgePageUrl(config.FRONTEND_URL, token));
+      const patch = voiceJoinPatch(workspaceId, sessionId, bridgePageUrl(config.FRONTEND_URL, token));
       return patch ? { metadata: patch.metadata, outputMedia: patch.outputMedia, botName } : null;
     },
     loadPolicies: loadConnectorPoliciesFor,
-    loadProjectPolicies: loadProjectPoliciesFor,
+    loadWorkspacePolicies: loadWorkspacePoliciesFor,
     loadDefaultMode: loadDefaultModeFor,
     recordExecution: async (rec) => {
       const [row] = await db
         .insert(executorExecutions)
         .values({
           accountId: rec.accountId,
-          projectId: rec.projectId,
+          workspaceId: rec.workspaceId,
           connectorId: rec.connectorId,
           profileId: rec.profileId,
           actionPath: rec.actionPath,
@@ -582,10 +582,10 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
     isSessionToolApproved: isSessionToolApproved,
     consumeApprovedExecution: consumeApprovedExecution,
     markApprovalConsumed: markApprovalConsumed,
-    executePipedream: ({ projectId, connectorSlug, app, actionKey, args, accountId, userId }) =>
-      runPipedreamAction(projectId, connectorSlug, app, actionKey, args, accountId, userId),
-    executePipedreamProxy: ({ projectId, connectorSlug, args, accountId, userId }) =>
-      runPipedreamProxy(projectId, connectorSlug, args, accountId, userId),
+    executePipedream: ({ workspaceId, connectorSlug, app, actionKey, args, accountId, userId }) =>
+      runPipedreamAction(workspaceId, connectorSlug, app, actionKey, args, accountId, userId),
+    executePipedreamProxy: ({ workspaceId, connectorSlug, args, accountId, userId }) =>
+      runPipedreamProxy(workspaceId, connectorSlug, args, accountId, userId),
     // Computer connectors relay through the shared tunnel RPC core (permission
     // check → relay → audit). The machine is resolved from the `computer`
     // selector, scoped to this account.
@@ -604,25 +604,25 @@ async function loadConnectorPoliciesFor(connectorId: string): Promise<Policy[]> 
   return rows.map((r) => ({ match: r.match, action: r.action, position: r.position }));
 }
 
-async function loadProjectPoliciesFor(projectId: string): Promise<Policy[]> {
+async function loadWorkspacePoliciesFor(workspaceId: string): Promise<Policy[]> {
   const rows = await db
     .select()
-    .from(executorProjectPolicies)
-    .where(eq(executorProjectPolicies.projectId, projectId));
+    .from(executorWorkspacePolicies)
+    .where(eq(executorWorkspacePolicies.workspaceId, workspaceId));
   return rows.map((r) => ({ match: r.match, action: r.action, position: r.position }));
 }
 
-async function loadDefaultModeFor(projectId: string): Promise<DefaultMode> {
+async function loadDefaultModeFor(workspaceId: string): Promise<DefaultMode> {
   const [row] = await db
-    .select({ defaultMode: executorProjectSettings.defaultMode })
-    .from(executorProjectSettings)
-    .where(eq(executorProjectSettings.projectId, projectId))
+    .select({ defaultMode: executorWorkspaceSettings.defaultMode })
+    .from(executorWorkspaceSettings)
+    .where(eq(executorWorkspaceSettings.workspaceId, workspaceId))
     .limit(1);
   return (row?.defaultMode as DefaultMode) ?? 'allow_all';
 }
 
 /** Load a pipedream connector's app slug + id (verifies provider). */
-export async function loadPipedreamConnector(projectId: string, slug: string) {
+export async function loadPipedreamConnector(workspaceId: string, slug: string) {
   const [row] = await db
     .select({
       connectorId: executorConnectors.connectorId,
@@ -630,7 +630,7 @@ export async function loadPipedreamConnector(projectId: string, slug: string) {
       config: executorConnectors.config,
     })
     .from(executorConnectors)
-    .where(and(eq(executorConnectors.projectId, projectId), eq(executorConnectors.slug, slug)))
+    .where(and(eq(executorConnectors.workspaceId, workspaceId), eq(executorConnectors.slug, slug)))
     .limit(1);
   if (!row || row.providerType !== 'pipedream') return null;
   const app = (row.config as any)?.app;
@@ -649,15 +649,15 @@ export function resolveTokenBoundSessionId(
 }
 
 /**
- * Only project-scoped tokens carry a Kortix project session identity.
+ * Only workspace-scoped tokens carry a Kortix workspace session identity.
  * Supabase JWTs also set `sessionId`, but that value identifies the Supabase
  * authentication session. It must not enter connector profile resolution.
  */
-export function projectSessionIdForProjectPrincipal(
-  tokenProjectId: string | undefined,
+export function workspaceSessionIdForWorkspacePrincipal(
+  tokenWorkspaceId: string | undefined,
   contextualSessionId: string | undefined,
 ): string | null {
-  return tokenProjectId ? (contextualSessionId ?? null) : null;
+  return tokenWorkspaceId ? (contextualSessionId ?? null) : null;
 }
 
 async function resolvePrincipal(c: Context): Promise<ExecutorPrincipal | null> {
@@ -665,7 +665,7 @@ async function resolvePrincipal(c: Context): Promise<ExecutorPrincipal | null> {
   const token = header?.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return null;
   const result = await validateAccountToken(token);
-  if (!result.isValid || !result.userId || !result.accountId || !result.projectId) return null;
+  if (!result.isValid || !result.userId || !result.accountId || !result.workspaceId) return null;
   const sessionIdentity = resolveTokenBoundSessionId(
     result.sessionId ?? null,
     c.req.header('X-Kortix-Session-Id') ?? null,
@@ -674,7 +674,7 @@ async function resolvePrincipal(c: Context): Promise<ExecutorPrincipal | null> {
   return {
     userId: result.userId,
     accountId: result.accountId,
-    projectId: result.projectId,
+    workspaceId: result.workspaceId,
     sessionId: sessionIdentity.sessionId,
     subject: await resolveShareSubject(result.userId),
     agentGrant: result.agentGrant ?? null,
@@ -682,44 +682,44 @@ async function resolvePrincipal(c: Context): Promise<ExecutorPrincipal | null> {
 }
 
 /**
- * Principal for the project-EXPLICIT gateway routes (/executor/projects/:id/*).
+ * Principal for the workspace-EXPLICIT gateway routes (/executor/workspaces/:id/*).
  * These run under combinedAuth, so identity is already validated and sits in the
- * context; the project comes from the PATH. Works for BOTH a project-scoped
- * session token (enforceTokenProjectScope already pinned it to this project) AND
- * a logged-in user token (verified to be a project member here). This is the
+ * context; the workspace comes from the PATH. Works for BOTH a workspace-scoped
+ * session token (enforceTokenWorkspaceScope already pinned it to this workspace) AND
+ * a logged-in user token (verified to be a workspace member here). This is the
  * unlock for using the Executor locally: same gateway, same authz, any principal.
  */
-async function resolveProjectPrincipal(
+async function resolveWorkspacePrincipal(
   c: Context,
-  projectId: string,
+  workspaceId: string,
 ): Promise<ExecutorPrincipal | null> {
-  if (!isUuid(projectId)) return null;
+  if (!isUuid(workspaceId)) return null;
   const userId = c.get('userId') as string | undefined;
   if (!userId) return null;
-  const tokenProjectId = c.get('tokenProjectId') as string | undefined;
+  const tokenWorkspaceId = c.get('tokenWorkspaceId') as string | undefined;
   let accountId = c.get('accountId') as string | undefined;
 
-  if (tokenProjectId) {
-    // Project-scoped (session) token: enforceTokenProjectScope already guaranteed
-    // tokenProjectId === the URL project at the auth layer. Re-check defensively,
-    // then bind the token account to the actual project account. This prevents a
-    // PAT row from one account from being labeled with another account's project
-    // id and then used on the project-explicit Executor gateway.
-    if (tokenProjectId !== projectId) return null;
-    const [project] = await db
-      .select({ accountId: projects.accountId })
-      .from(projects)
-      .where(eq(projects.projectId, projectId))
+  if (tokenWorkspaceId) {
+    // Workspace-scoped (session) token: enforceTokenWorkspaceScope already guaranteed
+    // tokenWorkspaceId === the URL workspace at the auth layer. Re-check defensively,
+    // then bind the token account to the actual workspace account. This prevents a
+    // PAT row from one account from being labeled with another account's workspace
+    // id and then used on the workspace-explicit Executor gateway.
+    if (tokenWorkspaceId !== workspaceId) return null;
+    const [workspace] = await db
+      .select({ accountId: workspaces.accountId })
+      .from(workspaces)
+      .where(eq(workspaces.workspaceId, workspaceId))
       .limit(1);
-    if (!project || !accountId || project.accountId !== accountId) return null;
-    accountId = project.accountId;
+    if (!workspace || !accountId || workspace.accountId !== accountId) return null;
+    accountId = workspace.accountId;
   } else {
-    // User token (PAT/JWT, no pinned project): verify project access. Throws 403
+    // User token (PAT/JWT, no pinned workspace): verify workspace access. Throws 403
     // if the user isn't a member — treat that as an unauthorized principal.
     try {
-      const access = await loadProjectForUser(c, projectId, 'read');
+      const access = await loadWorkspaceForUser(c, workspaceId, 'read');
       if (!access?.row) return null;
-      accountId = access.row.accountId; // the PROJECT's account owns its connectors
+      accountId = access.row.accountId; // the WORKSPACE's account owns its connectors
     } catch (err) {
       if (err instanceof HTTPException && err.status === 403) return null;
       throw err;
@@ -727,8 +727,8 @@ async function resolveProjectPrincipal(
   }
   if (!accountId) return null;
   const sessionIdentity = resolveTokenBoundSessionId(
-    projectSessionIdForProjectPrincipal(
-      tokenProjectId,
+    workspaceSessionIdForWorkspacePrincipal(
+      tokenWorkspaceId,
       c.get('sessionId') as string | undefined,
     ),
     c.req.header('X-Kortix-Session-Id') ?? null,
@@ -738,7 +738,7 @@ async function resolveProjectPrincipal(
   return {
     userId,
     accountId,
-    projectId,
+    workspaceId,
     sessionId: sessionIdentity.sessionId,
     subject: await resolveShareSubject(userId),
     agentGrant: (c.get('agentGrant') as ExecutorPrincipal['agentGrant']) ?? null,
@@ -752,26 +752,26 @@ async function listCatalog(p: ExecutorPrincipal): Promise<CatalogConnector[]> {
       .select()
       .from(executorConnectors)
       .where(
-        and(eq(executorConnectors.projectId, p.projectId), eq(executorConnectors.enabled, true)),
+        and(eq(executorConnectors.workspaceId, p.workspaceId), eq(executorConnectors.enabled, true)),
       ),
   );
 
-  // Project-scoped layer is the same for every connector in this list — load once.
-  const [projectPolicies, defaultMode] = await Promise.all([
-    loadProjectPoliciesFor(p.projectId),
-    loadDefaultModeFor(p.projectId),
+  // Workspace-scoped layer is the same for every connector in this list — load once.
+  const [workspacePolicies, defaultMode] = await Promise.all([
+    loadWorkspacePoliciesFor(p.workspaceId),
+    loadDefaultModeFor(p.workspaceId),
   ]);
 
   const out: CatalogConnector[] = [];
   for (const row of conns) {
     // Per-agent assignment: an agent only sees connectors its grant lists —
     // consistent with the call gate, so it never lists a tool it can't invoke.
-    // This is the ONLY access gate — connectors are project-wide visible to
-    // every human with project access (no per-connector member scoping).
+    // This is the ONLY access gate — connectors are workspace-wide visible to
+    // every human with workspace access (no per-connector member scoping).
     if (!agentMayUseConnector(p.agentGrant ?? null, publicConnectorAlias(row.slug))) continue;
     const profile = await resolveSessionConnectorProfile({
       accountId: p.accountId,
-      projectId: p.projectId,
+      workspaceId: p.workspaceId,
       sessionId: p.sessionId,
       alias: row.slug,
     });
@@ -798,7 +798,7 @@ async function listCatalog(p: ExecutorPrincipal): Promise<CatalogConnector[]> {
             resolveEffectiveAction({
               fullPath: `${row.slug}.${a.path}`,
               relPath: a.path,
-              projectPolicies,
+              workspacePolicies,
               connectorPolicies,
               risk: a.risk,
               defaultMode,
@@ -816,18 +816,18 @@ async function listCatalog(p: ExecutorPrincipal): Promise<CatalogConnector[]> {
   return out;
 }
 
-async function resolveProjectUserWith(
+async function resolveWorkspaceUserWith(
   c: Context,
-  projectId: string,
-  action: 'project.connector.read' | 'project.connector.write',
+  workspaceId: string,
+  action: 'workspace.connector.read' | 'workspace.connector.write',
 ): Promise<{ accountId: string; userId: string } | null> {
-  if (!isUuid(projectId)) return null;
+  if (!isUuid(workspaceId)) return null;
   const userId = c.get('userId') as string | undefined;
   if (!userId) return null;
   const [proj] = await db
-    .select({ accountId: projects.accountId })
-    .from(projects)
-    .where(eq(projects.projectId, projectId))
+    .select({ accountId: workspaces.accountId })
+    .from(workspaces)
+    .where(eq(workspaces.workspaceId, workspaceId))
     .limit(1);
   if (!proj) return null;
   // Thread the acting token (iamTokenId) so the agent-grant fold fires: a
@@ -838,7 +838,7 @@ async function resolveProjectUserWith(
     userId,
     proj.accountId,
     action,
-    { type: 'project', id: projectId },
+    { type: 'workspace', id: workspaceId },
     actingTokenId,
   );
   if (!decision.allowed) return null;
@@ -846,30 +846,30 @@ async function resolveProjectUserWith(
 }
 
 // Connector administration (create/delete connectors, write shared credentials,
-// grants/policies) is project.connector.write — NOT the coarse, fold-exempt
-// project.write.
+// grants/policies) is workspace.connector.write — NOT the coarse, fold-exempt
+// workspace.write.
 async function resolveAdmin(
   c: Context,
-  projectId: string,
+  workspaceId: string,
 ): Promise<{ accountId: string; userId: string } | null> {
-  return resolveProjectUserWith(c, projectId, 'project.connector.write');
+  return resolveWorkspaceUserWith(c, workspaceId, 'workspace.connector.write');
 }
 
-// The connectors LIST is read-tier: project.connector.read is in the member
+// The connectors LIST is read-tier: workspace.connector.read is in the member
 // baseline (the Connectors/Channels rail sections gate visibility on it), so a
 // plain member can see which connectors exist and their status. The list never
 // carries credential values — only whether one is set.
 async function resolveReader(
   c: Context,
-  projectId: string,
+  workspaceId: string,
 ): Promise<{ accountId: string; userId: string } | null> {
-  return resolveProjectUserWith(c, projectId, 'project.connector.read');
+  return resolveWorkspaceUserWith(c, workspaceId, 'workspace.connector.read');
 }
 
 /** Admin list — sharing + credential mode + whether the shared credential is set. */
-async function listConnectors(projectId: string): Promise<AdminConnectorView[]> {
+async function listConnectors(workspaceId: string): Promise<AdminConnectorView[]> {
   const conns = hideSupersededSlack(
-    await db.select().from(executorConnectors).where(eq(executorConnectors.projectId, projectId)),
+    await db.select().from(executorConnectors).where(eq(executorConnectors.workspaceId, workspaceId)),
   );
   if (conns.length === 0) return [];
 
@@ -945,15 +945,15 @@ async function listConnectors(projectId: string): Promise<AdminConnectorView[]> 
  * that is neither declared NOR a real DB row returns null (→ a true 404).
  */
 async function getConnectorPolicies(
-  projectId: string,
+  workspaceId: string,
   slug: string,
 ): Promise<{ policies: Array<{ match: string; action: string }> } | null> {
-  const fromManifest = await getConnectorPoliciesFromManifest(projectId, slug);
+  const fromManifest = await getConnectorPoliciesFromManifest(workspaceId, slug);
   if (fromManifest) return fromManifest;
   const [row] = await db
     .select({ connectorId: executorConnectors.connectorId })
     .from(executorConnectors)
-    .where(and(eq(executorConnectors.projectId, projectId), eq(executorConnectors.slug, slug)))
+    .where(and(eq(executorConnectors.workspaceId, workspaceId), eq(executorConnectors.slug, slug)))
     .limit(1);
   if (!row) return null;
   const policies = await loadConnectorPoliciesFor(row.connectorId);
@@ -966,15 +966,15 @@ async function getConnectorPolicies(
  * kortix.yaml, so reconstruct the view from the materialized row instead of 404ing.
  */
 async function getConnectorConfig(
-  projectId: string,
+  workspaceId: string,
   slug: string,
 ): Promise<Awaited<ReturnType<typeof getConnectorConfigFromManifest>>> {
-  const fromManifest = await getConnectorConfigFromManifest(projectId, slug);
+  const fromManifest = await getConnectorConfigFromManifest(workspaceId, slug);
   if (fromManifest) return fromManifest;
   const [row] = await db
     .select()
     .from(executorConnectors)
-    .where(and(eq(executorConnectors.projectId, projectId), eq(executorConnectors.slug, slug)))
+    .where(and(eq(executorConnectors.workspaceId, workspaceId), eq(executorConnectors.slug, slug)))
     .limit(1);
   if (!row) return null;
   const cfg = (row.config ?? {}) as Record<string, any>;
@@ -998,7 +998,7 @@ async function getConnectorConfig(
 
 export const dbExecutorRouterDeps: ExecutorRouterDeps = {
   resolvePrincipal,
-  resolveProjectPrincipal,
+  resolveWorkspacePrincipal,
   makeGatewayDeps: (principal) => makeDbGatewayDeps(principal),
   listCatalog,
   resolveAdmin,
@@ -1006,37 +1006,37 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
   listConnectors,
   // The manual "Sync" button re-pulls catalogs unconditionally (force) — the
   // user is explicitly asking to refresh, e.g. an MCP server gained new tools.
-  syncConnectors: (projectId, accountId) => {
-    invalidateProjectMirror(projectId);
-    return syncProjectConnectors(projectId, accountId, { force: true });
+  syncConnectors: (workspaceId, accountId) => {
+    invalidateWorkspaceMirror(workspaceId);
+    return syncWorkspaceConnectors(workspaceId, accountId, { force: true });
   },
-  createConnector: (projectId, accountId, draft) =>
-    upsertConnectorInManifest(projectId, accountId, draft as unknown as ConnectorDraft),
-  deleteConnector: (projectId, slug) => deleteConnectorFromManifest(projectId, slug),
-  setConnectorCredential: (projectId, slug, input) =>
-    setConnectorCredentialShared(projectId, slug, input),
-  deleteConnectorCredential: async (projectId, slug) => {
+  createConnector: (workspaceId, accountId, draft) =>
+    upsertConnectorInManifest(workspaceId, accountId, draft as unknown as ConnectorDraft),
+  deleteConnector: (workspaceId, slug) => deleteConnectorFromManifest(workspaceId, slug),
+  setConnectorCredential: (workspaceId, slug, input) =>
+    setConnectorCredentialShared(workspaceId, slug, input),
+  deleteConnectorCredential: async (workspaceId, slug) => {
     const [row] = await db
       .select()
       .from(executorConnectors)
-      .where(and(eq(executorConnectors.projectId, projectId), eq(executorConnectors.slug, slug)))
+      .where(and(eq(executorConnectors.workspaceId, workspaceId), eq(executorConnectors.slug, slug)))
       .limit(1);
     if (!row) return { ok: false as const, error: 'connector not found', status: 404 };
     // Always the shared credential — `per_user` was removed 2026-07-05.
     await deleteCredential(row.connectorId, null);
     return { ok: true as const };
   },
-  setCredentialMode: (projectId, accountId, slug, mode) =>
-    setConnectorCredentialModeInManifest(projectId, accountId, slug, mode),
-  setSensitive: (projectId, accountId, slug, sensitive) =>
-    setConnectorSensitiveInManifest(projectId, accountId, slug, sensitive),
-  setConnectorName: (projectId, accountId, slug, name) =>
-    setConnectorNameInManifest(projectId, accountId, slug, name),
+  setCredentialMode: (workspaceId, accountId, slug, mode) =>
+    setConnectorCredentialModeInManifest(workspaceId, accountId, slug, mode),
+  setSensitive: (workspaceId, accountId, slug, sensitive) =>
+    setConnectorSensitiveInManifest(workspaceId, accountId, slug, sensitive),
+  setConnectorName: (workspaceId, accountId, slug, name) =>
+    setConnectorNameInManifest(workspaceId, accountId, slug, name),
   getConnectorPolicies,
   getConnectorConfig,
-  setConnectorPolicies: (projectId, accountId, slug, policies) =>
+  setConnectorPolicies: (workspaceId, accountId, slug, policies) =>
     setConnectorPoliciesInManifest(
-      projectId,
+      workspaceId,
       accountId,
       slug,
       policies as Parameters<typeof setConnectorPoliciesInManifest>[3],
@@ -1045,11 +1045,11 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
   // resolves the one shared Pipedream external-user binding since `per_user`
   // (each member's own) was removed 2026-07-05.
   pipedreamConnect: pipedreamConfigured()
-    ? async (projectId, slug, _userId, redirects) => {
-        const conn = await loadPipedreamConnector(projectId, slug);
+    ? async (workspaceId, slug, _userId, redirects) => {
+        const conn = await loadPipedreamConnector(workspaceId, slug);
         if (!conn) return null;
         const { connectUrl, token } = await pipedreamConnectUrl(
-          projectId,
+          workspaceId,
           slug,
           conn.app,
           null,
@@ -1059,11 +1059,11 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
       }
     : undefined,
   pipedreamFinalize: pipedreamConfigured()
-    ? async (projectId, slug, _userId) => {
-        const conn = await loadPipedreamConnector(projectId, slug);
+    ? async (workspaceId, slug, _userId) => {
+        const conn = await loadPipedreamConnector(workspaceId, slug);
         if (!conn) return null;
         const r = await finalizePipedreamConnection({
-          projectId,
+          workspaceId,
           slug,
           app: conn.app,
           connectorId: conn.connectorId,
@@ -1075,9 +1075,9 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
   pipedreamWebhook: pipedreamConfigured()
     ? async (extUserId, sig) => {
         if (!verifyWebhookSig(extUserId, sig)) return false;
-        const [projectId, slug, identityId] = extUserId.split(':');
-        if (!projectId || !slug) return false;
-        const conn = await loadPipedreamConnector(projectId, slug);
+        const [workspaceId, slug, identityId] = extUserId.split(':');
+        if (!workspaceId || !slug) return false;
+        const conn = await loadPipedreamConnector(workspaceId, slug);
         if (!conn) return false;
         if (identityId) {
           const [profile] = await db
@@ -1086,14 +1086,14 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
             .where(
               and(
                 eq(executorConnectionProfiles.profileId, identityId),
-                eq(executorConnectionProfiles.projectId, projectId),
+                eq(executorConnectionProfiles.workspaceId, workspaceId),
                 eq(executorConnectionProfiles.connectorId, conn.connectorId),
               ),
             )
             .limit(1);
           if (profile) {
             await finalizePipedreamProfileConnection({
-              projectId,
+              workspaceId,
               slug,
               app: conn.app,
               connectorId: conn.connectorId,
@@ -1104,7 +1104,7 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
           }
         }
         await finalizePipedreamConnection({
-          projectId,
+          workspaceId,
           slug,
           app: conn.app,
           connectorId: conn.connectorId,
@@ -1119,7 +1119,7 @@ export const dbExecutorRouterDeps: ExecutorRouterDeps = {
   discoverConnectorAuth: discoverDraftConnectorAuth,
   listDiscoverIntegrations: (input) => listIntegrationCatalog(input),
   getDiscoverIntegration: (id) => getIntegrationCatalogDetail(id),
-  getProjectPolicies: getProjectPoliciesFromManifest,
-  setProjectPolicies: (projectId, accountId, policies, defaultMode) =>
-    setProjectPoliciesInManifest(projectId, accountId, policies, defaultMode),
+  getWorkspacePolicies: getWorkspacePoliciesFromManifest,
+  setWorkspacePolicies: (workspaceId, accountId, policies, defaultMode) =>
+    setWorkspacePoliciesInManifest(workspaceId, accountId, policies, defaultMode),
 };

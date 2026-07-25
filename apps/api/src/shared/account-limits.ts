@@ -1,13 +1,13 @@
 import { config } from '../config';
 import { getSubscriptionInfo } from '../billing/repositories/credit-accounts';
-import { accountIsFreeTierForModels, getTier, isPaidTier, isPerSeatAccount, MAX_PROJECTS_PER_ACCOUNT } from '../billing/services/tiers';
+import { accountIsFreeTierForModels, getTier, isPaidTier, isPerSeatAccount, MAX_WORKSPACES_PER_ACCOUNT } from '../billing/services/tiers';
 import type { RateLimitPolicy } from './rate-limit';
 
 // Managed cloud is paid-only: new accounts resolve to tier 'none' and must
-// subscribe before creating projects. This cap governs any legacy/backwards-compat
-// free account; any paid plan lifts it to MAX_PROJECTS_PER_ACCOUNT, and Enterprise
-// is uncapped (see maxProjectsForAccount).
-export const FREE_TIER_PROJECT_LIMIT = 3;
+// subscribe before creating workspaces. This cap governs any legacy/backwards-compat
+// free account; any paid plan lifts it to MAX_WORKSPACES_PER_ACCOUNT, and Enterprise
+// is uncapped (see maxWorkspacesForAccount).
+export const FREE_TIER_WORKSPACE_LIMIT = 1;
 
 type AccountLimitInfo = {
   tier: string | null;
@@ -52,8 +52,8 @@ async function resolveAccountLimitInfo(
     // number of rows still carry a stale tier='free' — the seat-billing
     // migration set billing_model='per_seat' without backfilling tier. Deriving
     // the paid tier from billing_model + an active subscription here means stale
-    // tier data can't mis-gate paying teams as free (e.g. the 1-project cap),
-    // and it self-heals every tier-based limit (projects, sessions, rate).
+    // tier data can't mis-gate paying teams as free (e.g. the 1-workspace cap),
+    // and it self-heals every tier-based limit (workspaces, sessions, rate).
     if (
       !isPaidTier(tier) &&
       isPerSeatAccount(subscription?.billingModel) &&
@@ -157,21 +157,21 @@ export async function resolveAccountSessionLimit(accountId: string): Promise<Acc
 }
 
 /**
- * Maximum number of projects an account may own, by plan:
- *   Free        → FREE_TIER_PROJECT_LIMIT (3)
- *   Team/legacy → MAX_PROJECTS_PER_ACCOUNT (200)
+ * Maximum number of workspaces an account may own, by plan:
+ *   Free        → FREE_TIER_WORKSPACE_LIMIT (1)
+ *   Team/legacy → MAX_WORKSPACES_PER_ACCOUNT (200)
  *   Enterprise  → uncapped (negotiated)
  * When billing isn't active (local / self-hosted) the cap is lifted entirely,
  * mirroring maxConcurrentSessionsForTier so a missing subscription can't
- * kneecap project creation.
+ * kneecap workspace creation.
  */
-export async function maxProjectsForAccount(accountId: string): Promise<number> {
+export async function maxWorkspacesForAccount(accountId: string): Promise<number> {
   if (!(config as any).KORTIX_BILLING_INTERNAL_ENABLED) {
     return Number.MAX_SAFE_INTEGER;
   }
   const tier = (await resolveAccountTier(accountId)) ?? 'free';
   if (tier === 'enterprise') return Number.MAX_SAFE_INTEGER;
-  return isPaidTier(tier) ? MAX_PROJECTS_PER_ACCOUNT : FREE_TIER_PROJECT_LIMIT;
+  return isPaidTier(tier) ? MAX_WORKSPACES_PER_ACCOUNT : FREE_TIER_WORKSPACE_LIMIT;
 }
 
 export function clearAccountLimitCache() {

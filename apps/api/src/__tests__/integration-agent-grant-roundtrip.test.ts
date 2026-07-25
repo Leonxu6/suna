@@ -30,20 +30,20 @@ afterAll(async () => {
 describe('agent_grant — real DB round-trip + enforcement', () => {
   test('mint with grant → validate returns it → gates allow/deny correctly', async () => {
     const rows = (await db.execute(
-      sql`select project_id, account_id from kortix.projects limit 1`,
-    )) as unknown as Array<{ project_id: string; account_id: string }>;
+      sql`select workspace_id, account_id from kortix.workspaces limit 1`,
+    )) as unknown as Array<{ workspace_id: string; account_id: string }>;
     const proj = rows[0];
     if (!proj) {
-      console.warn('[integration] no project in local DB — skipping round-trip');
+      console.warn('[integration] no workspace in local DB — skipping round-trip');
       return;
     }
 
-    const grant = { agent: 'release-bot', kortixCli: ['project.cr.open'], connectors: ['github'] };
+    const grant = { agent: 'release-bot', kortixCli: ['workspace.cr.open'], connectors: ['github'] };
 
     const minted = await createAccountToken({
       accountId: proj.account_id,
       userId: crypto.randomUUID(),
-      projectId: proj.project_id,
+      workspaceId: proj.workspace_id,
       name: 'test-agent-grant-roundtrip',
       agentGrant: grant as any,
     });
@@ -55,28 +55,28 @@ describe('agent_grant — real DB round-trip + enforcement', () => {
     expect(v.agentGrant).toEqual(grant);
 
     // Enforcement reads the validated grant and gates correctly.
-    expect(agentMayPerform(v.agentGrant!, 'project.cr.open')).toBe(true);   // granted
-    expect(agentMayPerform(v.agentGrant!, 'project.cr.merge')).toBe(false); // NOT granted — the destructive case
-    expect(agentMayPerform(v.agentGrant!, 'project.trigger.create')).toBe(false);
+    expect(agentMayPerform(v.agentGrant!, 'workspace.cr.open')).toBe(true);   // granted
+    expect(agentMayPerform(v.agentGrant!, 'workspace.cr.merge')).toBe(false); // NOT granted — the destructive case
+    expect(agentMayPerform(v.agentGrant!, 'workspace.trigger.create')).toBe(false);
     expect(agentMayUseConnector(v.agentGrant!, 'github')).toBe(true);       // assigned
     expect(agentMayUseConnector(v.agentGrant!, 'salesforce')).toBe(false);  // not assigned
   });
 
   test('a token minted WITHOUT a grant returns null (full access — backward compatible)', async () => {
     const rows = (await db.execute(
-      sql`select project_id, account_id from kortix.projects limit 1`,
-    )) as unknown as Array<{ project_id: string; account_id: string }>;
+      sql`select workspace_id, account_id from kortix.workspaces limit 1`,
+    )) as unknown as Array<{ workspace_id: string; account_id: string }>;
     const proj = rows[0];
     if (!proj) return;
     const minted = await createAccountToken({
       accountId: proj.account_id,
       userId: crypto.randomUUID(),
-      projectId: proj.project_id,
+      workspaceId: proj.workspace_id,
       name: 'test-no-grant',
     });
     const v = await validateAccountToken(minted.secretKey);
     await db.execute(sql`delete from kortix.account_tokens where token_id = ${minted.tokenId}`);
     expect(v.agentGrant ?? null).toBeNull();
-    expect(agentMayPerform(v.agentGrant ?? null, 'project.cr.merge')).toBe(true); // no grant = no restriction
+    expect(agentMayPerform(v.agentGrant ?? null, 'workspace.cr.merge')).toBe(true); // no grant = no restriction
   });
 });

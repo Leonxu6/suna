@@ -41,7 +41,7 @@ import {
   isDaytonaTransientProviderError,
   primeDaytonaTransientClassifier,
 } from './shared/daytona-transient';
-import { GitOperationError, isGitOperationError } from './projects/git/mirror';
+import { GitOperationError, isGitOperationError } from './workspaces/git/mirror';
 // Statically imported (NOT await import() in the handlers): on a long-running
 // `bun --hot` dev process, dynamic import() can wedge permanently after enough
 // hot reloads — the promise never settles, the handler hangs, and Bun's
@@ -73,22 +73,26 @@ import { marketplaceApp } from './marketplace';
 import { oauthApp } from './oauth';
 import { nativeOAuth2CallbackApp } from './executor/oauth2-callback';
 import {
-  projectWebhooksApp,
-  projectsApp,
-  startProjectTriggerScheduler,
-  stopProjectTriggerScheduler,
-} from './projects';
-import { startProjectMaintenance, stopProjectMaintenance } from './projects/maintenance';
+  workspaceWebhooksApp,
+  workspacesApp,
+  startWorkspaceTriggerScheduler,
+  stopWorkspaceTriggerScheduler,
+} from './workspaces';
+import {
+  projectCompatibilityMiddleware,
+  toCanonicalWorkspacePath,
+} from './workspaces/project-compatibility';
+import { startWorkspaceMaintenance, stopWorkspaceMaintenance } from './workspaces/maintenance';
 import { kickStartupPreBuild } from './snapshots/builder';
-import { registerSunaMigrationRoutes } from './projects/suna-migration/suna-migration-routes';
+import { registerSunaMigrationRoutes } from './workspaces/suna-migration/suna-migration-routes';
 import {
   startSunaMigrationWorker,
   stopSunaMigrationWorker,
-} from './projects/suna-migration/suna-migration-worker';
+} from './workspaces/suna-migration/suna-migration-worker';
 import {
   startProviderTransitionWorker,
   stopProviderTransitionWorker,
-} from './projects/provider-transition/provider-transition-worker';
+} from './workspaces/provider-transition/provider-transition-worker';
 import { accountsRouter } from './accounts';
 import { authRouter } from './auth';
 import { scimRouter } from './scim';
@@ -203,13 +207,13 @@ app.use('*', async (c, next) => {
     async () => {
       // Auto-extract common resource IDs from URL patterns for logs/traces.
       const path = c.req.path;
-      const projectSessionMatch = path.match(/\/projects\/([^/]+)\/sessions\/([^/]+)/);
-      if (projectSessionMatch) {
-        setContextField('projectId', projectSessionMatch[1]);
-        setContextField('sessionId', projectSessionMatch[2]);
+      const workspaceSessionMatch = path.match(/\/(?:workspaces|projects)\/([^/]+)\/sessions\/([^/]+)/);
+      if (workspaceSessionMatch) {
+        setContextField('workspaceId', workspaceSessionMatch[1]);
+        setContextField('sessionId', workspaceSessionMatch[2]);
       } else {
-        const projectMatch = path.match(/\/projects\/([^/]+)/);
-        if (projectMatch) setContextField('projectId', projectMatch[1]);
+        const workspaceMatch = path.match(/\/(?:workspaces|projects)\/([^/]+)/);
+        if (workspaceMatch) setContextField('workspaceId', workspaceMatch[1]);
       }
       const sbMatch = path.match(/\/sandbox(?:es)?\/([^/]+)/) || path.match(/\/p\/([^/]+)/);
       if (sbMatch) setContextField('sandboxId', sbMatch[1]);
@@ -699,35 +703,44 @@ app.route('/v1/usage', usageApp); // GET /v1/usage[?start&end&group_by] — acco
 app.route('/v1/billing', billingApp); // /v1/billing/account-state, /v1/billing/webhooks/*
 app.route('/v1/account', accountDeletionApp); // account deletion status/request/cancel/immediate
 app.route('/v1/platform', platformApp); // /v1/platform, /v1/platform/sandbox/version
-registerSunaMigrationRoutes(projectsApp); // /v1/projects/suna-migration/* (OG Suna → opencode, user-triggered)
-// Voice routes are registered BEFORE projectsApp: Hono matches in registration
-// order, and projectsApp's auth middleware would otherwise claim the worker
+registerSunaMigrationRoutes(workspacesApp); // /v1/workspaces/suna-migration/* (OG Suna → opencode, user-triggered)
+// Voice routes are registered BEFORE workspacesApp: Hono matches in registration
+// order, and workspacesApp's auth middleware would otherwise claim the worker
 // callbacks (/sessions/:id/voice/*) and reject them with a generic 401 before
 // their own per-call HMAC check ever runs. The worker is not a Kortix session
 // and cannot present session auth.
+app.route('/v1/workspaces', voiceMcpRoutes);
+app.route('/v1/workspaces', workspacesApp); // /v1/workspaces — Git-backed Kortix workspaces
+app.use('/v1/projects/*', projectCompatibilityMiddleware);
 app.route('/v1/projects', voiceMcpRoutes);
-app.route('/v1/projects', projectsApp); // /v1/projects — Git-backed Kortix projects
+app.route('/v1/projects', workspacesApp); // Deprecated compatibility alias.
 app.route('/v1/marketplace', marketplaceApp); // /v1/marketplace — browse the registry catalog
 
-// Universal git smart-HTTP proxy — every git-backed project's client origin.
+// Universal git smart-HTTP proxy — every git-backed workspace's client origin.
 // Auth is handled inside (git sends Basic/Bearer, not combinedAuth's Bearer),
 // so it is intentionally NOT wrapped in combinedAuth.
 {
   const { gitProxyApp } = await import('./git-proxy');
-  app.route('/v1/git', gitProxyApp); // /v1/git/:projectId(.git)/{info/refs,git-upload-pack,git-receive-pack}
+  app.route('/v1/git', gitProxyApp); // /v1/git/:workspaceId(.git)/{info/refs,git-upload-pack,git-receive-pack}
 }
 
 // Executor — unified connector layer. Gateway routes (/connectors, /call) use
 // KORTIX_EXECUTOR_TOKEN (validated inside the router); admin routes
-// (/projects/:id/connectors*) need user auth, so combinedAuth runs first.
+// (/workspaces/:id/connectors*) need user auth, so combinedAuth runs first.
 {
   const { executorApp } = await import('./executor');
-  app.use('/v1/executor/projects/*', combinedAuth);
+  app.use('/v1/executor/workspaces/*', combinedAuth);
+  app.use('/v1/executor/projects/*', projectCompatibilityMiddleware);
+  app.all('/v1/executor/projects/*', async (c) => {
+    const url = new URL(c.req.url);
+    url.pathname = toCanonicalWorkspacePath(url.pathname);
+    return app.fetch(new Request(url, c.req.raw), c.env);
+  });
   app.use('/v1/executor/connect-status', combinedAuth); // deployment capability flag (authed)
-  app.route('/v1/executor', executorApp); // /v1/executor/connectors, /call, /projects/:id/connectors[/sync|/:slug/sharing]
+  app.route('/v1/executor', executorApp); // /v1/executor/connectors, /call, /workspaces/:id/connectors[/sync|/:slug/sharing]
 }
 
-app.route('/v1/webhooks', projectWebhooksApp); // /v1/webhooks/:triggerId — signed project trigger fires
+app.route('/v1/webhooks', workspaceWebhooksApp); // /v1/webhooks/:triggerId — signed workspace trigger fires
 
 const {
   slackWebhookApp,
@@ -740,12 +753,12 @@ const {
   emailWebhookApp,
 } = await import('./channels');
 app.route('/v1/webhooks/slack/oauth', slackOauthApp); // /v1/webhooks/slack/oauth/callback — OAuth dance
-app.route('/v1/webhooks/slack', slackWebhookApp); // /v1/webhooks/slack/:projectId — raw Slack events (BYO mode)
+app.route('/v1/webhooks/slack', slackWebhookApp); // /v1/webhooks/slack/:workspaceId — raw Slack events (BYO mode)
 app.route('/v1/webhooks/teams/oauth', teamsOauthApp); // /v1/webhooks/teams/oauth/callback — admin-consent + catalog publish
 app.route('/v1/webhooks/teams', teamsWebhookApp); // /v1/webhooks/teams/messages — Bot Framework activities
 app.route('/v1/channels/slack/identity', slackIdentityApp); // /v1/channels/slack/identity/bind — authed /login bind
 app.route('/v1/channels/teams/identity', teamsIdentityApp); // /v1/channels/teams/identity/bind — authed login bind
-app.route('/v1/webhooks/telegram', telegramWebhookApp); // /v1/webhooks/telegram/:projectId — Telegram updates
+app.route('/v1/webhooks/telegram', telegramWebhookApp); // /v1/webhooks/telegram/:workspaceId — Telegram updates
 app.route('/v1/webhooks/email', emailWebhookApp); // /v1/webhooks/email/agentmail — AgentMail inbound email (Svix-signed)
 
 const { sandboxWebhooksApp } = await import('./platform/webhooks/routes');
@@ -757,7 +770,7 @@ app.route('/v1/access', accessControlApp); // /v1/access/signup-status, /v1/acce
 // Setup links — PUBLIC, token-gated. An agent-minted (encrypted, short-lived,
 // value-only) token is the bearer capability, so a human can fill in a secret
 // or 1-click a Pipedream connect from a Slack link with no login. The mint half
-// is authenticated, on projectsApp (/v1/projects/:id/{secret,connect}-requests).
+// is authenticated, on workspacesApp (/v1/workspaces/:id/{secret,connect}-requests).
 import { setupLinksPublicApp } from './setup-links/public-app';
 app.route('/v1/setup-links', setupLinksPublicApp); // /v1/setup-links/{secret,connector}/:token
 
@@ -867,7 +880,7 @@ app.onError((err, c) => {
     );
   }
 
-  // A bare-clone / fetch of a project's git mirror that exceeds its timeout
+  // A bare-clone / fetch of a workspace's git mirror that exceeds its timeout
   // (SIGTERM mid-transfer, large repo, transient network) is EXPECTED and
   // retryable — the mirror already retries once internally before surfacing.
   // Previously these surfaced as the opaque Better Stack pattern `8d0cffbb…`
@@ -878,7 +891,7 @@ app.onError((err, c) => {
   // 503 + Retry-After WITHOUT paging Sentry (mirroring Platinum /
   // request-deadline), while a real `failed` kind (auth / missing repo) still
   // falls through to Sentry with a meaningful `fatal:` message. See
-  // projects/git/mirror.ts.
+  // workspaces/git/mirror.ts.
   if (isGitOperationError(err) && err.kind === 'timeout') {
     appLogger.warn(`${method} ${path} -> 503 [GitOperationError:timeout] ${err.message}`, {
       method,
@@ -1067,7 +1080,7 @@ console.log(`
 ║    /v1/router     (search, LLM, proxy)                    ║
 ║    /v1/billing    (subscriptions, credits, webhooks)       ║
 ║    /v1/platform   (api keys, sandbox version)               ║
-║    /v1/projects   (Git-backed projects)                    ║
+║    /v1/workspaces   (Git-backed workspaces)                    ║
 ║    /v1/setup      (setup & env management)                 ║
 ║    /v1/tunnel     (reverse-tunnel to local machines)         ║
 ║    /v1/p         (sandbox proxy — local + cloud)            ║
@@ -1135,8 +1148,8 @@ let singletonWorkersRunning = false;
 async function startSingletonWorkers() {
   if (singletonWorkersRunning) return;
   singletonWorkersRunning = true;
-  startProjectMaintenance();
-  startProjectTriggerScheduler();
+  startWorkspaceMaintenance();
+  startWorkspaceTriggerScheduler();
   // Mint the global platform-default sandbox image once per leadership term so
   // the first session anywhere lands on a cache hit. Idempotent + best-effort;
   // the session-boot graceful path is the lazy fallback if this is skipped.
@@ -1155,8 +1168,8 @@ async function startSingletonWorkers() {
 async function stopSingletonWorkers() {
   if (!singletonWorkersRunning) return;
   singletonWorkersRunning = false;
-  stopProjectTriggerScheduler();
-  stopProjectMaintenance();
+  stopWorkspaceTriggerScheduler();
+  stopWorkspaceMaintenance();
   stopSunaMigrationWorker();
   stopProviderTransitionWorker();
   const { stopGrantExpirySweeper } = await import('./iam/expiry-sweeper');
@@ -1216,7 +1229,7 @@ if (import.meta.main) {
       // V2 IAM hard-codes role permissions in iam/role-perms.ts, so the
       // boot-time system-role seed + membership-policy backfill from V1
       // are no longer needed. Permissions resolve directly from
-      // account_members.account_role and project_members.project_role.
+      // account_members.account_role and workspace_members.workspace_role.
       await bootServices();
     })
     .catch(async (err) => {

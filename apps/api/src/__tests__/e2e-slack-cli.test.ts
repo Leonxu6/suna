@@ -1,7 +1,7 @@
 /**
  * End-to-end coverage for the in-sandbox `slack` CLI surface. The test runs the
  * real Bun entrypoint against a live fake Kortix API so command parsing,
- * project-explicit Executor routing, turn-stream relays, file upload/download,
+ * workspace-explicit Executor routing, turn-stream relays, file upload/download,
  * and manifest fetching are all exercised without touching real Slack.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
@@ -14,7 +14,7 @@ import { SLACK_CHANNEL_CONNECTOR_SLUG } from '../executor/channels';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const CLI_ENTRY = resolve(REPO_ROOT, 'apps/sandbox/slack-cli/channels/slack.ts');
 
-const PROJECT = 'proj-slack-cli';
+const WORKSPACE = 'proj-slack-cli';
 const SESSION = 'sess-slack-cli';
 const TOKEN = 'kortix_test_slack_cli';
 
@@ -109,7 +109,7 @@ async function runSlack(args: string[], opts: { ok?: boolean } = {}): Promise<Cl
       HOME: process.env.HOME,
       KORTIX_API_URL: apiUrl,
       KORTIX_CLI_TOKEN: TOKEN,
-      KORTIX_PROJECT_ID: PROJECT,
+      KORTIX_WORKSPACE_ID: WORKSPACE,
       KORTIX_SESSION_ID: SESSION,
     },
     stdout: 'pipe',
@@ -147,13 +147,13 @@ beforeEach(() => {
         return json({ error: 'unauthorized' }, 401);
       }
 
-      if (url.pathname === `/v1/projects/${PROJECT}/turn-stream`) {
+      if (url.pathname === `/v1/workspaces/${WORKSPACE}/turn-stream`) {
         const body = (await req.json()) as Record<string, unknown>;
         world.turns.push(body);
         return json({ ok: true });
       }
 
-      if (url.pathname === `/v1/executor/projects/${PROJECT}/call`) {
+      if (url.pathname === `/v1/executor/workspaces/${WORKSPACE}/call`) {
         const body = (await req.json()) as {
           connector: string;
           action: string;
@@ -176,18 +176,18 @@ beforeEach(() => {
         return json({ ok: true, data: slackDataFor(body.action, body.args ?? {}), risk: 'read' });
       }
 
-      if (url.pathname === `/v1/projects/${PROJECT}/channels/slack/file/upload`) {
+      if (url.pathname === `/v1/workspaces/${WORKSPACE}/channels/slack/file/upload`) {
         const body = (await req.json()) as Record<string, unknown>;
         world.uploads.push(body);
         return json({ ok: true, files: [{ id: 'F1', name: body.filename }] });
       }
 
-      if (url.pathname === `/v1/projects/${PROJECT}/channels/slack/file`) {
+      if (url.pathname === `/v1/workspaces/${WORKSPACE}/channels/slack/file`) {
         world.downloads.push(url.searchParams.get('url') ?? '');
         return new Response('downloaded from slack', { status: 200 });
       }
 
-      if (url.pathname === `/v1/webhooks/slack/${PROJECT}/manifest`) {
+      if (url.pathname === `/v1/webhooks/slack/${WORKSPACE}/manifest`) {
         world.manifests.push(url.searchParams.get('name') ?? '');
         return json({ display_information: { name: url.searchParams.get('name') ?? 'Kortix' } });
       }

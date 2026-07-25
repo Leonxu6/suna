@@ -31,7 +31,7 @@ describe('currentFailedSnapshotBuild', () => {
 });
 
 describe('sessionTemplateBuilds', () => {
-  test('excludes optional per-project accelerator builds', () => {
+  test('excludes optional per-workspace accelerator builds', () => {
     const template = { id: 'template', slug: 'default', status: 'ready' as const };
     const accelerator = {
       id: 'accelerator',

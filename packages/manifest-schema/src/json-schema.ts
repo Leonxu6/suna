@@ -48,6 +48,7 @@ import {
   CONNECTOR_PROVIDERS,
   ENV_NAME_RE,
   GRANTABLE_KORTIX_CLI_ACTIONS,
+  LEGACY_PROJECT_KORTIX_CLI_ACTIONS,
   HEX_COLOR_RE_V2,
   LEGACY_SANDBOX_KEYS,
   LEGACY_TOLERATED_KORTIX_CLI_ACTIONS,
@@ -116,8 +117,13 @@ function grantSetSchema(itemSchema: JsonSchemaFragment = NON_EMPTY_STRING): Json
  */
 function kortixCliEnum(version: 1 | 2): readonly string[] {
   return version === 2
-    ? [...GRANTABLE_KORTIX_CLI_ACTIONS, '*']
-    : [...GRANTABLE_KORTIX_CLI_ACTIONS, ...LEGACY_TOLERATED_KORTIX_CLI_ACTIONS, '*'];
+    ? [...GRANTABLE_KORTIX_CLI_ACTIONS, ...LEGACY_PROJECT_KORTIX_CLI_ACTIONS, '*']
+    : [
+        ...GRANTABLE_KORTIX_CLI_ACTIONS,
+        ...LEGACY_PROJECT_KORTIX_CLI_ACTIONS,
+        ...LEGACY_TOLERATED_KORTIX_CLI_ACTIONS,
+        '*',
+      ];
 }
 
 function kortixCliGrantSetSchema(version: 1 | 2): JsonSchemaFragment {

@@ -21,8 +21,8 @@ import { createGzip } from 'node:zlib';
 import { AGENT_BROWSER_VERSION, OPENCODE_VERSION } from '@kortix/shared';
 import { gatewayModelCatalog } from '../llm-gateway/models/catalog-models';
 import { tmpdir } from 'node:os';
-import { buildLayeredDockerfile, buildPerProjectWarmFromBaseDockerfile } from './dockerfile-layer';
-import { buildStarterFiles, DEFAULT_STARTER_TEMPLATE_ID } from '../projects/starter';
+import { buildLayeredDockerfile, buildPerWorkspaceWarmFromBaseDockerfile } from './dockerfile-layer';
+import { buildStarterFiles, DEFAULT_STARTER_TEMPLATE_ID } from '../workspaces/starter';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 const execFileAsyncBC = promisify(execFile);
@@ -45,7 +45,7 @@ const slackCliSrcPath = () => process.env.KORTIX_SNAPSHOT_SLACK_CLI_PATH
 const executorSdkSrcPath = () => process.env.KORTIX_SNAPSHOT_EXECUTOR_SDK_PATH
   || resolve(REPO_ROOT, 'packages/executor-sdk');
 // Canonical starter `.kortix/opencode` surface (pty plugin + standard tools +
-// skills). Staged into the context so the layer can warm a real opencode project
+// skills). Staged into the context so the layer can warm a real opencode workspace
 // instance at build time (see dockerfile-layer.ts `opencodeConfigPath`).
 const opencodeConfigSrcPath = () => process.env.KORTIX_SNAPSHOT_OPENCODE_CONFIG_PATH
   || resolve(REPO_ROOT, 'packages/starter/templates/base/.kortix/opencode');
@@ -77,11 +77,11 @@ export interface StagedContext {
 }
 
 /**
- * Per-project COLD warm: bake the project's repo checkout into /workspace at
+ * Per-workspace COLD warm: bake the workspace's repo checkout into /workspace at
  * build time. The credential-bearing clone happens API-side in Suna
  * (`stageWarmRepoCheckout`), NOT inside the built image: the resulting build
  * context carries only a sanitized, origin-reset, credential-scrubbed checkout
- * that the Dockerfile `COPY`s. Omit for the shared, project-independent default
+ * that the Dockerfile `COPY`s. Omit for the shared, workspace-independent default
  * image.
  *
  * SECURITY (PHASE 1): `cloneHeaders` NEVER leaves this process. It is used to
@@ -101,7 +101,7 @@ export interface WarmRepoContext {
   branch: string;
   /**
    * The EXACT commit sha the checkout is pinned to. The warm image name is keyed
-   * on this sha (`perProjectWarmImageName(..., tip, ...)`), so the staged checkout
+   * on this sha (`perWorkspaceWarmImageName(..., tip, ...)`), so the staged checkout
    * MUST be this exact commit — cloning the branch tip (which can advance after
    * the sha was resolved) would bake SHA_Y content under a SHA_X name, poisoning
    * the content-addressed image. A full 40-char hex sha.
@@ -119,11 +119,11 @@ export interface WarmRepoContext {
  * built image's OCI layer history, (3) the provider build logs, and (4) any
  * abandoned retry/context objects. Deleting the temp clone dir did NOT remove
  * any of those copies. Therefore, on rollout, ANY git credential that could
- * have been used for a per-project warm bake before this change must be treated
+ * have been used for a per-workspace warm bake before this change must be treated
  * as POTENTIALLY EXPOSED and ROTATED:
  *   • GitHub App INSTALLATION tokens are short-lived (~1h) → low residual risk,
  *     but any long-lived fallback PAT must be rotated.
- *   • Any project-level BYO git PAT/credential stored + used for a warm bake
+ *   • Any workspace-level BYO git PAT/credential stored + used for a warm bake
  *     must be rotated and the old value revoked at the git host.
  *   • Object-storage build-context objects created by prior builds should be
  *     lifecycle-expired/deleted (see the tracking + cleanup follow-up).
@@ -178,7 +178,7 @@ export function isSafeGitSha(sha: string): boolean {
  * build-time RCE / local-file-exfiltration / secret-leak surface. We pin the
  * transport to plain `https://` with NO userinfo. `file://` is permitted ONLY
  * under the test harness (NODE_ENV==='test') for the no-network fixture clones —
- * production warm cloneUrls are always the project's https upstream.
+ * production warm cloneUrls are always the workspace's https upstream.
  *
  * Throws a CREDENTIAL-FREE error (scheme only, never the full URL/query) so a
  * rejection never logs a token.
@@ -246,12 +246,12 @@ export async function stageWarmRepoCheckout(
 ): Promise<{ stagedPath: string; stagedGitPath: string; headSha: string }> {
   if (!isSafeGitBranchName(warmRepo.branch)) {
     throw new Error(
-      `refusing to bake per-project warm image: unsafe default branch name ${JSON.stringify(warmRepo.branch)}`,
+      `refusing to bake per-workspace warm image: unsafe default branch name ${JSON.stringify(warmRepo.branch)}`,
     );
   }
   if (!isSafeGitSha(warmRepo.tip)) {
     throw new Error(
-      `refusing to bake per-project warm image: pinned tip ${JSON.stringify(warmRepo.tip)} is not a full commit sha`,
+      `refusing to bake per-workspace warm image: pinned tip ${JSON.stringify(warmRepo.tip)} is not a full commit sha`,
     );
   }
   // Pin the clone transport BEFORE any git runs — reject remote-helper / userinfo
@@ -314,7 +314,7 @@ export async function stageWarmRepoCheckout(
       await g(['-C', dest, 'checkout', '-q', warmRepo.tip], plainEnv);
     } catch {
       throw new Error(
-        `refusing to bake per-project warm image: pinned commit ${warmRepo.tip.slice(0, 12)} is not present ` +
+        `refusing to bake per-workspace warm image: pinned commit ${warmRepo.tip.slice(0, 12)} is not present ` +
           `on branch ${JSON.stringify(warmRepo.branch)} (force-pushed away?) — the SHA-keyed content no longer exists`,
       );
     }
@@ -473,7 +473,7 @@ export async function stageBuildContext(
     opencodeConfigPath = 'kortix-opencode-config';
   }
 
-  // PHASE 1: for a per-project COLD warm, clone the repo API-side into a
+  // PHASE 1: for a per-workspace COLD warm, clone the repo API-side into a
   // SANITIZED, credential-free checkout the Dockerfile only COPYs. The git auth
   // header is used here (Suna host) and NEVER embedded in the built image.
   let warmRepoBake: { stagedPath: string; stagedGitPath: string; branch: string } | undefined;
@@ -483,7 +483,7 @@ export async function stageBuildContext(
   }
 
   // Bake the FULL gateway model catalog into the image. The no-restart warm seed
-  // has no sandbox token / projectId to fetch the catalog at PARK, so without this
+  // has no sandbox token / workspaceId to fetch the catalog at PARK, so without this
   // its opencode picker would fall back to the daemon's minimal (~11) set. Computed
   // server-side at build time → full picker, no token, no runtime fetch. The shared
   // seed's captureEnv (builder.ts) points KORTIX_LLM_CATALOG_FILE at the COPY target.
@@ -493,9 +493,9 @@ export async function stageBuildContext(
   );
 
   // Canonical scaffold repo baked at /opt/kortix/scaffold.git. Built from the
-  // DEFAULT starter with the SAME pinned commit metadata the project seeder
-  // uses (git-backends/seed.ts), so its root SHA equals every seeded project's
-  // root — the daemon then materializes a project repo as local-clone +
+  // DEFAULT starter with the SAME pinned commit metadata the workspace seeder
+  // uses (git-backends/seed.ts), so its root SHA equals every seeded workspace's
+  // root — the daemon then materializes a workspace repo as local-clone +
   // delta-fetch instead of a full clone over the (slow) git path. Non-matching
   // repos (imported, other starters) share no ancestor and transparently fall
   // back to a full fetch through the same code.
@@ -533,10 +533,10 @@ export async function stageBuildContext(
 }
 
 /**
- * Stage a MINIMAL build context for the per-project warm FAST PATH: a
+ * Stage a MINIMAL build context for the per-workspace warm FAST PATH: a
  * Dockerfile that `FROM`s an already-built runtime image (the shared default's
  * provider-reported image ref) and only adds the warm-repo clone + opencode
- * instance re-warm on top — see `buildPerProjectWarmFromBaseDockerfile`
+ * instance re-warm on top — see `buildPerWorkspaceWarmFromBaseDockerfile`
  * (dockerfile-layer.ts) for why this is the actual fix for the Chromium
  * re-download bug: nothing here re-installs the toolchain, so there's no
  * Chromium download to lose a cache race on.
@@ -574,7 +574,7 @@ export async function stageWarmFromBaseContext(
 
   const dockerfileName = '.kortix-snapshot.Dockerfile';
   const composedPath = join(contextDir, dockerfileName);
-  const composed = buildPerProjectWarmFromBaseDockerfile({
+  const composed = buildPerWorkspaceWarmFromBaseDockerfile({
     baseImageRef,
     warmRepo: { stagedPath, stagedGitPath, branch: warmRepo.branch },
     opencodeConfigPath,
@@ -649,7 +649,7 @@ async function assertContextComplete(
     'kortix-llm-catalog.json',
     dockerfileName,
   ];
-  // A per-project warm bake COPYs the staged checkout — verify it (and its
+  // A per-workspace warm bake COPYs the staged checkout — verify it (and its
   // baked .git) actually landed, so a staging miss fails HERE rather than as an
   // opaque remote "Path does not exist" mid-build.
   if (warmRepoStagedPath) {
@@ -745,7 +745,7 @@ export async function stageAgentBinaryGz(): Promise<{ gzPath: string; cleanup: (
 async function stageScaffoldRepo(contextDir: string): Promise<void> {
   const work = join(contextDir, '.scaffold-work');
   await mkdir(work, { recursive: true });
-  const files = buildStarterFiles({ projectName: 'kortix-project', repoFullName: 'kortix/kortix-project', template: DEFAULT_STARTER_TEMPLATE_ID });
+  const files = buildStarterFiles({ workspaceName: 'kortix-workspace', repoFullName: 'kortix/kortix-workspace', template: DEFAULT_STARTER_TEMPLATE_ID });
   for (const f of files) {
     const full = join(work, f.path);
     await mkdir(dirname(full), { recursive: true });
@@ -762,7 +762,7 @@ async function stageScaffoldRepo(contextDir: string): Promise<void> {
   await g(['config', 'user.name', 'Kortix'], work);
   await g(['config', 'user.email', 'noreply@kortix.ai'], work);
   await g(['add', '-A'], work);
-  await g(['commit', '-m', 'chore: scaffold Kortix project'], work);
+  await g(['commit', '-m', 'chore: scaffold Kortix workspace'], work);
   await g(['clone', '--bare', '-q', work, join(contextDir, 'scaffold.git')], contextDir);
   await rm(work, { recursive: true, force: true });
 }

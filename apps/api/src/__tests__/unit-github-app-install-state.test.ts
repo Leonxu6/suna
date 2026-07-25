@@ -1,5 +1,5 @@
 /**
- * Unit tests for the GitHub App install-state token (apps/api/src/projects/
+ * Unit tests for the GitHub App install-state token (apps/api/src/workspaces/
  * github.ts): buildGitHubAppInstallState / verifyGitHubAppInstallStatePayload.
  *
  * These are the state tokens GitHub round-trips through the browser on the
@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   buildGitHubAppInstallState,
   verifyGitHubAppInstallStatePayload,
-} from '../projects/github';
+} from '../workspaces/github';
 import {
   buildAccountGitHubSetupRedirect,
   resolveGitHubInstallCallbackAction,

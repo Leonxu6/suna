@@ -44,7 +44,7 @@ describe('classifySnapshotError', () => {
   });
 
   test('Kortix runtime layer failures outrank the generic dockerfile bucket', () => {
-    // The real incident: a project apt-installed gdal-bin → dpkg-owned
+    // The real incident: a workspace apt-installed gdal-bin → dpkg-owned
     // python3-numpy, and OUR injected pip floor tried to uninstall it. The user's
     // Dockerfile was CORRECT — classifying this as 'dockerfile' dispatched an
     // agent to "fix" it. Note each of these ALSO matches the 'dockerfile' rule

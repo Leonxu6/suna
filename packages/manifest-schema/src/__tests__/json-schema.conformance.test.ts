@@ -99,7 +99,7 @@ platform = "slack"
 [[agents]]
 name = "support"
 connectors = ["github"]
-kortix_cli = ["project.read", "project.session.start"]
+kortix_cli = ["workspace.read", "workspace.session.start"]
 env = ["STRIPE_KEY"]
 
 [[agents]]
@@ -152,7 +152,7 @@ connectors:
 agents:
   - name: support
     connectors: [github]
-    kortix_cli: [project.read, project.session.start]
+    kortix_cli: [workspace.read, workspace.session.start]
     env: [STRIPE_KEY]
   - name: pr-bot
     connectors: all
@@ -416,11 +416,11 @@ agents:
   support:
     connectors: [github, slack]
     secrets: [STRIPE_KEY, GH_TOKEN]
-    kortix_cli: [project.session.start, project.cr.open]
+    kortix_cli: [workspace.session.start, workspace.cr.open]
     workspace: runtime
   pr-bot:
     connectors: [github]
-    kortix_cli: [project.cr.open, project.cr.merge, project.review.submit]
+    kortix_cli: [workspace.cr.open, workspace.cr.merge, workspace.review.submit]
 
 triggers:
   - slug: nightly-digest

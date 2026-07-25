@@ -18,7 +18,7 @@ describe('startErrorMessage', () => {
     expect(m.toLowerCase()).toContain('concurrent-session limit');
   });
 
-  test('404 → project moved/deleted, points to /kortix switch', () => {
+  test('404 → workspace moved/deleted, points to /kortix switch', () => {
     const m = startErrorMessage(404, {});
     expect(m).toContain('/kortix switch');
   });

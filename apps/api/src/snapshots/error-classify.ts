@@ -122,7 +122,7 @@ const INFO: Record<SnapshotErrorCategory, Omit<SnapshotErrorInfo, 'category'>> =
   },
   dockerfile: {
     title: 'Dockerfile build failed',
-    hint: 'A step in the project Dockerfile failed. An agent can inspect the build error and fix the Dockerfile.',
+    hint: 'A step in the workspace Dockerfile failed. An agent can inspect the build error and fix the Dockerfile.',
     fixableByAgent: true,
   },
   layer: {

@@ -6,7 +6,7 @@ import { db } from '../shared/db';
  * The serviceKey == the sandbox's KORTIX_TOKEN — the bearer the daemon's
  * `/kortix/*` control routes (e.g. git/commit-push) authenticate against.
  *
- * Product sandboxes persist it in `sandboxes.config`; project-session
+ * Product sandboxes persist it in `sandboxes.config`; workspace-session
  * sandboxes persist it in `session_sandboxes.config`. resolveEndpoint must
  * check BOTH, or daemon control calls for session boxes 401 (which silently
  * dropped the working-tree flush on provider migration).

@@ -24,7 +24,7 @@
 // a multi-replica deployment.
 
 import { and, isNotNull, lt, sql } from 'drizzle-orm';
-import { projectGroupGrants, projectMembers } from '@kortix/db';
+import { workspaceGroupGrants, workspaceMembers } from '@kortix/db';
 import { db } from '../shared/db';
 import { recordAuditEvent } from '../shared/audit';
 
@@ -87,23 +87,23 @@ export function stopGrantExpirySweeper(): void {
  * spamming the log. Failures are surfaced via console.error.
  */
 async function runOnce(): Promise<void> {
-  // ── Direct project_members grants ──────────────────────────────────
+  // ── Direct workspace_members grants ──────────────────────────────────
   const claimedMembers = await db
-    .update(projectMembers)
+    .update(workspaceMembers)
     .set({ updatedAt: sql`now()` })
     .where(
       and(
-        isNotNull(projectMembers.expiresAt),
-        lt(projectMembers.expiresAt, sql`now()`),
-        lt(projectMembers.updatedAt, projectMembers.expiresAt),
+        isNotNull(workspaceMembers.expiresAt),
+        lt(workspaceMembers.expiresAt, sql`now()`),
+        lt(workspaceMembers.updatedAt, workspaceMembers.expiresAt),
       ),
     )
     .returning({
-      projectId: projectMembers.projectId,
-      userId: projectMembers.userId,
-      accountId: projectMembers.accountId,
-      projectRole: projectMembers.projectRole,
-      expiresAt: projectMembers.expiresAt,
+      workspaceId: workspaceMembers.workspaceId,
+      userId: workspaceMembers.userId,
+      accountId: workspaceMembers.accountId,
+      workspaceRole: workspaceMembers.workspaceRole,
+      expiresAt: workspaceMembers.expiresAt,
     });
 
   await Promise.all(
@@ -111,11 +111,11 @@ async function runOnce(): Promise<void> {
       recordAuditEvent({
         accountId: m.accountId,
         actorUserId: null, // system event
-        action: 'iam.project.member.expired',
-        resourceType: 'project_member',
-        resourceId: `${m.projectId}:${m.userId}`,
+        action: 'iam.workspace.member.expired',
+        resourceType: 'workspace_member',
+        resourceId: `${m.workspaceId}:${m.userId}`,
         before: {
-          project_role: m.projectRole,
+          workspace_role: m.workspaceRole,
           expires_at: m.expiresAt?.toISOString() ?? null,
         },
         after: null,
@@ -129,21 +129,21 @@ async function runOnce(): Promise<void> {
 
   // ── Group-grant attachments ────────────────────────────────────────
   const claimedGrants = await db
-    .update(projectGroupGrants)
+    .update(workspaceGroupGrants)
     .set({ updatedAt: sql`now()` })
     .where(
       and(
-        isNotNull(projectGroupGrants.expiresAt),
-        lt(projectGroupGrants.expiresAt, sql`now()`),
-        lt(projectGroupGrants.updatedAt, projectGroupGrants.expiresAt),
+        isNotNull(workspaceGroupGrants.expiresAt),
+        lt(workspaceGroupGrants.expiresAt, sql`now()`),
+        lt(workspaceGroupGrants.updatedAt, workspaceGroupGrants.expiresAt),
       ),
     )
     .returning({
-      projectId: projectGroupGrants.projectId,
-      groupId: projectGroupGrants.groupId,
-      accountId: projectGroupGrants.accountId,
-      role: projectGroupGrants.role,
-      expiresAt: projectGroupGrants.expiresAt,
+      workspaceId: workspaceGroupGrants.workspaceId,
+      groupId: workspaceGroupGrants.groupId,
+      accountId: workspaceGroupGrants.accountId,
+      role: workspaceGroupGrants.role,
+      expiresAt: workspaceGroupGrants.expiresAt,
     });
 
   await Promise.all(
@@ -151,9 +151,9 @@ async function runOnce(): Promise<void> {
       recordAuditEvent({
         accountId: g.accountId,
         actorUserId: null,
-        action: 'iam.project.group.expired',
-        resourceType: 'project_group_grant',
-        resourceId: `${g.projectId}:${g.groupId}`,
+        action: 'iam.workspace.group.expired',
+        resourceType: 'workspace_group_grant',
+        resourceId: `${g.workspaceId}:${g.groupId}`,
         before: {
           role: g.role,
           expires_at: g.expiresAt?.toISOString() ?? null,

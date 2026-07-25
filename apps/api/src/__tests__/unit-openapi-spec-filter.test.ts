@@ -8,11 +8,76 @@
 import { createRoute } from '@hono/zod-openapi';
 import { describe, expect, test } from 'bun:test';
 import {
+  addDeprecatedProjectCompatibilityPaths,
   INTERNAL_SPEC_PREFIXES,
   filterSpecPaths,
   makeOpenApiApp,
   mountOpenApiDocs,
 } from '../openapi';
+
+describe('addDeprecatedProjectCompatibilityPaths', () => {
+  test('documents project aliases as deprecated and retains workspace routes', () => {
+    const doc = {
+      paths: {
+        '/v1/workspaces/{workspaceId}': {
+          get: {
+            parameters: [
+              { in: 'path', name: 'workspaceId', required: true },
+            ],
+          },
+        },
+        '/v1/projects/{workspaceId}': {
+          get: {
+            parameters: [
+              { in: 'path', name: 'workspaceId', required: true },
+            ],
+          },
+        },
+        '/v1/executor/workspaces/{workspaceId}/catalog': {
+          get: {
+            parameters: [
+              { in: 'path', name: 'workspaceId', required: true },
+            ],
+          },
+        },
+      },
+    };
+
+    const out = addDeprecatedProjectCompatibilityPaths(doc);
+    const paths = out.paths as Record<
+      string,
+      { get?: Record<string, unknown> }
+    >;
+    expect(paths['/v1/workspaces/{workspaceId}']).toBeDefined();
+    expect(paths['/v1/projects/{workspaceId}']).toBeUndefined();
+    expect(
+      paths['/v1/projects/{projectId}']?.get,
+    ).toMatchObject({
+      deprecated: true,
+      'x-kortix-successor': 'workspace',
+      parameters: [{ in: 'path', name: 'projectId', required: true }],
+    });
+    expect(
+      paths['/v1/executor/projects/{projectId}/catalog']?.get,
+    ).toMatchObject({
+      deprecated: true,
+      'x-kortix-successor': 'workspace',
+      parameters: [{ in: 'path', name: 'projectId', required: true }],
+    });
+  });
+
+  test('does not mutate the input', () => {
+    const doc = {
+      paths: {
+        '/v1/projects/{workspaceId}': { get: {} },
+      },
+    };
+    addDeprecatedProjectCompatibilityPaths(doc);
+    expect(
+      doc.paths['/v1/projects/{workspaceId}'],
+    ).toBeDefined();
+  });
+});
 
 describe('filterSpecPaths', () => {
   test('drops internal prefixes and everything beneath them', () => {
@@ -22,14 +87,14 @@ describe('filterSpecPaths', () => {
         '/v1/admin': {},
         '/v1/admin/api/accounts/{id}/credits/debit': {},
         '/v1/ops/overview': {},
-        '/v1/projects/{id}': {},
+        '/v1/workspaces/{id}': {},
         '/scim/v2/accounts/{accountId}/Users': {},
       },
     };
     const out = filterSpecPaths(doc);
     expect(Object.keys(out.paths).sort()).toEqual([
       '/scim/v2/accounts/{accountId}/Users', // SCIM stays public (RFC-7644)
-      '/v1/projects/{id}',
+      '/v1/workspaces/{id}',
     ]);
   });
 
@@ -43,7 +108,7 @@ describe('filterSpecPaths', () => {
     // (a real OpenAPI doc has many more fields); asserts the no-paths early return.
     const noPaths: { openapi: string; paths?: Record<string, unknown> } = { openapi: '3.1.0' };
     expect(filterSpecPaths(noPaths)).toEqual({ openapi: '3.1.0' });
-    const input = { paths: { '/v1/admin': {}, '/v1/projects': {} } };
+    const input = { paths: { '/v1/admin': {}, '/v1/workspaces': {} } };
     filterSpecPaths(input);
     expect(Object.keys(input.paths)).toContain('/v1/admin'); // input untouched
   });
@@ -59,7 +124,7 @@ describe('mountOpenApiDocs — served spec excludes internal routers', () => {
 
     const publicRoute = createRoute({
       method: 'get',
-      path: '/v1/projects/{id}',
+      path: '/v1/workspaces/{id}',
       responses: { 200: { description: 'ok' } },
     });
     app.openapi(publicRoute, (c: any) => c.json({}));
@@ -79,7 +144,7 @@ describe('mountOpenApiDocs — served spec excludes internal routers', () => {
     expect(res.status).toBe(200);
     const spec = (await res.json()) as { paths: Record<string, unknown> };
     const paths = Object.keys(spec.paths);
-    expect(paths).toContain('/v1/projects/{id}');
+    expect(paths).toContain('/v1/workspaces/{id}');
     expect(paths.some((p) => p.startsWith('/v1/admin'))).toBe(false);
   });
 });

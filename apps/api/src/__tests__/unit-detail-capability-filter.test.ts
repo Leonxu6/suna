@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { applyDetailCapabilityFilter } from '../projects/lib/detail-capability-filter';
+import { applyDetailCapabilityFilter } from '../workspaces/lib/detail-capability-filter';
 
 // Record<string, unknown> so the filtered fields (which the runtime blanks to
 // {} / [] / null) type as `unknown` at the assertions — otherwise the literal

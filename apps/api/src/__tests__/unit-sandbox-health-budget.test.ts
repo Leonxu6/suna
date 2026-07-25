@@ -1,14 +1,14 @@
 /**
- * Regression coverage for the `/projects/:projectId/sandbox-health` poll's
+ * Regression coverage for the `/workspaces/:workspaceId/sandbox-health` poll's
  * whole-handler wall-clock budget.
  *
  * Incident: the frontend (Kortix Frontend, prod) reported
- *   "ApiError — Request timed out after 30s: /projects/<id>/sandbox-health"
+ *   "ApiError — Request timed out after 30s: /workspaces/<id>/sandbox-health"
  * (Better Stack error f49bbe8a9ec0ad587e5ad540cbdce3917361004fba8d0c914146d2cbbd119fff).
  *
  * A prior fix (PR #3361) bounded only the Daytona `snapshot.get` /
  * `listSandboxTemplates` portion. But the handler also awaits git-auth
- * resolution (`loadGitProject`) and the build-log DB query
+ * resolution (`loadGitWorkspace`) and the build-log DB query
  * (`listSnapshotBuilds`) with no bound — so a slow DB or git-auth call still
  * let the request hang to the client's 30s abort and re-fire the same error.
  *
@@ -23,7 +23,7 @@
 import { describe, expect, test } from 'bun:test';
 import { TimeoutError, withTimeout } from '../shared/with-timeout';
 
-// Kept in sync with apps/api/src/projects/routes/r2.ts. Re-declared here rather
+// Kept in sync with apps/api/src/workspaces/routes/r2.ts. Re-declared here rather
 // than imported because the route module validates server env (FRONTEND_URL,
 // DB, …) at load time; this unit test must stay hermetic. If the route's
 // values change, update these and the assertions will keep the contract honest.

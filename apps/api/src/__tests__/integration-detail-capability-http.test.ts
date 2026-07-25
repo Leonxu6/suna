@@ -1,17 +1,17 @@
 import { describe, expect, test, beforeAll, afterAll } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { accountMembers, accounts, projectMembers, projects } from '@kortix/db';
+import { accountMembers, accounts, workspaceMembers, workspaces } from '@kortix/db';
 import { db } from '../shared/db';
 import { app } from '../index';
 import { createAccountToken } from '../repositories/account-tokens';
 
-// GET /:projectId/detail must stay loadable by a plain `member` even though
-// member lacks project.file.read: the fix filters the file list OUT of the
+// GET /:workspaceId/detail must stay loadable by a plain `member` even though
+// member lacks workspace.file.read: the fix filters the file list OUT of the
 // response rather than 403-ing the whole bundle (a hard assert would lock every
 // member out of the workspace shell). This proves the coarse floor stayed
-// project.read and the file section is blanked, not gated.
+// workspace.read and the file section is blanked, not gated.
 const ACCOUNT = crypto.randomUUID();
-const PROJECT = crypto.randomUUID();
+const WORKSPACE = crypto.randomUUID();
 const MEMBER = crypto.randomUUID();
 const EDITOR = crypto.randomUUID();
 
@@ -23,19 +23,19 @@ beforeAll(async () => {
   await db.execute(sql`alter table kortix.account_tokens add column if not exists service_account_id uuid`);
 
   await db.insert(accounts).values({ accountId: ACCOUNT, name: 'detail-cap-test' });
-  await db.insert(projects).values({
-    projectId: PROJECT,
+  await db.insert(workspaces).values({
+    workspaceId: WORKSPACE,
     accountId: ACCOUNT,
-    name: 'detail-cap-test-project',
+    name: 'detail-cap-test-workspace',
     repoUrl: 'https://example.com/detail-cap-test.git',
   });
   await db.insert(accountMembers).values([
     { userId: MEMBER, accountId: ACCOUNT, accountRole: 'member', isSuperAdmin: false },
     { userId: EDITOR, accountId: ACCOUNT, accountRole: 'member', isSuperAdmin: false },
   ]);
-  await db.insert(projectMembers).values([
-    { accountId: ACCOUNT, projectId: PROJECT, userId: MEMBER, projectRole: 'member' },
-    { accountId: ACCOUNT, projectId: PROJECT, userId: EDITOR, projectRole: 'editor' },
+  await db.insert(workspaceMembers).values([
+    { accountId: ACCOUNT, workspaceId: WORKSPACE, userId: MEMBER, workspaceRole: 'member' },
+    { accountId: ACCOUNT, workspaceId: WORKSPACE, userId: EDITOR, workspaceRole: 'editor' },
   ]);
 });
 
@@ -43,7 +43,7 @@ afterAll(async () => {
   for (const tokenId of minted) {
     await db.execute(sql`delete from kortix.account_tokens where token_id = ${tokenId}`);
   }
-  await db.delete(projects).where(eq(projects.accountId, ACCOUNT));
+  await db.delete(workspaces).where(eq(workspaces.accountId, ACCOUNT));
   await db.delete(accounts).where(eq(accounts.accountId, ACCOUNT));
 });
 
@@ -51,7 +51,7 @@ async function mint(userId: string): Promise<string> {
   const t = await createAccountToken({
     accountId: ACCOUNT,
     userId,
-    projectId: PROJECT,
+    workspaceId: WORKSPACE,
     name: 'detail-cap-test',
     agentGrant: null as any,
   });
@@ -60,7 +60,7 @@ async function mint(userId: string): Promise<string> {
 }
 
 function getDetail(secret: string) {
-  return app.request(`/v1/projects/${PROJECT}/detail`, {
+  return app.request(`/v1/workspaces/${WORKSPACE}/detail`, {
     method: 'GET',
     headers: { Authorization: `Bearer ${secret}` },
   });
@@ -71,7 +71,7 @@ describe('HTTP — GET /detail stays loadable for a member (file list filtered, 
     const secret = await mint(MEMBER);
     const res = await getDetail(secret);
     // The whole point: member must not be denied the bundle. The old naive fix
-    // (assertProjectCapability(file.read)) would 403 here.
+    // (assertWorkspaceCapability(file.read)) would 403 here.
     expect(res.status).not.toBe(403);
   });
 

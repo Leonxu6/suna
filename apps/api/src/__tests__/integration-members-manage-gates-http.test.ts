@@ -7,33 +7,33 @@ import {
   iamPolicies,
   iamRoleActions,
   iamRoles,
-  projectGroupGrants,
-  projectMembers,
-  projects,
+  workspaceGroupGrants,
+  workspaceMembers,
+  workspaces,
 } from '@kortix/db';
 import { eq, sql } from 'drizzle-orm';
-import { PROJECT_ACTIONS } from '../iam';
+import { WORKSPACE_ACTIONS } from '../iam';
 import { app } from '../index';
 import { createAccountToken } from '../repositories/account-tokens';
 import { db } from '../shared/db';
 
-// These endpoints are the project-scoped members-governance surface (group
+// These endpoints are the workspace-scoped members-governance surface (group
 // grants, resource grants, approvals, access requests). Each already asserts
-// the project.members.manage leaf — but the coarse floor was
-// loadProjectForUser(..,'manage'), which maps to project.write. That OVER-GATED
-// them: a custom "member manager" role (project.read + members.manage, but NOT
-// project.write) was wrongly denied at the floor before its members.manage
+// the workspace.members.manage leaf — but the coarse floor was
+// loadWorkspaceForUser(..,'manage'), which maps to workspace.write. That OVER-GATED
+// them: a custom "member manager" role (workspace.read + members.manage, but NOT
+// workspace.write) was wrongly denied at the floor before its members.manage
 // grant was ever consulted. The fix lowers the floor to 'read' so the
 // members.manage leaf is the sole capability gate. (GET /access-requests also
 // GAINED the leaf assert — it previously ran on the floor alone, so a plain
 // editor could list pending requests; now it's manager-only like its siblings.)
 const ACCOUNT = crypto.randomUUID();
-const PROJECT = crypto.randomUUID();
+const WORKSPACE = crypto.randomUUID();
 const MANAGER = crypto.randomUUID();
 const EDITOR = crypto.randomUUID();
 const MEMBER = crypto.randomUUID();
-// The custom-role principal: no built-in project role at all — access is purely
-// an iam_policies grant of [project.read, project.members.manage] at project
+// The custom-role principal: no built-in workspace role at all — access is purely
+// an iam_policies grant of [workspace.read, workspace.members.manage] at workspace
 // scope. This is the exact role the granular RBAC model must support, and the
 // exact case the old 'manage' floor broke.
 const CUSTOM = crypto.randomUUID();
@@ -52,10 +52,10 @@ beforeAll(async () => {
     accountId: ACCOUNT,
     demoEnterprise: true,
   });
-  await db.insert(projects).values({
-    projectId: PROJECT,
+  await db.insert(workspaces).values({
+    workspaceId: WORKSPACE,
     accountId: ACCOUNT,
-    name: 'members-manage-gate-test-project',
+    name: 'members-manage-gate-test-workspace',
     repoUrl: 'https://example.com/members-manage-gate-test.git',
   });
   await db.insert(accountGroups).values({
@@ -70,30 +70,30 @@ beforeAll(async () => {
     { userId: MEMBER, accountId: ACCOUNT, accountRole: 'member', isSuperAdmin: false },
     { userId: CUSTOM, accountId: ACCOUNT, accountRole: 'member', isSuperAdmin: false },
   ]);
-  await db.insert(projectMembers).values([
-    { accountId: ACCOUNT, projectId: PROJECT, userId: MANAGER, projectRole: 'manager' },
-    { accountId: ACCOUNT, projectId: PROJECT, userId: EDITOR, projectRole: 'editor' },
-    { accountId: ACCOUNT, projectId: PROJECT, userId: MEMBER, projectRole: 'member' },
+  await db.insert(workspaceMembers).values([
+    { accountId: ACCOUNT, workspaceId: WORKSPACE, userId: MANAGER, workspaceRole: 'manager' },
+    { accountId: ACCOUNT, workspaceId: WORKSPACE, userId: EDITOR, workspaceRole: 'editor' },
+    { accountId: ACCOUNT, workspaceId: WORKSPACE, userId: MEMBER, workspaceRole: 'member' },
   ]);
-  // Custom "member manager" role — members.manage WITHOUT project.write.
+  // Custom "member manager" role — members.manage WITHOUT workspace.write.
   await db.insert(iamRoles).values({
     roleId: CUSTOM_ROLE,
     accountId: ACCOUNT,
     key: `mm-${CUSTOM_ROLE.slice(0, 6)}`,
     name: 'Member Manager',
-    scopeType: 'project',
+    scopeType: 'workspace',
   });
   await db.insert(iamRoleActions).values([
-    { roleId: CUSTOM_ROLE, action: PROJECT_ACTIONS.PROJECT_READ },
-    { roleId: CUSTOM_ROLE, action: PROJECT_ACTIONS.PROJECT_MEMBERS_MANAGE },
+    { roleId: CUSTOM_ROLE, action: WORKSPACE_ACTIONS.WORKSPACE_READ },
+    { roleId: CUSTOM_ROLE, action: WORKSPACE_ACTIONS.WORKSPACE_MEMBERS_MANAGE },
   ]);
   await db.insert(iamPolicies).values({
     accountId: ACCOUNT,
     principalType: 'member',
     principalId: CUSTOM,
     roleId: CUSTOM_ROLE,
-    scopeType: 'project',
-    scopeId: PROJECT,
+    scopeType: 'workspace',
+    scopeId: WORKSPACE,
   });
 });
 
@@ -104,9 +104,9 @@ afterAll(async () => {
   await db.delete(iamPolicies).where(eq(iamPolicies.accountId, ACCOUNT));
   await db.delete(iamRoleActions).where(eq(iamRoleActions.roleId, CUSTOM_ROLE));
   await db.delete(iamRoles).where(eq(iamRoles.accountId, ACCOUNT));
-  await db.delete(projectGroupGrants).where(eq(projectGroupGrants.accountId, ACCOUNT));
+  await db.delete(workspaceGroupGrants).where(eq(workspaceGroupGrants.accountId, ACCOUNT));
   await db.delete(accountGroups).where(eq(accountGroups.accountId, ACCOUNT));
-  await db.delete(projects).where(eq(projects.accountId, ACCOUNT));
+  await db.delete(workspaces).where(eq(workspaces.accountId, ACCOUNT));
   await db.delete(creditAccounts).where(eq(creditAccounts.accountId, ACCOUNT));
   await db.delete(accounts).where(eq(accounts.accountId, ACCOUNT));
 });
@@ -115,7 +115,7 @@ async function mint(userId: string): Promise<string> {
   const t = await createAccountToken({
     accountId: ACCOUNT,
     userId,
-    projectId: PROJECT,
+    workspaceId: WORKSPACE,
     name: 'members-manage-gate-test',
     agentGrant: null as any,
   });
@@ -156,29 +156,29 @@ interface EP {
 }
 
 const ENDPOINTS: EP[] = [
-  { name: 'POST /group-grants', method: 'POST', path: () => `/v1/projects/${PROJECT}/group-grants`, body: {} },
-  { name: 'PATCH /group-grants/{id}', method: 'PATCH', path: () => `/v1/projects/${PROJECT}/group-grants/${crypto.randomUUID()}`, body: {} },
-  { name: 'DELETE /group-grants/{id}', method: 'DELETE', path: () => `/v1/projects/${PROJECT}/group-grants/${crypto.randomUUID()}` },
-  { name: 'GET /approvals', method: 'GET', path: () => `/v1/projects/${PROJECT}/approvals` },
-  { name: 'GET /resource-grants', method: 'GET', path: () => `/v1/projects/${PROJECT}/resource-grants` },
-  { name: 'POST /resource-grants', method: 'POST', path: () => `/v1/projects/${PROJECT}/resource-grants`, body: {} },
-  { name: 'DELETE /resource-grants/{id}', method: 'DELETE', path: () => `/v1/projects/${PROJECT}/resource-grants/${crypto.randomUUID()}` },
-  { name: 'GET /access-requests', method: 'GET', path: () => `/v1/projects/${PROJECT}/access-requests` },
+  { name: 'POST /group-grants', method: 'POST', path: () => `/v1/workspaces/${WORKSPACE}/group-grants`, body: {} },
+  { name: 'PATCH /group-grants/{id}', method: 'PATCH', path: () => `/v1/workspaces/${WORKSPACE}/group-grants/${crypto.randomUUID()}`, body: {} },
+  { name: 'DELETE /group-grants/{id}', method: 'DELETE', path: () => `/v1/workspaces/${WORKSPACE}/group-grants/${crypto.randomUUID()}` },
+  { name: 'GET /approvals', method: 'GET', path: () => `/v1/workspaces/${WORKSPACE}/approvals` },
+  { name: 'GET /resource-grants', method: 'GET', path: () => `/v1/workspaces/${WORKSPACE}/resource-grants` },
+  { name: 'POST /resource-grants', method: 'POST', path: () => `/v1/workspaces/${WORKSPACE}/resource-grants`, body: {} },
+  { name: 'DELETE /resource-grants/{id}', method: 'DELETE', path: () => `/v1/workspaces/${WORKSPACE}/resource-grants/${crypto.randomUUID()}` },
+  { name: 'GET /access-requests', method: 'GET', path: () => `/v1/workspaces/${WORKSPACE}/access-requests` },
 ];
 
-describe('HTTP enforcement — project members.manage gates (floor lowered read; leaf is the gate)', () => {
+describe('HTTP enforcement — workspace members.manage gates (floor lowered read; leaf is the gate)', () => {
   test('a normal group-grant body remains valid and creates the grant', async () => {
     const secret = await mint(MANAGER);
     const res = await req(
       'POST',
-      `/v1/projects/${PROJECT}/group-grants`,
+      `/v1/workspaces/${WORKSPACE}/group-grants`,
       secret,
       { group_id: GROUP, role: 'editor' },
     );
 
     expect(res.status).toBe(201);
     expect(await res.json()).toMatchObject({
-      project_id: PROJECT,
+      workspace_id: WORKSPACE,
       group_id: GROUP,
       role: 'editor',
     });
@@ -186,7 +186,7 @@ describe('HTTP enforcement — project members.manage gates (floor lowered read;
 
   for (const ep of ENDPOINTS) {
     describe(ep.name, () => {
-      test('EDITOR (project.write but NOT members.manage) → 403 on the members.manage leaf', async () => {
+      test('EDITOR (workspace.write but NOT members.manage) → 403 on the members.manage leaf', async () => {
         const secret = await mint(EDITOR);
         const res = await req(ep.method, ep.path(), secret, ep.body);
         expect(await deniedByLeaf(res)).toBe(true);
@@ -204,7 +204,7 @@ describe('HTTP enforcement — project members.manage gates (floor lowered read;
         expect(await deniedByLeaf(res)).toBe(false);
       });
 
-      test('custom role [project.read + members.manage], NO project.write → NOT denied (over-gating fixed)', async () => {
+      test('custom role [workspace.read + members.manage], NO workspace.write → NOT denied (over-gating fixed)', async () => {
         const secret = await mint(CUSTOM);
         const res = await req(ep.method, ep.path(), secret, ep.body);
         expect(await deniedByLeaf(res)).toBe(false);

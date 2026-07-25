@@ -24,8 +24,24 @@ mock.module('./free-tier', () => ({
   ensureFreeTierAccountReady: async () => undefined,
 }));
 
+mock.module('./credits', () => ({
+  deductCredits: async () => {
+    if (Number(account?.balance ?? 0) < 0.01) {
+      throw new Error('insufficient credits');
+    }
+  },
+}));
+
 mock.module('../repositories/credit-accounts', () => ({
   getCreditAccount: async () => account,
+  getCreditBalance: async () => ({
+    balance: Number(account?.balance ?? 0),
+    granted: Number(account?.balance ?? 0),
+    used: 0,
+  }),
+  updateCreditAccount: async () => account,
+  getSubscriptionInfo: async () => null,
+  upsertCreditAccount: async () => account,
 }));
 
 const { assertBillingActive, checkBillingActive, BillingGateError } = await import(

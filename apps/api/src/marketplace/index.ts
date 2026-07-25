@@ -1,6 +1,6 @@
 /**
  * /v1/marketplace — browse the registry catalog. Read-only routes are public; installing
- * is project-scoped and lives at /v1/projects/:id/marketplace/install-session (see r10.ts).
+ * is workspace-scoped and lives at /v1/workspaces/:id/marketplace/install-session (see r10.ts).
  */
 
 import { createRoute, z } from '@hono/zod-openapi';
@@ -59,7 +59,7 @@ marketplaceApp.openapi(
     const q = c.req.query();
     // Pagination is opt-in: only a present, numeric `limit` triggers slicing —
     // absent/non-numeric `limit` must still return the full filtered list
-    // (existing callers, e.g. the web's default-project-skills lookup, filter
+    // (existing callers, e.g. the web's default-workspace-skills lookup, filter
     // client-side and rely on getting everything back). A present-but-out-of-
     // range `limit` (e.g. 0, negative, >200) still opts in, clamped to [1,200].
     // 200 (not 100) so the explore landing's `MARKETPLACE_EXPLORE_LANDING_LIMIT`

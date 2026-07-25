@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { createDb, accounts, projects, type Database } from '@kortix/db';
+import { createDb, accounts, workspaces, type Database } from '@kortix/db';
 import { collectPinnedImageRefs } from './pinned-images';
 
 // Throwaway-Postgres proof that the pinned-image guard reads the ACTIVE pin keys
@@ -14,12 +14,12 @@ const d = RUN ? describe : describe.skip;
 let db: Database;
 let accountId: string;
 
-async function project(metadata: Record<string, unknown>): Promise<string> {
+async function workspace(metadata: Record<string, unknown>): Promise<string> {
   const [row] = await db
-    .insert(projects)
+    .insert(workspaces)
     .values({ accountId, name: 'pin', repoUrl: 'https://example.test/r.git', metadata })
     .returning();
-  return row!.projectId;
+  return row!.workspaceId;
 }
 
 beforeAll(async () => {
@@ -35,22 +35,22 @@ afterAll(async () => {
 });
 
 d('collectPinnedImageRefs (throwaway Postgres)', () => {
-  test('returns the active pinned image NAME and external id, and ignores unpinned projects', async () => {
-    await project({
+  test('returns the active pinned image NAME and external id, and ignores unpinned workspaces', async () => {
+    await workspace({
       default_sandbox_provider: 'platinum',
       active_sandbox_snapshot_name: 'kortix-ppwarm-abcd1234-deadbeefcafe',
       active_sandbox_external_template_id: 'tpl_live_123',
     });
-    // A project with an EXTERNAL id but no snapshot name (e.g. a default-provider pin).
-    await project({ active_sandbox_external_template_id: 'tpl_only_456' });
-    // An unpinned project contributes nothing.
-    await project({ default_agent: 'writer', triggers_paused: true });
+    // A workspace with an EXTERNAL id but no snapshot name (e.g. a default-provider pin).
+    await workspace({ active_sandbox_external_template_id: 'tpl_only_456' });
+    // An unpinned workspace contributes nothing.
+    await workspace({ default_agent: 'writer', triggers_paused: true });
 
     const refs = await collectPinnedImageRefs(db);
     expect(refs.has('kortix-ppwarm-abcd1234-deadbeefcafe')).toBe(true);
     expect(refs.has('tpl_live_123')).toBe(true);
     expect(refs.has('tpl_only_456')).toBe(true);
-    // No stray values from the unpinned project.
+    // No stray values from the unpinned workspace.
     expect(refs.has('writer')).toBe(false);
   });
 });

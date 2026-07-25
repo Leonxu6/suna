@@ -9,7 +9,7 @@
  *   - session-sandbox.ts computes it once at sandbox boot (KORTIX_LLM_BASE_URL
  *     injected into the container's env), using
  *     `provider.sandboxFacingApiOrigin() ?? config.KORTIX_URL` as the origin.
- *   - projects/lib/sandbox-env-sync.ts recomputes it on every prompt / gateway-
+ *   - workspaces/lib/sandbox-env-sync.ts recomputes it on every prompt / gateway-
  *     mode toggle (the hot env-push path posts it to the running daemon).
  * A same-machine provider's fix at boot time is silently undone by the next
  * prompt's hot push if that second call site keeps its own copy of this

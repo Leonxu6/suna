@@ -47,7 +47,7 @@ describe('runsSingletonWorkers (dead-weight-leader guard)', () => {
     expect(
       runsSingletonWorkers({
         KORTIX_TRIGGER_SCHEDULER_ENABLED: 'false',
-        KORTIX_PROJECT_MAINTENANCE_ENABLED: 'false',
+        KORTIX_WORKSPACE_MAINTENANCE_ENABLED: 'false',
         KORTIX_LEGACY_MIGRATION_WORKER_ENABLED: 'false',
         KORTIX_SUNA_MIGRATION_WORKER_ENABLED: 'false',
       }),
@@ -58,7 +58,7 @@ describe('runsSingletonWorkers (dead-weight-leader guard)', () => {
     expect(
       runsSingletonWorkers({
         KORTIX_TRIGGER_SCHEDULER_ENABLED: 'false',
-        KORTIX_PROJECT_MAINTENANCE_ENABLED: 'false',
+        KORTIX_WORKSPACE_MAINTENANCE_ENABLED: 'false',
         KORTIX_LEGACY_MIGRATION_WORKER_ENABLED: 'false',
         KORTIX_SUNA_MIGRATION_WORKER_ENABLED: 'true',
       }),
@@ -69,7 +69,7 @@ describe('runsSingletonWorkers (dead-weight-leader guard)', () => {
     expect(
       runsSingletonWorkers({
         KORTIX_TRIGGER_SCHEDULER_ENABLED: 'true',
-        KORTIX_PROJECT_MAINTENANCE_ENABLED: 'false',
+        KORTIX_WORKSPACE_MAINTENANCE_ENABLED: 'false',
         KORTIX_LEGACY_MIGRATION_WORKER_ENABLED: 'false',
         KORTIX_SUNA_MIGRATION_WORKER_ENABLED: 'false',
       }),

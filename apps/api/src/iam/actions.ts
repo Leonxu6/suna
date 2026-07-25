@@ -8,7 +8,7 @@
 
 export const RESOURCE_TYPES = [
   'account',
-  'project',
+  'workspace',
   'sandbox',
   'trigger',
   'channel',
@@ -55,78 +55,78 @@ export const ACCOUNT_ACTIONS = {
   TOKEN_CREATE: 'token.create',
   TOKEN_REVOKE: 'token.revoke',
 
-  // "Create a brand-new project" must live at account scope (the project
+  // "Create a brand-new workspace" must live at account scope (the workspace
   // doesn't exist yet to scope to).
-  PROJECT_CREATE: 'project.create',
+  WORKSPACE_CREATE: 'workspace.create',
 } as const;
 
-// ─── Project-scoped actions ────────────────────────────────────────────────
-// Can be granted at scope_type='project' (a specific project) OR at
-// scope_type='account' (every project in the account).
+// ─── Workspace-scoped actions ────────────────────────────────────────────────
+// Can be granted at scope_type='workspace' (a specific workspace) OR at
+// scope_type='account' (every workspace in the account).
 
-export const PROJECT_ACTIONS = {
-  PROJECT_READ: 'project.read',
-  PROJECT_WRITE: 'project.write',
-  PROJECT_DELETE: 'project.delete',
+export const WORKSPACE_ACTIONS = {
+  WORKSPACE_READ: 'workspace.read',
+  WORKSPACE_WRITE: 'workspace.write',
+  WORKSPACE_DELETE: 'workspace.delete',
   // Change requests. Distinct from write so an agent can be granted
   // "open a CR" WITHOUT "merge it to the base branch" — merge is the canonical
   // destructive action (it lands code on main), and stays human/explicit.
-  PROJECT_CR_OPEN: 'project.cr.open',
-  PROJECT_CR_MERGE: 'project.cr.merge',
+  WORKSPACE_CR_OPEN: 'workspace.cr.open',
+  WORKSPACE_CR_MERGE: 'workspace.cr.merge',
 
-  PROJECT_SESSION_READ: 'project.session.read',
-  PROJECT_SESSION_START: 'project.session.start',
-  PROJECT_SESSION_STOP: 'project.session.stop',
-  PROJECT_SESSION_BINDINGS_WRITE: 'project.session.bindings.write',
+  WORKSPACE_SESSION_READ: 'workspace.session.read',
+  WORKSPACE_SESSION_START: 'workspace.session.start',
+  WORKSPACE_SESSION_STOP: 'workspace.session.stop',
+  WORKSPACE_SESSION_BINDINGS_WRITE: 'workspace.session.bindings.write',
 
-  PROJECT_MEMBERS_READ: 'project.members.read',
-  PROJECT_MEMBERS_MANAGE: 'project.members.manage',
+  WORKSPACE_MEMBERS_READ: 'workspace.members.read',
+  WORKSPACE_MEMBERS_MANAGE: 'workspace.members.manage',
 
-  PROJECT_TRIGGER_READ: 'project.trigger.read',
-  PROJECT_TRIGGER_CREATE: 'project.trigger.create',
-  PROJECT_TRIGGER_UPDATE: 'project.trigger.update',
-  PROJECT_TRIGGER_DELETE: 'project.trigger.delete',
-  PROJECT_TRIGGER_FIRE: 'project.trigger.fire',
+  WORKSPACE_TRIGGER_READ: 'workspace.trigger.read',
+  WORKSPACE_TRIGGER_CREATE: 'workspace.trigger.create',
+  WORKSPACE_TRIGGER_UPDATE: 'workspace.trigger.update',
+  WORKSPACE_TRIGGER_DELETE: 'workspace.trigger.delete',
+  WORKSPACE_TRIGGER_FIRE: 'workspace.trigger.fire',
 
-  PROJECT_GATEWAY_LOGS_READ: 'project.gateway.logs.read',
-  PROJECT_GATEWAY_SPEND_READ: 'project.gateway.spend.read',
-  PROJECT_GATEWAY_BUDGET_SET: 'project.gateway.budget.set',
-  PROJECT_GATEWAY_KEYS_MANAGE: 'project.gateway.keys.manage',
+  WORKSPACE_GATEWAY_LOGS_READ: 'workspace.gateway.logs.read',
+  WORKSPACE_GATEWAY_SPEND_READ: 'workspace.gateway.spend.read',
+  WORKSPACE_GATEWAY_BUDGET_SET: 'workspace.gateway.budget.set',
+  WORKSPACE_GATEWAY_KEYS_MANAGE: 'workspace.gateway.keys.manage',
 
   // ── Per-capability leaf actions (IAM v1) ────────────────────────────────
-  // Each project feature gets its own read/write leaf so a custom role can
+  // Each workspace feature gets its own read/write leaf so a custom role can
   // DEACTIVATE one capability (omit the leaf) without losing the rest. Until a
-  // route is migrated to assert these, it keeps gating on project.read/write,
+  // route is migrated to assert these, it keeps gating on workspace.read/write,
   // so adding them is additive: every write leaf is also seeded into the Editor
   // built-in role and every read leaf into the User floor role (see
-  // role-perms.ts), so no existing editor/user loses a capability. All resolve to 'project' scope
-  // (prefix = 'project') via resourceTypeForAction.
-  PROJECT_AGENT_READ: 'project.agent.read',
-  PROJECT_AGENT_WRITE: 'project.agent.write',
-  PROJECT_SKILL_READ: 'project.skill.read',
-  PROJECT_SKILL_WRITE: 'project.skill.write',
-  PROJECT_COMMAND_READ: 'project.command.read',
-  PROJECT_COMMAND_WRITE: 'project.command.write',
-  PROJECT_FILE_READ: 'project.file.read',
-  PROJECT_FILE_WRITE: 'project.file.write',
-  PROJECT_CUSTOMIZE_READ: 'project.customize.read',
-  PROJECT_CUSTOMIZE_WRITE: 'project.customize.write',
-  PROJECT_GITOPS_READ: 'project.gitops.read',
-  PROJECT_GITOPS_PUSH: 'project.gitops.push',
-  PROJECT_GITOPS_MERGE: 'project.gitops.merge',
-  PROJECT_SECRET_READ: 'project.secret.read',
-  PROJECT_SECRET_WRITE: 'project.secret.write',
-  PROJECT_CONNECTOR_READ: 'project.connector.read',
-  PROJECT_CONNECTOR_PROFILES_MANAGE: 'project.connector.profiles.manage',
-  PROJECT_CONNECTOR_WRITE: 'project.connector.write',
+  // role-perms.ts), so no existing editor/user loses a capability. All resolve to 'workspace' scope
+  // (prefix = 'workspace') via resourceTypeForAction.
+  WORKSPACE_AGENT_READ: 'workspace.agent.read',
+  WORKSPACE_AGENT_WRITE: 'workspace.agent.write',
+  WORKSPACE_SKILL_READ: 'workspace.skill.read',
+  WORKSPACE_SKILL_WRITE: 'workspace.skill.write',
+  WORKSPACE_COMMAND_READ: 'workspace.command.read',
+  WORKSPACE_COMMAND_WRITE: 'workspace.command.write',
+  WORKSPACE_FILE_READ: 'workspace.file.read',
+  WORKSPACE_FILE_WRITE: 'workspace.file.write',
+  WORKSPACE_CUSTOMIZE_READ: 'workspace.customize.read',
+  WORKSPACE_CUSTOMIZE_WRITE: 'workspace.customize.write',
+  WORKSPACE_GITOPS_READ: 'workspace.gitops.read',
+  WORKSPACE_GITOPS_PUSH: 'workspace.gitops.push',
+  WORKSPACE_GITOPS_MERGE: 'workspace.gitops.merge',
+  WORKSPACE_SECRET_READ: 'workspace.secret.read',
+  WORKSPACE_SECRET_WRITE: 'workspace.secret.write',
+  WORKSPACE_CONNECTOR_READ: 'workspace.connector.read',
+  WORKSPACE_CONNECTOR_PROFILES_MANAGE: 'workspace.connector.profiles.manage',
+  WORKSPACE_CONNECTOR_WRITE: 'workspace.connector.write',
 
   // Review Center. `read` = see the inbox (floor user). `submit` = an agent puts
   // an output / decision / batch up for human review (floor user + their agent).
   // `act` = approve / reject / request-changes / answer — a consequential
   // decision on agent work, so it sits with the editor tier (like gitops).
-  PROJECT_REVIEW_READ: 'project.review.read',
-  PROJECT_REVIEW_SUBMIT: 'project.review.submit',
-  PROJECT_REVIEW_ACT: 'project.review.act',
+  WORKSPACE_REVIEW_READ: 'workspace.review.read',
+  WORKSPACE_REVIEW_SUBMIT: 'workspace.review.submit',
+  WORKSPACE_REVIEW_ACT: 'workspace.review.act',
 } as const;
 
 // ─── Trigger-scoped actions (when scoped to an individual trigger) ─────────
@@ -140,17 +140,17 @@ const TRIGGER_ACTIONS = {
 
 // Channel-scoped actions (channel.read/connect/send/disconnect) were removed
 // (dead-catalog cleanup, IAM enforcement audit): they were cataloged with
-// resource_type='channel' but never wired to assertProjectCapability (which
-// only ever asserts project-scoped actions), so granting or omitting them in
+// resource_type='channel' but never wired to assertWorkspaceCapability (which
+// only ever asserts workspace-scoped actions), so granting or omitting them in
 // a custom role was a silent no-op. The two routes that needed a real
 // send-primitive gate (Slack file upload, meet/speak) were moved onto
-// project.connector.write instead — see r4.ts.
+// workspace.connector.write instead — see r4.ts.
 
 // ─── Aggregate type for all valid action strings ───────────────────────────
 
 const ALL_ACTIONS = {
   ...ACCOUNT_ACTIONS,
-  ...PROJECT_ACTIONS,
+  ...WORKSPACE_ACTIONS,
   ...TRIGGER_ACTIONS,
 } as const;
 
@@ -161,7 +161,7 @@ export type Action = (typeof ALL_ACTIONS)[keyof typeof ALL_ACTIONS];
 // create a role that grants nothing useful.
 export const VALID_ACTIONS: ReadonlySet<string> = new Set([
   ...Object.values(ACCOUNT_ACTIONS),
-  ...Object.values(PROJECT_ACTIONS),
+  ...Object.values(WORKSPACE_ACTIONS),
   ...Object.values(TRIGGER_ACTIONS),
 ]);
 
@@ -188,7 +188,7 @@ export const ACTION_CATALOG: ActionCatalogEntry[] = [
     label: label(a),
     resourceType: resourceTypeForAction(a),
   })),
-  ...Object.values(PROJECT_ACTIONS).map((a) => ({
+  ...Object.values(WORKSPACE_ACTIONS).map((a) => ({
     action: a,
     label: label(a),
     resourceType: resourceTypeForAction(a),
@@ -204,7 +204,7 @@ export const ACTION_CATALOG: ActionCatalogEntry[] = [
  * Returns the resource_type the engine should match against for a given
  * action. Derived from the dotted prefix.
  *
- * project.session.stop   → 'project'
+ * workspace.session.stop   → 'workspace'
  * sandbox.start          → 'sandbox'
  * member.invite          → 'account'  (account-level member admin)
  */
@@ -221,7 +221,7 @@ export function resourceTypeForAction(action: string): ResourceType {
     action.startsWith('token.') ||
     action.startsWith('billing.') ||
     action.startsWith('audit.') ||
-    action === 'project.create'
+    action === 'workspace.create'
   ) {
     return 'account';
   }

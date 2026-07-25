@@ -11,7 +11,7 @@ const GRAPH_PUBLISH_SCOPE = 'https://graph.microsoft.com/AppCatalog.ReadWrite.Al
 const AUTHORITY = 'https://login.microsoftonline.com/organizations/oauth2/v2.0';
 
 interface OauthState {
-  projectId: string;
+  workspaceId: string;
   baseUrl: string;
   exp: number;
   nonce: string;
@@ -25,8 +25,8 @@ function callbackRedirectUri(baseUrl: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/v1/webhooks/teams/oauth/callback`;
 }
 
-function signState(projectId: string, baseUrl: string): string {
-  const full: OauthState = { projectId, baseUrl, exp: Date.now() + STATE_TTL_MS, nonce: randomBytes(8).toString('hex') };
+function signState(workspaceId: string, baseUrl: string): string {
+  const full: OauthState = { workspaceId, baseUrl, exp: Date.now() + STATE_TTL_MS, nonce: randomBytes(8).toString('hex') };
   const body = Buffer.from(JSON.stringify(full)).toString('base64url');
   const mac = createHmac('sha256', stateKey()).update(body).digest('base64url');
   return `${body}.${mac}`;
@@ -43,7 +43,7 @@ function verifyState(token: string | undefined): OauthState | null {
   try {
     const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as OauthState;
     if (typeof payload.exp !== 'number' || payload.exp < Date.now()) return null;
-    if (typeof payload.projectId !== 'string' || typeof payload.baseUrl !== 'string') return null;
+    if (typeof payload.workspaceId !== 'string' || typeof payload.baseUrl !== 'string') return null;
     return payload;
   } catch {
     return null;
@@ -108,7 +108,7 @@ async function exchangeCodeForToken(
  * the org catalog. (App-only publishing is not supported by Graph — see
  * teams/catalog.ts.)
  */
-export function teamsOrgConsentUrl(input: { projectId: string; baseUrl: string }): string | null {
+export function teamsOrgConsentUrl(input: { workspaceId: string; baseUrl: string }): string | null {
   const appId = config.MICROSOFT_APP_ID;
   if (!appId || !teamsChannelEnabled()) return null;
   const url = new URL(`${AUTHORITY}/authorize`);
@@ -117,7 +117,7 @@ export function teamsOrgConsentUrl(input: { projectId: string; baseUrl: string }
   url.searchParams.set('response_mode', 'query');
   url.searchParams.set('redirect_uri', callbackRedirectUri(input.baseUrl));
   url.searchParams.set('scope', GRAPH_PUBLISH_SCOPE);
-  url.searchParams.set('state', signState(input.projectId, input.baseUrl));
+  url.searchParams.set('state', signState(input.workspaceId, input.baseUrl));
   return url.toString();
 }
 
@@ -129,7 +129,7 @@ teamsOauthApp.get('/callback', async (c: any) => {
   const state = verifyState(c.req.query('state'));
   if (!state) return c.redirect(`${frontend}/?teams_error=expired`, 302);
 
-  const dest = (status: string) => `${frontend}/projects/${state.projectId}?teams=${status}`;
+  const dest = (status: string) => `${frontend}/workspaces/${state.workspaceId}?teams=${status}`;
 
   if (c.req.query('error')) {
     console.warn('[teams-oauth] authorize error', {
@@ -148,7 +148,7 @@ teamsOauthApp.get('/callback', async (c: any) => {
   const tenantId = token.tenantId;
   if (!tenantId) return c.redirect(dest('failed'), 302);
 
-  await saveTeamsInstall({ projectId: state.projectId, tenantId }).catch((err) =>
+  await saveTeamsInstall({ workspaceId: state.workspaceId, tenantId }).catch((err) =>
     console.error('[teams-oauth] saveTeamsInstall failed', err),
   );
   const published = await publishTeamsAppToCatalog({
@@ -159,14 +159,14 @@ teamsOauthApp.get('/callback', async (c: any) => {
   }).catch(() => ({ ok: false, published: false }) as Awaited<ReturnType<typeof publishTeamsAppToCatalog>>);
 
   if (published.published) {
-    await setTeamsOrgInstalled(state.projectId, true).catch(() => {});
-    if (published.teamsAppId) await setTeamsCatalogAppId(state.projectId, published.teamsAppId).catch(() => {});
+    await setTeamsOrgInstalled(state.workspaceId, true).catch(() => {});
+    if (published.teamsAppId) await setTeamsCatalogAppId(state.workspaceId, published.teamsAppId).catch(() => {});
   }
-  void reconcileChannelConnectors(state.projectId);
+  void reconcileChannelConnectors(state.workspaceId);
 
   const status = published.published ? 'connected' : published.pendingReview ? 'review' : 'consented';
   console.info('[teams-oauth] install complete', {
-    projectId: state.projectId,
+    workspaceId: state.workspaceId,
     tenantId,
     status,
     teamsAppId: published.teamsAppId ?? null,

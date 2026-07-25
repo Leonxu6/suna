@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
-import { projectSessions } from '@kortix/db';
+import { workspaceSessions } from '@kortix/db';
 
 const dbUpdates: Array<Record<string, unknown>> = [];
 mock.module('../shared/db', () => ({
@@ -8,7 +8,7 @@ mock.module('../shared/db', () => ({
     update: (table: unknown) => ({
       set: (updates: Record<string, unknown>) => ({
         where: async () => {
-          if (table === projectSessions) dbUpdates.push(updates);
+          if (table === workspaceSessions) dbUpdates.push(updates);
           return [];
         },
       }),
@@ -29,10 +29,10 @@ mock.module('../shared/preview-ownership', () => ({
   resolvePreviewUserContext: async () => null,
   // Not exercised by this suite — stub so the real module's shape stays
   // satisfied for anything else that imports it in the same test run.
-  resolveSandboxProjectId: async () => null,
+  resolveSandboxWorkspaceId: async () => null,
 }));
 
-const { ensureOpencodeSessionPin } = await import('../projects/opencode-mapping');
+const { ensureOpencodeSessionPin } = await import('../workspaces/opencode-mapping');
 
 const originalFetch = globalThis.fetch;
 const fetchCalls: Array<{ method: string; url: string }> = [];
@@ -58,7 +58,7 @@ describe('ensureOpencodeSessionPin', () => {
     mockSessionList([]);
 
     const result = await ensureOpencodeSessionPin({
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       sessionId: 'sess-1',
       accountId: 'acct-1',
       externalId: 'box-1',
@@ -75,7 +75,7 @@ describe('ensureOpencodeSessionPin', () => {
     mockSessionList([{ id: 'ses_root', time: { created: 1, updated: 2 } }]);
 
     const result = await ensureOpencodeSessionPin({
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       sessionId: 'sess-1',
       accountId: 'acct-1',
       externalId: 'box-1',

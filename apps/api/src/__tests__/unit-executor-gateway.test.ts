@@ -1,7 +1,7 @@
 /**
  * Gateway orchestrator — full decision+execution path with fakes. A connector
- * is project-wide visible (no per-connector member/agent scoping); the
- * credential is always the one shared project credential (`per_user` was
+ * is workspace-wide visible (no per-connector member/agent scoping); the
+ * credential is always the one shared workspace credential (`per_user` was
  * removed 2026-07-05) via resolveCredential. Covers success, not-found,
  * needs-auth, audit, pipedream, and policy enforcement.
  */
@@ -47,7 +47,7 @@ interface FakeOpts {
   action?: GatewayAction | null;
   secret?: string | null; // resolveCredential return
   policies?: Policy[];
-  projectPolicies?: Policy[];
+  workspacePolicies?: Policy[];
   defaultMode?: DefaultMode;
   enforcePolicies?: boolean;
   fetchStatus?: number;
@@ -71,7 +71,7 @@ function makeDeps(o: FakeOpts = {}) {
       return o.secret === undefined ? 'sk_live_123' : o.secret;
     },
     loadPolicies: async () => o.policies ?? [],
-    loadProjectPolicies: async () => o.projectPolicies ?? [],
+    loadWorkspacePolicies: async () => o.workspacePolicies ?? [],
     loadDefaultMode: async () => o.defaultMode ?? 'allow_all',
     enforcePolicies: o.enforcePolicies,
     recordExecution: async (r) => {
@@ -92,7 +92,7 @@ function makeDeps(o: FakeOpts = {}) {
 }
 
 const baseInput: CallInput = {
-  projectId: 'proj-1',
+  workspaceId: 'proj-1',
   accountId: 'acct-1',
   subject: { userId: ALICE, groupIds: [] },
   sessionId: 'sess-1',
@@ -479,10 +479,10 @@ describe('handleCall — policy layer', () => {
   });
 });
 
-describe('handleCall — layered policies (project → connector → default)', () => {
-  test('project [[policies]] block wins even when connector allows', async () => {
-    // Connector says "always_run *" — but project says "*.delete*" → block.
-    // Project wins (admin trust property).
+describe('handleCall — layered policies (workspace → connector → default)', () => {
+  test('workspace [[policies]] block wins even when connector allows', async () => {
+    // Connector says "always_run *" — but workspace says "*.delete*" → block.
+    // Workspace wins (admin trust property).
     const { deps, fetchCalls } = makeDeps({
       action: {
         ...CREATE_CHARGE,
@@ -490,7 +490,7 @@ describe('handleCall — layered policies (project → connector → default)', 
         relPath: 'charges.delete',
         risk: 'destructive',
       },
-      projectPolicies: [{ match: '*.delete*', action: 'block' }],
+      workspacePolicies: [{ match: '*.delete*', action: 'block' }],
       policies: [{ match: '*', action: 'always_run' }],
     });
     const res = await handleCall(deps, { ...baseInput, actionPath: 'charges.delete' });
@@ -498,10 +498,10 @@ describe('handleCall — layered policies (project → connector → default)', 
     expect(fetchCalls).toHaveLength(0);
   });
 
-  test('project [[policies]] sees the fully-qualified path (slug.path)', async () => {
-    // Project pattern is "stripe.*" — must include connector slug.
+  test('workspace [[policies]] sees the fully-qualified path (slug.path)', async () => {
+    // Workspace pattern is "stripe.*" — must include connector slug.
     const { deps } = makeDeps({
-      projectPolicies: [{ match: 'stripe.*', action: 'require_approval' }],
+      workspacePolicies: [{ match: 'stripe.*', action: 'require_approval' }],
     });
     expect((await handleCall(deps, baseInput)).status).toBe('pending_approval');
   });
@@ -550,12 +550,12 @@ describe('handleCall — layered policies (project → connector → default)', 
 
   test('block path is audited with policy_block + source', async () => {
     const { deps, records } = makeDeps({
-      projectPolicies: [{ match: '*', action: 'block' }],
+      workspacePolicies: [{ match: '*', action: 'block' }],
     });
     await handleCall(deps, baseInput);
     expect(records.at(-1)).toMatchObject({
       status: 'denied',
-      resultSummary: { reason: 'policy_block', policy_source: 'project' },
+      resultSummary: { reason: 'policy_block', policy_source: 'workspace' },
     });
   });
 });

@@ -4,7 +4,7 @@
  * Provisions Cloud Hypervisor microVMs via the Platinum REST API. Mirrors the
  * Daytona provider's contract one-for-one; the only differences are Platinum's
  * request shapes:
- *   - create boots from a per-project TEMPLATE (opts.snapshot = a Platinum
+ *   - create boots from a per-workspace TEMPLATE (opts.snapshot = a Platinum
  *     template id/name) with `?wait_for_state=running` so create returns a
  *     running sandbox synchronously (provisioning.async = false, like Daytona).
  *   - the agent port (8000) is reached through Platinum's edge via a PUBLIC
@@ -92,9 +92,9 @@ export class PlatinumProvider implements SandboxProvider {
   }
 
   async create(opts: CreateSandboxOpts): Promise<ProvisionResult> {
-    // Boot from the session's own per-project template if one was built
+    // Boot from the session's own per-workspace template if one was built
     // (opts.snapshot), else fall back to the fixed PLATINUM_TEMPLATE (e.g.
-    // kortix-computer) — so Platinum works out of the box without a per-project
+    // kortix-computer) — so Platinum works out of the box without a per-workspace
     // build. At least one must be set.
     const template = opts.snapshot ?? config.PLATINUM_TEMPLATE;
     if (!template) {

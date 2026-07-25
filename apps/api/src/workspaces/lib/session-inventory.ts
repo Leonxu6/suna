@@ -1,0 +1,113 @@
+import {
+  isSessionVisibleTo,
+  type SecretGrant,
+  type ShareSubject,
+} from '../../executor/share';
+import type { workspaceSessions, sessionSandboxes } from '@kortix/db';
+
+type WorkspaceSessionRow = typeof workspaceSessions.$inferSelect;
+type RuntimeStatus = typeof sessionSandboxes.$inferSelect.status;
+
+export type WorkspaceSessionListScope = 'visible' | 'workspace';
+
+export interface SessionInventoryItem {
+  row: WorkspaceSessionRow;
+  canAccess: boolean;
+  runtimeStatus: RuntimeStatus | null;
+  deletedAt: string | null;
+  deletedBy: string | null;
+}
+
+export interface SessionOwnerIdentity {
+  type: 'user' | 'service_account' | 'unknown';
+  name: string | null;
+  email: string | null;
+}
+
+export function mergeSessionOwnerIdentities(input: {
+  ownerIds: string[];
+  users: Map<
+    string,
+    { exists: boolean; email: string | null; displayName?: string | null }
+  >;
+  serviceAccounts: Array<{
+    serviceAccountId: string;
+    name: string;
+    agentName: string | null;
+  }>;
+}): Map<string, SessionOwnerIdentity> {
+  const serviceAccounts = new Map(
+    input.serviceAccounts.map((identity) => [
+      identity.serviceAccountId,
+      identity,
+    ]),
+  );
+  const result = new Map<string, SessionOwnerIdentity>();
+
+  for (const ownerId of input.ownerIds) {
+    const user = input.users.get(ownerId);
+    if (user?.exists) {
+      result.set(ownerId, {
+        type: 'user',
+        name: user.displayName || user.email,
+        email: user.email,
+      });
+      continue;
+    }
+
+    const serviceAccount = serviceAccounts.get(ownerId);
+    if (serviceAccount) {
+      result.set(ownerId, {
+        type: 'service_account',
+        name: serviceAccount.agentName || serviceAccount.name,
+        email: null,
+      });
+      continue;
+    }
+
+    result.set(ownerId, { type: 'unknown', name: null, email: null });
+  }
+
+  return result;
+}
+
+export function selectSessionRowsForViewer(input: {
+  rows: WorkspaceSessionRow[];
+  scope: WorkspaceSessionListScope;
+  canManageWorkspace: boolean;
+  subject: ShareSubject;
+  grantsBySession: Map<string, SecretGrant[]>;
+  runtimeStatusBySession: Map<string, RuntimeStatus>;
+}): { authorized: boolean; items: SessionInventoryItem[] } {
+  if (input.scope === 'workspace' && !input.canManageWorkspace) {
+    return { authorized: false, items: [] };
+  }
+
+  const items = input.rows.map((row) => {
+    const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+    const deletedAt =
+      typeof metadata.deletedAt === 'string' ? metadata.deletedAt : null;
+    const deletedBy =
+      typeof metadata.deletedBy === 'string' ? metadata.deletedBy : null;
+    const runtimeStatus =
+      input.runtimeStatusBySession.get(row.sessionId) ?? null;
+    const canAccess = isSessionVisibleTo(
+      row.visibility as 'private' | 'workspace' | 'restricted',
+      row.createdBy,
+      input.grantsBySession.get(row.sessionId) ?? [],
+      input.subject,
+    );
+    return { row, canAccess, runtimeStatus, deletedAt, deletedBy };
+  });
+
+  if (input.scope === 'workspace') return { authorized: true, items };
+
+  return {
+    authorized: true,
+    items: items.filter((item) => {
+      if (item.deletedAt) return false;
+      if (!item.canAccess) return false;
+      return item.row.status !== 'stopped' || item.runtimeStatus === 'stopped';
+    }),
+  };
+}

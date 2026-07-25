@@ -12,8 +12,8 @@ describe('validateBootstrapGroup', () => {
     expect(validateBootstrapGroup({ group_id: UUID })).toEqual({ group_id: UUID });
   });
 
-  test('rejects a project-grant entry so it falls through to the grant path', () => {
-    expect(validateBootstrapGroup({ project_id: UUID, role: 'member' })).toBeNull();
+  test('rejects a workspace-grant entry so it falls through to the grant path', () => {
+    expect(validateBootstrapGroup({ workspace_id: UUID, role: 'member' })).toBeNull();
   });
 
   test('rejects a non-uuid group_id', () => {
@@ -65,11 +65,11 @@ describe('stripGroupGrant', () => {
     expect(remaining).toEqual([{ group_id: OTHER }]);
   });
 
-  test('project grants pass through untouched', () => {
-    const grants = [{ project_id: OTHER, role: 'member' }, { group_id: UUID }];
+  test('workspace grants pass through untouched', () => {
+    const grants = [{ workspace_id: OTHER, role: 'member' }, { group_id: UUID }];
     const { changed, remaining } = stripGroupGrant(grants, UUID);
     expect(changed).toBe(true);
-    expect(remaining).toEqual([{ project_id: OTHER, role: 'member' }]);
+    expect(remaining).toEqual([{ workspace_id: OTHER, role: 'member' }]);
   });
 
   test('no match → unchanged (no pointless DB write)', () => {

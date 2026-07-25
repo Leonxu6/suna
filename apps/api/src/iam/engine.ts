@@ -14,16 +14,16 @@
 /**
  * Subject of an authorization check.
  * - `account`: the action targets the account as a whole (e.g. invite a member).
- * - `project`/`sandbox`/etc.: the action targets a specific resource. The
+ * - `workspace`/`sandbox`/etc.: the action targets a specific resource. The
  *   engine resolves whether the caller has access to that target.
  */
 export type AuthorizeTarget =
   | { type: 'account'; id?: never }
   | {
-      type: 'project';
+      type: 'workspace';
       id: string;
       /**
-       * Optional per-RESOURCE narrowing: when set, the project-scope verdict is
+       * Optional per-RESOURCE narrowing: when set, the workspace-scope verdict is
        * additionally intersected with iam_resource_grants for this specific
        * agent/skill (see resource-grants.ts). Omitted on the vast majority of
        * calls — only the agent/skill list + launch gates supply it.
@@ -45,7 +45,7 @@ export type AuthorizeResult = {
 /**
  * Per-request context surfaced from middleware: caller IP, MFA AAL.
  * Reserved fields for future role-condition evaluation (e.g. require_mfa
- * on a project_members row). Optional everywhere — call sites that
+ * on a workspace_members row). Optional everywhere — call sites that
  * don't have the data simply omit it.
  */
 export interface RequestContext {

@@ -27,29 +27,29 @@ function makeApp() {
     await new Promise((r) => setTimeout(r, 500)); // exceeds the 50ms deadline
     return c.json({ ok: true });
   };
-  app.get('/v1/projects/x/change-requests', slow); // bounded
+  app.get('/v1/workspaces/x/change-requests', slow); // bounded
   app.get('/v1/p/sandbox/3000/index.html', slow);  // exempt prefix
-  app.get('/v1/projects/x/turn-stream', slow);      // exempt fragment
+  app.get('/v1/workspaces/x/turn-stream', slow);      // exempt fragment
   app.get('/v1/router/chat/completions', slow);      // exempt prefix
   app.get('/v1/llm/chat/completions', slow);          // exempt prefix (LLM streaming)
   app.post('/v1/billing/webhooks/stripe', slow);      // exempt prefix (webhook)
-  app.post('/v1/projects/x/sessions/y/start', slow);  // exempt fragment (long sync op)
-  app.post('/v1/projects/x/oauth/openai/start', slow); // exempt fragment (OAuth device flow — start can be slow on a cold replica)
-  app.post('/v1/projects', slow);                      // exempt method+path (provision)
-  app.get('/v1/projects', slow);                       // bounded — only POST is exempt
-  app.get('/v1/projects/x/fast', (c) => c.json({ ok: true })); // bounded, fast
+  app.post('/v1/workspaces/x/sessions/y/start', slow);  // exempt fragment (long sync op)
+  app.post('/v1/workspaces/x/oauth/openai/start', slow); // exempt fragment (OAuth device flow — start can be slow on a cold replica)
+  app.post('/v1/workspaces', slow);                      // exempt method+path (provision)
+  app.get('/v1/workspaces', slow);                       // bounded — only POST is exempt
+  app.get('/v1/workspaces/x/fast', (c) => c.json({ ok: true })); // bounded, fast
   return app;
 }
 
 describe('requestDeadline', () => {
   it('returns 503 when a non-streaming request exceeds the deadline', async () => {
-    const res = await makeApp().request('/v1/projects/x/change-requests');
+    const res = await makeApp().request('/v1/workspaces/x/change-requests');
     expect(res.status).toBe(503);
     expect((await res.json()).error).toContain('deadline');
   });
 
   it('lets a fast non-streaming request through', async () => {
-    const res = await makeApp().request('/v1/projects/x/fast');
+    const res = await makeApp().request('/v1/workspaces/x/fast');
     expect(res.status).toBe(200);
   });
 
@@ -59,7 +59,7 @@ describe('requestDeadline', () => {
   });
 
   it('exempts streaming fragments (turn-stream) from the deadline', async () => {
-    const res = await makeApp().request('/v1/projects/x/turn-stream');
+    const res = await makeApp().request('/v1/workspaces/x/turn-stream');
     expect(res.status).toBe(200);
   });
 
@@ -69,7 +69,7 @@ describe('requestDeadline', () => {
   });
 
   it('exempts SSE requests via the Accept header', async () => {
-    const res = await makeApp().request('/v1/projects/x/change-requests', {
+    const res = await makeApp().request('/v1/workspaces/x/change-requests', {
       headers: { accept: 'text/event-stream' },
     });
     expect(res.status).toBe(200); // exempted despite being slow
@@ -86,19 +86,19 @@ describe('requestDeadline', () => {
   });
 
   it('exempts long sync sandbox ops (start) via fragment', async () => {
-    const res = await makeApp().request('/v1/projects/x/sessions/y/start', { method: 'POST' });
+    const res = await makeApp().request('/v1/workspaces/x/sessions/y/start', { method: 'POST' });
     expect(res.status).toBe(200);
   });
 
   it('exempts the provider OAuth device flow start (can be slow on a cold replica)', async () => {
-    const res = await makeApp().request('/v1/projects/x/oauth/openai/start', { method: 'POST' });
+    const res = await makeApp().request('/v1/workspaces/x/oauth/openai/start', { method: 'POST' });
     expect(res.status).toBe(200);
   });
 
-  it('exempts POST /v1/projects (provision) but keeps GET /v1/projects bounded', async () => {
-    const post = await makeApp().request('/v1/projects', { method: 'POST' });
+  it('exempts POST /v1/workspaces (provision) but keeps GET /v1/workspaces bounded', async () => {
+    const post = await makeApp().request('/v1/workspaces', { method: 'POST' });
     expect(post.status).toBe(200);
-    const get = await makeApp().request('/v1/projects');
+    const get = await makeApp().request('/v1/workspaces');
     expect(get.status).toBe(503);
   });
 });
@@ -110,14 +110,14 @@ describe('requestDeadline Sentry classification', () => {
   // degradation, not a crash) while still surfacing as a 503 response.
   it('throws a RequestDeadlineHTTPException (identifiable, not a bare HTTPException)', async () => {
     const app = makeApp();
-    const res = await app.request('/v1/projects/x/change-requests');
+    const res = await app.request('/v1/workspaces/x/change-requests');
     expect(res.status).toBe(503);
     // The handler in makeApp returns the raw HTTPException; pull it out via a
     // spy that captures the thrown error before it is serialized.
     let thrown: unknown;
     const app2 = new Hono();
     app2.use('/v1/*', (c, next) => requestDeadline(c, next));
-    app2.get('/v1/projects/x/change-requests', async (c) => {
+    app2.get('/v1/workspaces/x/change-requests', async (c) => {
       await new Promise((r) => setTimeout(r, 500));
       return c.json({ ok: true });
     });
@@ -126,7 +126,7 @@ describe('requestDeadline Sentry classification', () => {
       if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
       return c.json({ error: String(err) }, 500);
     });
-    await app2.request('/v1/projects/x/change-requests');
+    await app2.request('/v1/workspaces/x/change-requests');
     expect(isRequestDeadlineHTTPException(thrown)).toBe(true);
     expect(thrown).toBeInstanceOf(RequestDeadlineHTTPException);
     expect(thrown).toBeInstanceOf(HTTPException);

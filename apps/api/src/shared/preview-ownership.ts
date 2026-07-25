@@ -1,7 +1,7 @@
 /**
  * Preview proxy ownership gate + user-context resolver.
  *
- * Project-sessions on Daytona model:
+ * Workspace-sessions on Daytona model:
  *   - A sandbox lives in `kortix.session_sandboxes`.
  *   - A user can hit the sandbox if they're a member of the account that owns
  *     it (account_members.account_id == session_sandboxes.account_id), or if
@@ -15,7 +15,7 @@ import { db } from './db';
 import { isPlatformAdmin } from './platform-roles';
 import { resolveAccountId } from './resolve-account';
 import { isSessionVisibleTo, loadSessionGrants, resolveShareSubject } from '../executor/share';
-import { accountMembers, projectSessions, sessionSandboxes } from '@kortix/db';
+import { accountMembers, workspaceSessions, sessionSandboxes } from '@kortix/db';
 import { and, eq, or, sql } from 'drizzle-orm';
 import type { KortixUserContext } from './kortix-user-context';
 
@@ -25,7 +25,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 // canAccessPreviewSandbox above authorizes on ACCOUNT MEMBERSHIP only. That is
 // correct for preview web ports, but the daemon port (8000) reverse-proxies a
 // session's OpenCode conversation + its owner's synced secrets — which is
-// governed by SESSION VISIBILITY (private | project | restricted), enforced on
+// governed by SESSION VISIBILITY (private | workspace | restricted), enforced on
 // the REST routes via loadVisibleSession but historically NOT on this data
 // path. Without this, a same-account member who once had access to a session
 // (so their client captured the sandbox + opencode ids) could keep reading /
@@ -38,13 +38,13 @@ const sessionVisibilityCache = new Map<string, { allowed: boolean; expiresAt: nu
 
 /**
  * Whether `userId` may reach the SESSION behind a sandbox (daemon-port traffic).
- * Returns true when there is no project_session row for the sandbox (pool /
+ * Returns true when there is no workspace_session row for the sandbox (pool /
  * builder boxes that aren't user sessions) so non-session proxy use is
  * unaffected — the account-membership gate still applies to those.
  */
 export async function canAccessSandboxSession(input: {
   sessionId: string;
-  projectId: string;
+  workspaceId: string;
   accountId: string;
   userId: string;
 }): Promise<boolean> {
@@ -53,13 +53,13 @@ export async function canAccessSandboxSession(input: {
   if (cached && cached.expiresAt > Date.now()) return cached.allowed;
 
   const [row] = await db
-    .select({ visibility: projectSessions.visibility, createdBy: projectSessions.createdBy })
-    .from(projectSessions)
+    .select({ visibility: workspaceSessions.visibility, createdBy: workspaceSessions.createdBy })
+    .from(workspaceSessions)
     .where(
       and(
-        eq(projectSessions.sessionId, input.sessionId),
-        eq(projectSessions.projectId, input.projectId),
-        eq(projectSessions.accountId, input.accountId),
+        eq(workspaceSessions.sessionId, input.sessionId),
+        eq(workspaceSessions.workspaceId, input.workspaceId),
+        eq(workspaceSessions.accountId, input.accountId),
       ),
     )
     .limit(1);
@@ -69,7 +69,7 @@ export async function canAccessSandboxSession(input: {
     const subject = await resolveShareSubject(input.userId);
     const grants = (await loadSessionGrants([input.sessionId])).get(input.sessionId) ?? [];
     allowed = isSessionVisibleTo(
-      row.visibility as 'private' | 'project' | 'restricted',
+      row.visibility as 'private' | 'workspace' | 'restricted',
       row.createdBy,
       grants,
       subject,
@@ -95,17 +95,17 @@ function cacheKey(previewSandboxId: string, userId: string): string {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Resolve the real session sandbox uuid + owning account/project from a
+ * Resolve the real session sandbox uuid + owning account/workspace from a
  * `previewSandboxId`, which can be either a uuid (sandboxId / externalId) or
  * the Daytona-side externalId string.
  */
 async function resolveSandboxRef(
   previewSandboxId: string,
-): Promise<{ sandboxId: string; accountId: string; projectId: string } | null> {
+): Promise<{ sandboxId: string; accountId: string; workspaceId: string } | null> {
   const columns = {
     sandboxId: sessionSandboxes.sandboxId,
     accountId: sessionSandboxes.accountId,
-    projectId: sessionSandboxes.projectId,
+    workspaceId: sessionSandboxes.workspaceId,
   };
 
   const idCondition = UUID_RE.test(previewSandboxId)
@@ -141,19 +141,19 @@ async function resolveSandboxRef(
 }
 
 /**
- * Resolve the project a sandbox belongs to, given the same `previewSandboxId`
+ * Resolve the workspace a sandbox belongs to, given the same `previewSandboxId`
  * form the proxy path carries (uuid or Daytona externalId). Used by the
- * project-scoped-PAT gate in middleware/auth.ts to decide whether a project
+ * workspace-scoped-PAT gate in middleware/auth.ts to decide whether a workspace
  * PAT may reach `/v1/p/{sandboxId}/...` — it may, only for a sandbox whose
- * `session_sandboxes.project_id` matches the token's own project. One indexed
- * lookup (sandbox_id is the PK; external_id and project_id are both indexed),
+ * `session_sandboxes.workspace_id` matches the token's own workspace. One indexed
+ * lookup (sandbox_id is the PK; external_id and workspace_id are both indexed),
  * so this is cheap enough for the auth hot path. Returns null when the
  * sandbox row can't be found — callers must treat that as "deny", not
  * "unscoped ok".
  */
-export async function resolveSandboxProjectId(previewSandboxId: string): Promise<string | null> {
+export async function resolveSandboxWorkspaceId(previewSandboxId: string): Promise<string | null> {
   const ref = await resolveSandboxRef(previewSandboxId);
-  return ref?.projectId ?? null;
+  return ref?.workspaceId ?? null;
 }
 
 async function isAccountMember(userId: string, accountId: string): Promise<boolean> {

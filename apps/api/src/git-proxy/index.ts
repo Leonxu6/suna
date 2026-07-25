@@ -1,12 +1,12 @@
 /**
  * Kortix git smart-HTTP reverse proxy.
  *
- * The UNIVERSAL client-facing git origin for every git-backed project. Clients
+ * The UNIVERSAL client-facing git origin for every git-backed workspace. Clients
  * (sandbox daemon, `kortix` CLI, the user's git) clone/push
- *   https://<KORTIX_URL>/v1/git/<projectId>.git
+ *   https://<KORTIX_URL>/v1/git/<workspaceId>.git
  * authenticating with a Kortix token (sandbox token / account API key / CLI
  * PAT) — never a real host credential. The API authenticates the token,
- * resolves the project's backend, and streams the git protocol to the real
+ * resolves the workspace's backend, and streams the git protocol to the real
  * upstream (GitHub managed org / a user's own GitHub repo / …)
  * using a short-lived host credential minted server-side.
  *
@@ -20,22 +20,22 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import {
   authorizeGitProxy,
-  resolveProjectUpstream,
+  resolveWorkspaceUpstream,
   type GitProxyAuth,
-} from '../projects';
-import type { GitScope } from '../projects/git-backends';
+} from '../workspaces';
+import type { GitScope } from '../workspaces/git-backends';
 import {
   FORWARD_REQUEST_HEADERS,
   STRIP_RESPONSE_HEADERS,
   extractToken,
-  isValidGitProxyProjectId,
-  normalizeProjectId,
+  isValidGitProxyWorkspaceId,
+  normalizeWorkspaceId,
   scopeForService,
 } from './parse';
 import { fetchUpstreamBuffered } from './upstream';
 import { makeOpenApiApp } from '../openapi';
-import { loadGitProject } from '../projects/lib/git';
-import { kickProjectWarmPrebake } from '../snapshots/builder';
+import { loadGitWorkspace } from '../workspaces/lib/git';
+import { kickWorkspaceWarmPrebake } from '../snapshots/builder';
 
 export const gitProxyApp = makeOpenApiApp();
 
@@ -54,15 +54,15 @@ const gitResponses = {
     headers: { 'WWW-Authenticate': { schema: { type: 'string' } } },
   },
   403: { description: 'Token not authorized for the requested scope' },
-  404: { description: 'Project not found' },
+  404: { description: 'Workspace not found' },
   502: { description: 'No upstream configured / upstream unreachable' },
 } as const;
 
 /** Loose path-param doc; handlers keep their own raw param reads + `.git` stripping. */
-const projectParam = z.object({
-  project: z.string().openapi({
-    param: { name: 'project', in: 'path' },
-    description: 'Project id, optionally suffixed with `.git`',
+const workspaceParam = z.object({
+  workspace: z.string().openapi({
+    param: { name: 'workspace', in: 'path' },
+    description: 'Workspace id, optionally suffixed with `.git`',
     example: 'abc123.git',
   }),
 });
@@ -73,35 +73,35 @@ function unauthorized(c: any, message: string) {
   return c.text(message, 401);
 }
 
-function validProjectIdOrResponse(c: any, raw: string): string | Response {
-  const projectId = normalizeProjectId(raw);
-  if (!isValidGitProxyProjectId(raw)) {
-    return c.text('invalid project identifier', 400);
+function validWorkspaceIdOrResponse(c: any, raw: string): string | Response {
+  const workspaceId = normalizeWorkspaceId(raw);
+  if (!isValidGitProxyWorkspaceId(raw)) {
+    return c.text('invalid workspace identifier', 400);
   }
-  return projectId;
+  return workspaceId;
 }
 
-async function authorize(c: any, projectId: string, scope: GitScope): Promise<GitProxyAuth> {
+async function authorize(c: any, workspaceId: string, scope: GitScope): Promise<GitProxyAuth> {
   const token = extractToken(c.req.header('authorization'));
   if (!token) return { ok: false, status: 401, message: 'authentication required' };
-  return authorizeGitProxy(token, projectId, scope);
+  return authorizeGitProxy(token, workspaceId, scope);
 }
 
 /**
- * Stream a git smart-HTTP request through to the project's real upstream.
+ * Stream a git smart-HTTP request through to the workspace's real upstream.
  * `suffix` is the fixed git path appended to the upstream repo URL
  * (`/info/refs`, `/git-upload-pack`, `/git-receive-pack`).
  */
-async function forward(c: any, projectId: string, scope: GitScope, suffix: string): Promise<Response> {
-  const auth = await authorize(c, projectId, scope);
+async function forward(c: any, workspaceId: string, scope: GitScope, suffix: string): Promise<Response> {
+  const auth = await authorize(c, workspaceId, scope);
   if (!auth.ok) {
     if (auth.status === 401) return unauthorized(c, auth.message);
     return c.text(auth.message, auth.status);
   }
 
-  const upstream = await resolveProjectUpstream(auth.project, scope);
+  const upstream = await resolveWorkspaceUpstream(auth.workspace, scope);
   if (!upstream || !upstream.url) {
-    return c.text('No git upstream is configured for this project', 502);
+    return c.text('No git upstream is configured for this workspace', 502);
   }
 
   const search = new URL(c.req.url).search; // includes leading '?' or ''
@@ -143,7 +143,7 @@ async function forward(c: any, projectId: string, scope: GitScope, suffix: strin
       });
     }
   } catch (err) {
-    console.warn(`[git-proxy] upstream fetch failed for ${projectId}:`, err);
+    console.warn(`[git-proxy] upstream fetch failed for ${workspaceId}:`, err);
     return c.text('git upstream unreachable', 502);
   }
 
@@ -153,28 +153,28 @@ async function forward(c: any, projectId: string, scope: GitScope, suffix: strin
   });
 
   // Build-on-push warm prebake: a successful push (git-receive-pack) to the
-  // managed git may have advanced the project's default-branch tip. Kick a
-  // fire-and-forget per-project warm bake so the FIRST session on the new commit
+  // managed git may have advanced the workspace's default-branch tip. Kick a
+  // fire-and-forget per-workspace warm bake so the FIRST session on the new commit
   // boots warm instead of cold ("starting agent…"). Never blocks or fails the
-  // push; kickProjectWarmPrebake resolves the current tip and is idempotent, so it
+  // push; kickWorkspaceWarmPrebake resolves the current tip and is idempotent, so it
   // no-ops unless the default-branch tip actually moved. The session-start
-  // on-demand trigger stays the fallback for projects that never push.
+  // on-demand trigger stays the fallback for workspaces that never push.
   //
-  // Pass the per-project provider PIN so the prebake warms the provider(s) a
-  // session on this project will actually use (pinned provider ⇒ that one; no
+  // Pass the per-workspace provider PIN so the prebake warms the provider(s) a
+  // session on this workspace will actually use (pinned provider ⇒ that one; no
   // pin ⇒ every enabled provider) — full parity, not just the default provider.
   if (suffix === '/git-receive-pack' && res.status >= 200 && res.status < 300) {
     void (async () => {
       try {
-        const gitProject = await loadGitProject({ row: auth.project });
-        const projectPin =
-          typeof (auth.project.metadata as Record<string, unknown> | null)?.default_sandbox_provider === 'string'
-            ? ((auth.project.metadata as Record<string, unknown>).default_sandbox_provider as string)
+        const gitWorkspace = await loadGitWorkspace({ row: auth.workspace });
+        const workspacePin =
+          typeof (auth.workspace.metadata as Record<string, unknown> | null)?.default_sandbox_provider === 'string'
+            ? ((auth.workspace.metadata as Record<string, unknown>).default_sandbox_provider as string)
             : null;
-        await kickProjectWarmPrebake(gitProject, { accountId: auth.project.accountId, projectPin });
+        await kickWorkspaceWarmPrebake(gitWorkspace, { accountId: auth.workspace.accountId, workspacePin });
       } catch (err) {
         console.warn(
-          `[git-proxy] warm prebake-on-push skipped for ${projectId}:`,
+          `[git-proxy] warm prebake-on-push skipped for ${workspaceId}:`,
           err instanceof Error ? err.message : err,
         );
       }
@@ -188,11 +188,11 @@ async function forward(c: any, projectId: string, scope: GitScope, suffix: strin
 gitProxyApp.openapi(
   createRoute({
     method: 'get',
-    path: '/{project}/info/refs',
+    path: '/{workspace}/info/refs',
     tags: ['git'],
     summary: 'git smart-HTTP ref discovery (clone/fetch/push negotiation)',
     request: {
-      params: projectParam,
+      params: workspaceParam,
       query: z.object({
         service: z
           .enum(['git-upload-pack', 'git-receive-pack'])
@@ -203,10 +203,10 @@ gitProxyApp.openapi(
     responses: gitResponses,
   }),
   async (c) => {
-    const projectId = validProjectIdOrResponse(c, c.req.param('project'));
-    if (projectId instanceof Response) return projectId;
+    const workspaceId = validWorkspaceIdOrResponse(c, c.req.param('workspace'));
+    if (workspaceId instanceof Response) return workspaceId;
     const scope = scopeForService(c.req.query('service'));
-    return forward(c, projectId, scope, '/info/refs');
+    return forward(c, workspaceId, scope, '/info/refs');
   },
 );
 
@@ -214,16 +214,16 @@ gitProxyApp.openapi(
 gitProxyApp.openapi(
   createRoute({
     method: 'post',
-    path: '/{project}/git-upload-pack',
+    path: '/{workspace}/git-upload-pack',
     tags: ['git'],
     summary: 'git-upload-pack (clone / fetch) — raw pack stream',
-    request: { params: projectParam },
+    request: { params: workspaceParam },
     responses: gitResponses,
   }),
   async (c) => {
-    const projectId = validProjectIdOrResponse(c, c.req.param('project'));
-    if (projectId instanceof Response) return projectId;
-    return forward(c, projectId, 'read', '/git-upload-pack');
+    const workspaceId = validWorkspaceIdOrResponse(c, c.req.param('workspace'));
+    if (workspaceId instanceof Response) return workspaceId;
+    return forward(c, workspaceId, 'read', '/git-upload-pack');
   },
 );
 
@@ -231,15 +231,15 @@ gitProxyApp.openapi(
 gitProxyApp.openapi(
   createRoute({
     method: 'post',
-    path: '/{project}/git-receive-pack',
+    path: '/{workspace}/git-receive-pack',
     tags: ['git'],
     summary: 'git-receive-pack (push) — raw pack stream',
-    request: { params: projectParam },
+    request: { params: workspaceParam },
     responses: gitResponses,
   }),
   async (c) => {
-    const projectId = validProjectIdOrResponse(c, c.req.param('project'));
-    if (projectId instanceof Response) return projectId;
-    return forward(c, projectId, 'write', '/git-receive-pack');
+    const workspaceId = validWorkspaceIdOrResponse(c, c.req.param('workspace'));
+    if (workspaceId instanceof Response) return workspaceId;
+    return forward(c, workspaceId, 'write', '/git-receive-pack');
   },
 );

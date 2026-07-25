@@ -3,12 +3,12 @@
  * whose ONLY managed-git connection is a PAT (platform/routes/github-app.ts
  * POST /pat) has no `account_github_installations` row and
  * `isGithubAppConfigured()` (App-only, appId+privateKey) is false — so
- * `GET /projects/github/installations` used to report `configured: false` /
- * zero installations, and the web Import-repo + New-project UI showed
+ * `GET /workspaces/github/installations` used to report `configured: false` /
+ * zero installations, and the web Import-repo + New-workspace UI showed
  * "GitHub isn't connected on this server yet" even though managed-git
- * provisioning (POST /projects/provision) worked fine off the same PAT.
+ * provisioning (POST /workspaces/provision) worked fine off the same PAT.
  *
- * `serializeGitHubInstallations` (projects/lib/serializers.ts) now takes an
+ * `serializeGitHubInstallations` (workspaces/lib/serializers.ts) now takes an
  * optional PAT-fallback owner and synthesizes a connected "installation" for
  * it — see the matching route wiring in routes/r1.ts (GET
  * github/installation(s)) and routes/github-repositories.ts /
@@ -23,7 +23,7 @@ import type { accountGithubInstallations } from '@kortix/db';
 import {
   PAT_MANAGED_GIT_INSTALLATION_ID,
   serializeGitHubInstallations,
-} from '../projects/lib/serializers';
+} from '../workspaces/lib/serializers';
 
 const ACCOUNT_ID = '99999999-8888-4777-8666-555555555555';
 

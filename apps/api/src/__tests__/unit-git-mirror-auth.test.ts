@@ -1,16 +1,16 @@
 /**
  * Regression test for the shared git-mirror auth race.
  *
- * The per-project bare mirror (`git/mirror.ts`) is hit by ~15 code paths, several
+ * The per-workspace bare mirror (`git/mirror.ts`) is hit by ~15 code paths, several
  * of which legitimately resolve `gitAuthToken` to null. Because `refreshMirror`
- * dedups concurrent refreshes by projectId, ONE tokenless caller winning the lock
+ * dedups concurrent refreshes by workspaceId, ONE tokenless caller winning the lock
  * used to make the cold bare-clone of a PRIVATE repo run unauthenticated
  * (`fatal: could not read Username for 'https://github.com'`) — failing every
  * concurrent caller, including a token-bearing session start. That surfaced to
  * users as the misleading "Provisioning failed via daytona."
  *
  * The fix makes the mirror auth-self-sufficient: when the caller didn't pass a
- * token, `refreshMirror` lazily resolves one from the project's stored
+ * token, `refreshMirror` lazily resolves one from the workspace's stored
  * credentials before the network git op. These tests prove:
  *   1. A tokenless refresh invokes the lazy resolver (so a private clone is
  *      authenticated regardless of which caller won the lock).
@@ -27,18 +27,18 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
-// Records every projectId the lazy resolver was asked about. mirror.ts reaches
+// Records every workspaceId the lazy resolver was asked about. mirror.ts reaches
 // this through `await import('../lib/git')`; mocking the module keeps its heavy
 // transitive imports (db, github, …) out of the unit test entirely.
 const resolverCalls: string[] = [];
-mock.module('../projects/lib/git', () => ({
-  resolveProjectGitAccessById: async (projectId: string) => {
-    resolverCalls.push(projectId);
+mock.module('../workspaces/lib/git', () => ({
+  resolveWorkspaceGitAccessById: async (workspaceId: string) => {
+    resolverCalls.push(workspaceId);
     return { repoUrl: upstream, token: 'resolved-sentinel-token', headers: {} };
   },
 }));
 
-const { refreshMirror, repoCachePath } = await import('../projects/git/mirror');
+const { refreshMirror, repoCachePath } = await import('../workspaces/git/mirror');
 
 let workdir: string;
 let upstream: string;
@@ -77,36 +77,36 @@ afterAll(async () => {
 
 describe('refreshMirror auth self-sufficiency', () => {
   test('a tokenless refresh resolves auth lazily, then completes the clone', async () => {
-    const project = {
-      projectId: 'aaaaaaaa-0000-0000-0000-000000000001',
+    const workspace = {
+      workspaceId: 'aaaaaaaa-0000-0000-0000-000000000001',
       repoUrl: upstream,
       defaultBranch: 'main',
       manifestPath: '',
       // No gitAuthToken — the exact shape that used to clone unauthenticated.
     };
 
-    const repoPath = await refreshMirror(project as never);
+    const repoPath = await refreshMirror(workspace as never);
 
-    // The lazy resolver ran for THIS project before the network git op — the
+    // The lazy resolver ran for THIS workspace before the network git op — the
     // shared clone is now authenticated whoever wins the refresh lock.
-    expect(resolverCalls).toContain(project.projectId);
+    expect(resolverCalls).toContain(workspace.workspaceId);
     // And the clone actually landed.
-    expect(repoPath).toBe(repoCachePath(project as never));
+    expect(repoPath).toBe(repoCachePath(workspace as never));
     expect(existsSync(join(repoPath, 'HEAD'))).toBe(true);
   });
 
   test('a token-bearing refresh skips the extra resolution', async () => {
-    const project = {
-      projectId: 'bbbbbbbb-0000-0000-0000-000000000002',
+    const workspace = {
+      workspaceId: 'bbbbbbbb-0000-0000-0000-000000000002',
       repoUrl: upstream,
       defaultBranch: 'main',
       manifestPath: '',
       gitAuthToken: 'caller-supplied-token',
     };
 
-    const repoPath = await refreshMirror(project as never);
+    const repoPath = await refreshMirror(workspace as never);
 
-    expect(resolverCalls).not.toContain(project.projectId);
+    expect(resolverCalls).not.toContain(workspace.workspaceId);
     expect(existsSync(join(repoPath, 'HEAD'))).toBe(true);
   });
 });

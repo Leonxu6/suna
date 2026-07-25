@@ -33,7 +33,7 @@ test('historical and unknown build logs remain unattributed', () => {
   )).toEqual([]);
 });
 
-test('project reconciliation never turns an observation outage into a rebuild', () => {
+test('workspace reconciliation never turns an observation outage into a rebuild', () => {
   expect(shouldReconcileProviderState('unknown')).toBe(false);
   expect(shouldReconcileProviderState('active')).toBe(false);
   expect(shouldReconcileProviderState('building')).toBe(false);

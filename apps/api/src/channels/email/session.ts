@@ -1,15 +1,15 @@
-import { chatEventDedup, chatInstalls, chatThreads, projects } from '@kortix/db';
+import { chatEventDedup, chatInstalls, chatThreads, workspaces } from '@kortix/db';
 import { and, eq } from 'drizzle-orm';
 import { config } from '../../config';
 import {
   ensureEmailSessionBinding,
   loadEmailInstallProfileId,
-} from '../../projects/lib/session-connector-bindings';
+} from '../../workspaces/lib/session-connector-bindings';
 import {
   continueSession as continueLifecycleSession,
   createSession as createLifecycleSession,
-  resolveProjectAutomationActor as resolveLifecycleAutomationActor,
-} from '../../projects/session-lifecycle';
+  resolveWorkspaceAutomationActor as resolveLifecycleAutomationActor,
+} from '../../workspaces/session-lifecycle';
 import { db } from '../../shared/db';
 import { type AgentMailSenderPolicy, loadAgentMailSenderPolicyForInbox } from '../install-store';
 import { EMAIL_EVENT_DEDUPE_TTL_MS } from './app';
@@ -18,7 +18,7 @@ import type { AgentMailMessageReceivedEvent } from './types';
 const defaultEmailSessionLifecycle = {
   continueSession: continueLifecycleSession,
   createSession: createLifecycleSession,
-  resolveProjectAutomationActor: resolveLifecycleAutomationActor,
+  resolveWorkspaceAutomationActor: resolveLifecycleAutomationActor,
 };
 
 let emailSessionLifecycle = defaultEmailSessionLifecycle;
@@ -33,27 +33,27 @@ export function resetEmailSessionLifecycleForTest() {
   emailSessionLifecycle = defaultEmailSessionLifecycle;
 }
 
-export async function resolveProjectForAgentMailInbox(inboxId: string): Promise<string | null> {
+export async function resolveWorkspaceForAgentMailInbox(inboxId: string): Promise<string | null> {
   const [row] = await db
-    .select({ projectId: chatInstalls.projectId })
+    .select({ workspaceId: chatInstalls.workspaceId })
     .from(chatInstalls)
     .where(and(eq(chatInstalls.platform, 'email'), eq(chatInstalls.workspaceId, inboxId)))
     .limit(1);
-  return row?.projectId ?? null;
+  return row?.workspaceId ?? null;
 }
 
 export async function dispatchAgentMailEvent(event: AgentMailMessageReceivedEvent): Promise<void> {
   if (!isInboundMessageEvent(event.event_type)) return;
   if (await alreadyHandled(`email:event:${event.event_id}`)) return;
-  const projectId = await resolveProjectForAgentMailInbox(event.message.inbox_id);
-  if (!projectId) {
-    console.warn('[email-webhook] no project install for AgentMail inbox', {
+  const workspaceId = await resolveWorkspaceForAgentMailInbox(event.message.inbox_id);
+  if (!workspaceId) {
+    console.warn('[email-webhook] no workspace install for AgentMail inbox', {
       inboxId: event.message.inbox_id,
       eventId: event.event_id,
     });
     return;
   }
-  const policy = await loadAgentMailSenderPolicyForInbox(projectId, event.message.inbox_id);
+  const policy = await loadAgentMailSenderPolicyForInbox(workspaceId, event.message.inbox_id);
   if (!senderAllowed(event, policy)) {
     console.warn('[email-webhook] sender rejected by AgentMail inbox policy', {
       inboxId: event.message.inbox_id,
@@ -63,11 +63,11 @@ export async function dispatchAgentMailEvent(event: AgentMailMessageReceivedEven
     return;
   }
   if (!(await claimInboundMessage(event))) return;
-  await spawnEmailAgentTurn(projectId, event);
+  await spawnEmailAgentTurn(workspaceId, event);
 }
 
 async function spawnEmailAgentTurn(
-  projectId: string,
+  workspaceId: string,
   event: AgentMailMessageReceivedEvent,
 ): Promise<void> {
   const inboxId = event.message.inbox_id;
@@ -89,13 +89,13 @@ async function spawnEmailAgentTurn(
   if (existing) {
     if (
       !(await ensureEmailSessionBinding({
-        projectId,
+        workspaceId,
         sessionId: existing.sessionId,
         inboxId,
       }))
     ) {
       console.error('[email-webhook] could not bind existing session to inbox profile', {
-        projectId,
+        workspaceId,
         sessionId: existing.sessionId,
         inboxId,
       });
@@ -127,31 +127,31 @@ async function spawnEmailAgentTurn(
             eq(chatThreads.threadId, threadId),
           ),
         );
-      await createThreadSession(projectId, event, true);
+      await createThreadSession(workspaceId, event, true);
     }
     return;
   }
 
-  await createThreadSession(projectId, event, false);
+  await createThreadSession(workspaceId, event, false);
 }
 
 async function createThreadSession(
-  projectId: string,
+  workspaceId: string,
   event: AgentMailMessageReceivedEvent,
   revived: boolean,
 ): Promise<void> {
   const inboxId = event.message.inbox_id;
   const threadId = event.message.thread_id;
-  const [project] = await db
+  const [workspace] = await db
     .select()
-    .from(projects)
-    .where(eq(projects.projectId, projectId))
+    .from(workspaces)
+    .where(eq(workspaces.workspaceId, workspaceId))
     .limit(1);
-  if (!project) return;
+  if (!workspace) return;
 
-  const userId = await emailSessionLifecycle.resolveProjectAutomationActor(project.accountId);
+  const userId = await emailSessionLifecycle.resolveWorkspaceAutomationActor(workspace.accountId);
   if (!userId) {
-    console.warn('[email-webhook] no actor for project', projectId);
+    console.warn('[email-webhook] no actor for workspace', workspaceId);
     return;
   }
 
@@ -159,9 +159,9 @@ async function createThreadSession(
   if (!(await claimThreadCreate(claimKey))) {
     const sessionId = await waitForThreadSession(inboxId, threadId);
     if (sessionId) {
-      if (!(await ensureEmailSessionBinding({ projectId, sessionId, inboxId }))) {
+      if (!(await ensureEmailSessionBinding({ workspaceId, sessionId, inboxId }))) {
         console.error('[email-webhook] could not bind claimed session to inbox profile', {
-          projectId,
+          workspaceId,
           sessionId,
           inboxId,
         });
@@ -177,21 +177,21 @@ async function createThreadSession(
   }
 
   const initialPrompt = renderAgentPrompt(event, revived);
-  const emailProfileId = await loadEmailInstallProfileId(projectId, inboxId);
+  const emailProfileId = await loadEmailInstallProfileId(workspaceId, inboxId);
   if (!emailProfileId) {
     console.error('[email-webhook] no active connection profile for inbox', {
-      projectId,
+      workspaceId,
       inboxId,
     });
     return;
   }
   const result = await emailSessionLifecycle.createSession({
     source: 'email',
-    project,
+    workspace,
     userId,
     requestingPrincipalType: 'human',
     body: {
-      base_ref: project.defaultBranch,
+      base_ref: workspace.defaultBranch,
       agent_name: 'default',
       connector_bindings: {
         email: { profile_id: emailProfileId },
@@ -205,7 +205,7 @@ async function createThreadSession(
       {
         type: 'bind_chat_thread',
         platform: 'email',
-        workspaceId: inboxId,
+        providerWorkspaceId: inboxId,
         threadId,
       },
       {
@@ -215,7 +215,7 @@ async function createThreadSession(
         userId,
       },
     ],
-    visibility: 'project',
+    visibility: 'workspace',
     metadata: {
       source: 'email',
       email: {
@@ -236,7 +236,7 @@ async function createThreadSession(
   });
 
   if (result.error) {
-    console.error('[email-webhook] createProjectSession failed', {
+    console.error('[email-webhook] createWorkspaceSession failed', {
       status: result.error.status,
       body: result.error.body,
     });
@@ -317,7 +317,7 @@ async function waitForThreadSession(inboxId: string, threadId: string): Promise<
 
 const EMAIL_TURN_INSTRUCTIONS = [
   'How to work:',
-  '- You are operating an AgentMail inbox assigned to this Kortix project.',
+  '- You are operating an AgentMail inbox assigned to this Kortix workspace.',
   '- Use the built-in `email` Executor connector for inbox operations. The AgentMail API key is resolved server-side; do not look for it in the sandbox.',
   '- Read the current thread before replying when context matters: `email.get_thread` with `inbox_id` and `thread_id`.',
   '- To answer in the same conversation, call `email.reply_message` with `inbox_id`, `message_id`, `text` or `html`, and attachments when needed.',

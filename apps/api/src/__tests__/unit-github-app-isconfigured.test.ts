@@ -1,13 +1,13 @@
 /**
  * Proves the DB-first/env-fallback wiring added for the in-app self-host
- * GitHub App setup flow: `isGithubAppConfigured()` (projects/github.ts) and
- * `githubBackend.isConfigured()` (projects/git-backends/github.ts) read the
+ * GitHub App setup flow: `isGithubAppConfigured()` (workspaces/github.ts) and
+ * `githubBackend.isConfigured()` (workspaces/git-backends/github.ts) read the
  * DB-backed managed-github-app config before falling back to env vars, and
  * `isConfigured()` only flips true once appId+privateKey+owner+installationId
  * are ALL present (whichever source each comes from).
  *
  * Mocks only `platform/services/managed-github-app` (the DB-cache module) —
- * everything downstream (projects/github.ts, projects/git-backends/github.ts)
+ * everything downstream (workspaces/github.ts, workspaces/git-backends/github.ts)
  * runs for real, so this exercises the actual accessor wiring, not a
  * re-description of it.
  *
@@ -32,8 +32,8 @@ mock.module('../platform/services/managed-github-app', () => ({
   },
 }));
 
-const { isGithubAppConfigured } = await import('../projects/github');
-const { githubBackend, managedGithubOwner } = await import('../projects/git-backends/github');
+const { isGithubAppConfigured } = await import('../workspaces/github');
+const { githubBackend, managedGithubOwner } = await import('../workspaces/git-backends/github');
 
 const ENV_KEYS = [
   'KORTIX_GITHUB_APP_ID',

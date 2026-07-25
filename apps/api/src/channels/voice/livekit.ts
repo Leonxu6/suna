@@ -97,7 +97,7 @@ export async function createRoom(room: string, metadata: string): Promise<void> 
     // the LAST participant leaves, and its default (~20s) is short enough that a
     // brief gap — a page reload, a bot reconnect — destroys the room. A
     // participant rejoining then IMPLICITLY recreates it with NO metadata, and
-    // the agent worker dies with "room metadata is missing project_id" because
+    // the agent worker dies with "room metadata is missing workspace_id" because
     // the call context and its API token travel in that metadata.
     emptyTimeout: 30 * 60,
     departureTimeout: 15 * 60,

@@ -8,7 +8,7 @@
 
 import { createRoute, z } from '@hono/zod-openapi';
 import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
-import { iamPolicies, iamRoleActions, iamRoles, projects, serviceAccounts, accountMembers, accountGroups } from '@kortix/db';
+import { iamPolicies, iamRoleActions, iamRoles, workspaces, serviceAccounts, accountMembers, accountGroups } from '@kortix/db';
 import { json, errors, auth } from '../../openapi';
 import { db } from '../../shared/db';
 import { ACCOUNT_ACTIONS, assertAuthorized } from '../../iam';
@@ -19,7 +19,7 @@ import {
 import { iamRouter, AccountIdParam } from './app';
 import { auditIam, isUniqueViolation, readBody, requireEntitlement } from './helpers';
 import { listAgentServiceAccounts, ensureAgentServiceAccount } from '../../repositories/service-accounts';
-import { loadConfigWithFiles } from '../../projects/lib/project-resources';
+import { loadConfigWithFiles } from '../../workspaces/lib/workspace-resources';
 import {
   ACTION_CATALOG_WIRE,
   BUILTIN_BY_ID,
@@ -48,7 +48,7 @@ function serializeCustomRole(r: typeof iamRoles.$inferSelect) {
     key: r.key,
     name: r.name,
     description: r.description,
-    resource_type: (r.scopeType === 'account' ? 'account' : 'project') as 'account' | 'project',
+    resource_type: (r.scopeType === 'account' ? 'account' : 'workspace') as 'account' | 'workspace',
     is_system: false,
     account_id: r.accountId,
   };
@@ -153,7 +153,7 @@ iamRouter.openapi(
       return c.json({ error: 'key must be 2–64 chars of [a-z0-9_]' }, 400);
     }
     if (!name || name.length > 128) return c.json({ error: 'name is required (≤128 chars)' }, 400);
-    const resourceType = body.resourceType === 'account' ? 'account' : 'project';
+    const resourceType = body.resourceType === 'account' ? 'account' : 'workspace';
     const v = validateActions(body.actions ?? [], resourceType);
     if (!v.ok) return c.json({ error: v.error }, 400);
 
@@ -310,7 +310,7 @@ iamRouter.openapi(
     if (!role) return c.json({ error: 'role not found' }, 404);
 
     const body = await readBody(c);
-    const v = validateActions(body.actions ?? [], role.scopeType === 'account' ? 'account' : 'project');
+    const v = validateActions(body.actions ?? [], role.scopeType === 'account' ? 'account' : 'workspace');
     if (!v.ok) return c.json({ error: v.error }, 400);
 
     // Replace the set atomically, then bust everyone holding the role so the new
@@ -409,34 +409,34 @@ iamRouter.openapi(
     const accountId = c.req.param('accountId');
     await assertAuthorized(userId, accountId, ACCOUNT_ACTIONS.POLICY_READ);
 
-    type Identity = { service_account_id: string; name: string; project_id: string | null; agent_name: string | null };
+    type Identity = { service_account_id: string; name: string; workspace_id: string | null; agent_name: string | null };
     const byKey = new Map<string, Identity>();
     // Start from already-provisioned identities (the implicit `default` + any
-    // agent that has been launched). Keyed (project, agent) to dedupe.
+    // agent that has been launched). Keyed (workspace, agent) to dedupe.
     for (const r of await listAgentServiceAccounts(accountId)) {
-      byKey.set(`${r.projectId}|${r.agentName}`, {
+      byKey.set(`${r.workspaceId}|${r.agentName}`, {
         service_account_id: r.serviceAccountId,
         name: r.name,
-        project_id: r.projectId,
+        workspace_id: r.workspaceId,
         agent_name: r.agentName,
       });
     }
 
-    // EAGER provisioning: every agent in every active project is assignable
-    // WITHOUT having to launch it first. Enumerate the project configs and
+    // EAGER provisioning: every agent in every active workspace is assignable
+    // WITHOUT having to launch it first. Enumerate the workspace configs and
     // get-or-create an identity per agent (incl. the implicit `default`).
     // Best-effort + parallel; a repo that won't load just keeps whatever's
     // already provisioned. ensureAgentServiceAccount is idempotent, so this
     // only mints on first sight. Capped to bound the git work on accounts with
-    // a very large project count (the picker is a manager-only admin surface).
-    const PROJECT_CAP = 50;
-    const projectRows = await db
+    // a very large workspace count (the picker is a manager-only admin surface).
+    const WORKSPACE_CAP = 50;
+    const workspaceRows = await db
       .select()
-      .from(projects)
-      .where(and(eq(projects.accountId, accountId), ne(projects.status, 'archived')))
-      .limit(PROJECT_CAP);
+      .from(workspaces)
+      .where(and(eq(workspaces.accountId, accountId), ne(workspaces.status, 'archived')))
+      .limit(WORKSPACE_CAP);
     await Promise.all(
-      projectRows.map(async (p) => {
+      workspaceRows.map(async (p) => {
         let agentNames: string[] = ['default'];
         try {
           const config = await loadConfigWithFiles(p);
@@ -445,11 +445,11 @@ iamRouter.openapi(
           // repo momentarily unreachable — still expose the implicit `default`.
         }
         for (const agentName of agentNames) {
-          const key = `${p.projectId}|${agentName}`;
+          const key = `${p.workspaceId}|${agentName}`;
           if (byKey.has(key)) continue;
           try {
-            const serviceAccountId = await ensureAgentServiceAccount({ accountId, projectId: p.projectId, agentName });
-            byKey.set(key, { service_account_id: serviceAccountId, name: `${agentName} · ${p.name}`, project_id: p.projectId, agent_name: agentName });
+            const serviceAccountId = await ensureAgentServiceAccount({ accountId, workspaceId: p.workspaceId, agentName });
+            byKey.set(key, { service_account_id: serviceAccountId, name: `${agentName} · ${p.name}`, workspace_id: p.workspaceId, agent_name: agentName });
           } catch {
             // minting unavailable (e.g. API_KEY_SECRET unset) — skip this agent.
           }
@@ -460,7 +460,7 @@ iamRouter.openapi(
     const agents = [...byKey.values()].sort(
       (a, b) =>
         (a.agent_name ?? '').localeCompare(b.agent_name ?? '') ||
-        (a.project_id ?? '').localeCompare(b.project_id ?? ''),
+        (a.workspace_id ?? '').localeCompare(b.workspace_id ?? ''),
     );
     return c.json({ agents });
   },
@@ -752,7 +752,7 @@ async function parsePolicyInput(
 
   // A token principal must be an active service account in THIS account — else
   // the policy is a dangling no-op (or a cross-account reference). Mirrors the
-  // project scopeId ownership check below.
+  // workspace scopeId ownership check below.
   if (validatePrincipal && principalType === 'token') {
     const [sa] = await db
       .select({ id: serviceAccounts.serviceAccountId })
@@ -770,7 +770,7 @@ async function parsePolicyInput(
 
   // Ownership parity for member/group principals: binding a foreign user/group id
   // creates an inert policy (the engine resolves by account membership) — reject
-  // it with a clear error instead, matching the token + project ownership checks.
+  // it with a clear error instead, matching the token + workspace ownership checks.
   if (validatePrincipal && principalType === 'member') {
     const [m] = await db
       .select({ id: accountMembers.userId })
@@ -789,31 +789,31 @@ async function parsePolicyInput(
   }
 
   const scopeType = String(body.scopeType ?? '');
-  if (!['account', 'project'].includes(scopeType)) {
-    return { ok: false, status: 400, error: 'scopeType must be account or project' };
+  if (!['account', 'workspace'].includes(scopeType)) {
+    return { ok: false, status: 400, error: 'scopeType must be account or workspace' };
   }
-  // An agent / service-account identity is project-bound by nature. An
+  // An agent / service-account identity is workspace-bound by nature. An
   // ACCOUNT-scoped role on it would grant account-wide powers the per-session
-  // agent-grant fold does NOT narrow (the fold only gates project scope) — a
-  // standing-identity escalation surface. Keep token principals project-scoped.
+  // agent-grant fold does NOT narrow (the fold only gates workspace scope) — a
+  // standing-identity escalation surface. Keep token principals workspace-scoped.
   if (principalType === 'token' && scopeType === 'account') {
-    return { ok: false, status: 400, error: 'service-account (agent) policies must be project-scoped' };
+    return { ok: false, status: 400, error: 'service-account (agent) policies must be workspace-scoped' };
   }
   const scopeId = typeof body.scopeId === 'string' && body.scopeId ? body.scopeId : null;
-  if (scopeType === 'project' && !scopeId) {
-    return { ok: false, status: 400, error: 'scopeId (project id) is required for project scope' };
+  if (scopeType === 'workspace' && !scopeId) {
+    return { ok: false, status: 400, error: 'scopeId (workspace id) is required for workspace scope' };
   }
-  // A project-scoped policy must target a project that actually belongs to this
+  // A workspace-scoped policy must target a workspace that actually belongs to this
   // account — otherwise a typo'd or cross-account scopeId creates a dangling
   // policy that silently grants nothing (or, worse, hints at cross-tenant
   // intent). Validate existence + ownership up front.
-  if (scopeType === 'project' && scopeId) {
+  if (scopeType === 'workspace' && scopeId) {
     const [proj] = await db
-      .select({ projectId: projects.projectId })
-      .from(projects)
-      .where(and(eq(projects.projectId, scopeId), eq(projects.accountId, accountId)))
+      .select({ workspaceId: workspaces.workspaceId })
+      .from(workspaces)
+      .where(and(eq(workspaces.workspaceId, scopeId), eq(workspaces.accountId, accountId)))
       .limit(1);
-    if (!proj) return { ok: false, status: 404, error: 'scopeId does not match a project in this account' };
+    if (!proj) return { ok: false, status: 404, error: 'scopeId does not match a workspace in this account' };
   }
 
   if (body.effect !== undefined && body.effect !== 'allow') {
@@ -823,7 +823,7 @@ async function parsePolicyInput(
   const roleId = typeof body.roleId === 'string' ? body.roleId : '';
   if (!roleId) return { ok: false, status: 400, error: 'roleId is required' };
   if (BUILTIN_BY_ID.has(roleId)) {
-    return { ok: false, status: 400, error: 'built-in roles are assigned via project members/groups, not policies' };
+    return { ok: false, status: 400, error: 'built-in roles are assigned via workspace members/groups, not policies' };
   }
   const role = await loadCustomRole(accountId, roleId);
   if (!role) return { ok: false, status: 404, error: 'role not found in this account' };
@@ -831,9 +831,9 @@ async function parsePolicyInput(
   // Scope integrity: a policy must bind a role at the role's own scope. An
   // account-scoped policy grants its role's actions across the WHOLE account
   // (engine-v2 customPolicyAllows returns true for any target when
-  // scopeType==='account'), so binding a project "department" role at account
-  // scope would silently smear it over every project — a broadening the role's
-  // author never intended. Project roles bind at project scope, account roles
+  // scopeType==='account'), so binding a workspace "department" role at account
+  // scope would silently smear it over every workspace — a broadening the role's
+  // author never intended. Workspace roles bind at workspace scope, account roles
   // at account scope.
   if (role.scopeType !== scopeType) {
     return {

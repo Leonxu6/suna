@@ -4,7 +4,7 @@ import { validateSecretKey } from '../repositories/api-keys';
 import { validateAccountToken } from '../repositories/account-tokens';
 import { validateServiceAccountToken } from '../repositories/service-accounts';
 import { isKortixToken, isAccountToken, isServiceAccountToken } from '../shared/crypto';
-import { canAccessPreviewSandbox, resolveSandboxProjectId } from '../shared/preview-ownership';
+import { canAccessPreviewSandbox, resolveSandboxWorkspaceId } from '../shared/preview-ownership';
 import { getSupabase } from '../shared/supabase';
 import { decodeSupabaseJwtPayload, verifySupabaseJwt } from '../shared/jwt-verify';
 import { setSentryUser } from '../lib/sentry';
@@ -119,12 +119,12 @@ export async function apiKeyAuth(c: Context, next: Next) {
  *
  * Also accepts CLI Personal Access Tokens (kortix_pat_...) — these carry
  * a real user_id from the account_tokens table, so the rest of the
- * pipeline (resolveAccountId, project access checks, etc.) works
+ * pipeline (resolveAccountId, workspace access checks, etc.) works
  * unchanged.
  *
  * The one sandbox-token exception is the runtime clone-credential endpoint:
  * a session sandbox calls it with its sandbox-scoped KORTIX_TOKEN so it does
- * not need a second project PAT or raw Git token in env.
+ * not need a second workspace PAT or raw Git token in env.
  */
 export async function supabaseAuth(c: Context, next: Next) {
   const authHeader = c.req.header('Authorization');
@@ -180,14 +180,14 @@ export async function supabaseAuth(c: Context, next: Next) {
       auditLoginFail({ c, reason: result.error ?? 'invalid_pat', authType: 'pat' });
       throw new HTTPException(401, { message: result.error || 'Invalid PAT' });
     }
-    if (result.projectId) {
-      await enforceTokenProjectScope(c, result.projectId);
+    if (result.workspaceId) {
+      await enforceTokenWorkspaceScope(c, result.workspaceId);
     }
     c.set('userId', result.userId);
     c.set('userEmail', '');
     c.set('authType', 'pat');
     if (result.accountId) c.set('accountId', result.accountId);
-    if (result.projectId) c.set('tokenProjectId', result.projectId);
+    if (result.workspaceId) c.set('tokenWorkspaceId', result.workspaceId);
     if (result.sessionId) c.set('sessionId', result.sessionId);
     if (result.tokenId) c.set('iamTokenId', result.tokenId);
     // Per-agent authorization grant (non-null only for agent-session tokens).
@@ -202,7 +202,7 @@ export async function supabaseAuth(c: Context, next: Next) {
       userId: result.userId,
       accountId: result.accountId ?? null,
       authType: 'pat',
-      metadata: result.projectId ? { project_id: result.projectId } : undefined,
+      metadata: result.workspaceId ? { workspace_id: result.workspaceId } : undefined,
     });
     await next();
     return;
@@ -466,14 +466,14 @@ export async function combinedAuth(c: Context, next: Next) {
       auditLoginFail({ c, reason: patResult.error ?? 'invalid_pat', authType: 'pat' });
       throw new HTTPException(401, { message: patResult.error || 'Invalid PAT' });
     }
-    if (patResult.projectId) {
-      await enforceTokenProjectScope(c, patResult.projectId);
+    if (patResult.workspaceId) {
+      await enforceTokenWorkspaceScope(c, patResult.workspaceId);
     }
     c.set('userId', patResult.userId);
     c.set('userEmail', '');
     c.set('authType', 'pat');
     if (patResult.accountId) c.set('accountId', patResult.accountId);
-    if (patResult.projectId) c.set('tokenProjectId', patResult.projectId);
+    if (patResult.workspaceId) c.set('tokenWorkspaceId', patResult.workspaceId);
     // Set the acting token id so engine gates on combinedAuth-mounted routes can
     // thread it and the agent-grant fold fires (mirrors supabaseAuth). Without
     // this, a capability check on a combinedAuth route silently no-ops the fold —
@@ -672,81 +672,81 @@ function extractPreviewSandboxId(path: string): string | null {
 }
 
 /**
- * A project-scoped CLI PAT can only act on its bound project. Reject
+ * A workspace-scoped CLI PAT can only act on its bound workspace. Reject
  * the request if:
- *   - the URL targets a `:projectId` parameter that doesn't match, OR
+ *   - the URL targets a `:workspaceId` parameter that doesn't match, OR
  *   - the URL is an account-level route (`/v1/accounts/*` other than
  *     `/v1/accounts/me`, which we allow as a self-identity probe), OR
  *   - the URL is a webhook / preview / system route the token has no
  *     business hitting — UNLESS it is the sandbox-proxy path
  *     (`/v1/p/{sandboxId}/{port}/...`) AND the sandbox belongs to the
- *     token's own project (see below).
+ *     token's own workspace (see below).
  *
  * Throws HTTPException(403) so the calling middleware aborts the chain.
  */
-async function enforceTokenProjectScope(c: Context, tokenProjectId: string): Promise<void> {
+async function enforceTokenWorkspaceScope(c: Context, tokenWorkspaceId: string): Promise<void> {
   const path = c.req.path;
 
   // Whitelist a couple of self-identity probes the CLI hits even for
-  // project/session-scoped tokens. `/v1/accounts/me` lets the agent confirm
-  // "what project/session/agent am I bound to?".
+  // workspace/session-scoped tokens. `/v1/accounts/me` lets the agent confirm
+  // "what workspace/session/agent am I bound to?".
   if (path === '/v1/accounts/me') return;
 
   // Reject other account-level routes outright.
   if (path.startsWith('/v1/accounts/') || path === '/v1/accounts') {
     throw new HTTPException(403, {
-      message: 'Project-scoped token cannot call account-level routes',
+      message: 'Workspace-scoped token cannot call account-level routes',
     });
   }
 
-  // `/v1/projects/:projectId/...` AND `/v1/executor/projects/:projectId/...` —
-  // both are project-scoped surfaces. Require the URL id to match the token's
-  // project. The executor branch intentionally includes both gateway and
+  // `/v1/workspaces/:workspaceId/...` AND `/v1/executor/workspaces/:workspaceId/...` —
+  // both are workspace-scoped surfaces. Require the URL id to match the token's
+  // workspace. The executor branch intentionally includes both gateway and
   // connector-management routes: the unified Executor MCP exposes add/remove
   // connector tools from inside the sandbox, while individual routes still gate
-  // mutations via project.write in resolveAdmin.
+  // mutations via workspace.write in resolveAdmin.
   const m =
-    path.match(/^\/v1\/projects\/([^/]+)/) ?? path.match(/^\/v1\/executor\/projects\/([^/]+)/);
+    path.match(/^\/v1\/workspaces\/([^/]+)/) ?? path.match(/^\/v1\/executor\/workspaces\/([^/]+)/);
   if (m) {
-    const urlProjectId = m[1];
-    if (urlProjectId !== tokenProjectId) {
+    const urlWorkspaceId = m[1];
+    if (urlWorkspaceId !== tokenWorkspaceId) {
       throw new HTTPException(403, {
-        message: 'Project-scoped token cannot access a different project',
+        message: 'Workspace-scoped token cannot access a different workspace',
       });
     }
     return;
   }
 
-  // Bare `/v1/projects` (list) is also account-scoped: a project-bound
-  // token shouldn't enumerate other projects.
-  if (path === '/v1/projects') {
+  // Bare `/v1/workspaces` (list) is also account-scoped: a workspace-bound
+  // token shouldn't enumerate other workspaces.
+  if (path === '/v1/workspaces') {
     throw new HTTPException(403, {
-      message: 'Project-scoped token cannot list projects',
+      message: 'Workspace-scoped token cannot list workspaces',
     });
   }
 
   // Sandbox-proxy path — this is what session.send()/stream() and other
-  // runtime.* SDK calls actually hit (NOT /v1/projects/:id/*). Without this
-  // branch a project PAT could authenticate REST calls but never drive an
+  // runtime.* SDK calls actually hit (NOT /v1/workspaces/:id/*). Without this
+  // branch a workspace PAT could authenticate REST calls but never drive an
   // agent turn. Allow it through ONLY for a sandbox that resolves back to
-  // THIS token's own project — resolved via `session_sandboxes` (one indexed
-  // lookup, sandbox_id is the PK). A lookup miss or a mismatched project both
-  // deny, same as every other surface a project PAT has no business on; this
-  // never widens access to another project's or another account's sandbox.
+  // THIS token's own workspace — resolved via `session_sandboxes` (one indexed
+  // lookup, sandbox_id is the PK). A lookup miss or a mismatched workspace both
+  // deny, same as every other surface a workspace PAT has no business on; this
+  // never widens access to another workspace's or another account's sandbox.
   const previewSandboxId = extractPreviewSandboxId(path);
   if (previewSandboxId) {
-    const sandboxProjectId = await resolveSandboxProjectId(previewSandboxId);
-    if (sandboxProjectId && sandboxProjectId === tokenProjectId) {
+    const sandboxWorkspaceId = await resolveSandboxWorkspaceId(previewSandboxId);
+    if (sandboxWorkspaceId && sandboxWorkspaceId === tokenWorkspaceId) {
       return;
     }
     throw new HTTPException(403, {
-      message: 'Project-scoped token cannot access a sandbox outside its project',
+      message: 'Workspace-scoped token cannot access a sandbox outside its workspace',
     });
   }
 
   // All other surfaces (router, billing, channels, etc.) are
   // account-level — refuse.
   throw new HTTPException(403, {
-    message: 'Project-scoped token cannot call this surface',
+    message: 'Workspace-scoped token cannot call this surface',
   });
 }

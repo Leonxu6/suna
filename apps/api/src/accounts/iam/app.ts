@@ -28,7 +28,7 @@ export const GroupSchema = z
     source: z.string().optional(),
     external_id: z.string().nullable().optional(),
     member_count: z.number().optional(),
-    project_count: z.number().optional(),
+    workspace_count: z.number().optional(),
     created_at: z.string().optional(),
     updated_at: z.string().optional(),
   })
@@ -42,25 +42,25 @@ export const GroupMemberSchema = z
   })
   .openapi('IamGroupMember');
 
-export const ProjectGrantSchema = z
+export const WorkspaceGrantSchema = z
   .object({
-    project_id: z.string(),
-    project_name: z.string(),
+    workspace_id: z.string(),
+    workspace_name: z.string(),
     role: z.string(),
     granted_by: z.string().nullable(),
     created_at: z.string(),
     expires_at: z.string().nullable(),
   })
-  .openapi('IamProjectGrant');
+  .openapi('IamWorkspaceGrant');
 
-export const ProjectAccessSchema = z
+export const WorkspaceAccessSchema = z
   .object({
-    project_id: z.string(),
-    project_name: z.string(),
+    workspace_id: z.string(),
+    workspace_name: z.string(),
     role: z.string(),
     sources: z.array(z.string()),
   })
-  .openapi('IamProjectAccess');
+  .openapi('IamWorkspaceAccess');
 
 export const EffectiveResultSchema = z
   .object({
@@ -137,7 +137,7 @@ export const ServiceAccountSchema = z
 
 const VALID_RESOURCE_TYPES: readonly ResourceType[] = [
   'account',
-  'project',
+  'workspace',
   'sandbox',
   'trigger',
   'channel',

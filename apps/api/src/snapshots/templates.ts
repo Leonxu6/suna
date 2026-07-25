@@ -3,9 +3,9 @@
  *
  * The durable identity for "what kind of sandbox a session can boot from."
  * Templates live in `kortix.sandbox_templates`. The platform default is a
- * shared row (project_id NULL, is_shared=true) that any project can boot
+ * shared row (workspace_id NULL, is_shared=true) that any workspace can boot
  * from. Custom templates can be defined either in `kortix.yaml` (synced to
- * the DB on first read for a project) or directly via the UI/CRUD API.
+ * the DB on first read for a workspace) or directly via the UI/CRUD API.
  *
  * Provider-agnostic: each template carries the provider of its most recent
  * successful build; the matching Daytona, Platinum, or E2B adapter is resolved
@@ -13,7 +13,7 @@
  */
 
 import { and, eq, isNull, ne, or } from 'drizzle-orm';
-import { sandboxTemplates, projects } from '@kortix/db';
+import { sandboxTemplates, workspaces } from '@kortix/db';
 import {
   AGENT_BROWSER_VERSION,
   BUN_SHA256_AMD64,
@@ -33,9 +33,9 @@ import {
 type DbSandboxTemplate = typeof sandboxTemplates.$inferSelect;
 import { db } from '../shared/db';
 import { isWarmBuildSlug, templateSlugFromBuildSlug } from './ppwarm-names';
-import { metadataMerge } from '../projects/lib/metadata-merge';
-import { readManifest } from '../projects/triggers';
-import { resolveCommitSha, readRepoFile, type GitBackedProject } from '../projects/git';
+import { metadataMerge } from '../workspaces/lib/metadata-merge';
+import { readManifest } from '../workspaces/triggers';
+import { resolveCommitSha, readRepoFile, type GitBackedWorkspace } from '../workspaces/git';
 import { SANDBOX_VERSION, config } from '../config';
 import {
   buildDefaultSandboxTemplate,
@@ -76,9 +76,9 @@ const EXECUTOR_SDK_SRC_PATH = process.env.KORTIX_SNAPSHOT_EXECUTOR_SDK_PATH
 // session only ever invokes `kortix executor` / `kortix executor mcp` — the rest
 // (`ship`, `cr`, `tunnel`, `self-host`, `accounts`, the whole `init`/scaffold
 // surface, …) is developer-facing and runs on a laptop, never in the sandbox.
-// Hashing the WHOLE tree meant every dev-only CLI edit re-minted every project's
+// Hashing the WHOLE tree meant every dev-only CLI edit re-minted every workspace's
 // runtime identity AND moved the non-agent `swapKey`, which DISABLES the cheap
-// agent-swap fast path and forces a full O(all-projects) rebuild (measured: ~4 of
+// agent-swap fast path and forces a full O(all-workspaces) rebuild (measured: ~4 of
 // 11 forced mass-rebuilds over 2 weeks were pure dev-CLI churn). So we hash the
 // in-sandbox executor import-closure instead of `apps/cli/src` wholesale.
 //
@@ -98,7 +98,7 @@ const CLI_EXECUTOR_CLOSURE = [
   'api/client.ts',
   'api/config.ts',
   'api/sandbox-env.ts',
-  'project-link.ts',
+  'workspace-link.ts',
 ] as const;
 const CLI_PKG_JSON = resolve(REPO_ROOT, 'apps/cli/package.json');
 const FINGERPRINT_EXCLUDES = ['node_modules', '.bin', 'dist', '.turbo', '.cache'] as const;
@@ -107,7 +107,7 @@ const FINGERPRINT_EXCLUDES = ['node_modules', '.bin', 'dist', '.turbo', '.cache'
 // itself is not hashed into the snapshot fingerprint, so a layer change needs a
 // manual version bump to invalidate cached images). v2: bake OpenCode config
 // deps into /opt/kortix/opencode-config-deps for offline boot-time install.
-// v10: warm a real opencode project instance at build time (instance-warm) so the
+// v10: warm a real opencode workspace instance at build time (instance-warm) so the
 // one-time first-instance plugin/model/ripgrep cost is cached into the image
 // instead of paid on the session hot path (6–60s → ~2–4s cold start).
 // v11: bake a real Chromium (Playwright, cross-arch) for agent-browser so the
@@ -125,7 +125,7 @@ const FINGERPRINT_EXCLUDES = ['node_modules', '.bin', 'dist', '.turbo', '.cache'
 // v18: `meet speak` (TTS voice in-call) + voice-reply skill section.
 // v19: natural-conversation relay (debounce + acknowledgement + follow-up) skill notes.
 // v20: multi-platform rebrand (Meet/Zoom/Teams) + dedicated speaking skill section.
-// v21: configurable bot name (project setting) + wake word = bot's first name (skill).
+// v21: configurable bot name (workspace setting) + wake word = bot's first name (skill).
 // v22: spoken turns MUST reply by voice (skill) — no chat fallback for speech.
 // v23: auto-recap on meeting end (bot.done webhook -> session produces notes).
 // v24: hard-fail the bake if the baked opencode-config-deps tree (or the
@@ -139,7 +139,7 @@ const FINGERPRINT_EXCLUDES = ['node_modules', '.bin', 'dist', '.turbo', '.cache'
 // v26: layer robustness. (a) The starter Python floor moved OUT of the system
 // interpreter into a `--system-site-packages` venv at /opt/kortix/pyfloor (on the
 // front of PATH): the old `pip install --break-system-packages` fought dpkg for
-// any floor package the USER's Dockerfile had apt-installed — a project's
+// any floor package the USER's Dockerfile had apt-installed — a workspace's
 // `gdal-bin` pulled dpkg-owned python3-numpy 1.26.4, our `numpy>=1.26` resolved
 // to 2.x, pip tried to uninstall it and hard-failed the build ("RECORD file not
 // found ... installed by debian") on a CORRECT user image. pip in a venv cannot
@@ -151,32 +151,32 @@ const FINGERPRINT_EXCLUDES = ['node_modules', '.bin', 'dist', '.turbo', '.cache'
 // deleted. (c) ENV DEBIAN_FRONTEND=noninteractive is set by the layer instead of
 // being inherited by luck from the user's base.
 // v27: Chromium layer cache-determinism + download hardening. (a) Moved the
-// agent-browser/Playwright Chromium RUN to sit BEFORE the per-project warm-repo
+// agent-browser/Playwright Chromium RUN to sit BEFORE the per-workspace warm-repo
 // clone (and the opencode instance warm-up that follows it), instead of after.
 // The repo-clone step bakes a FRESH short-lived git credential into its RUN
 // text on every single invocation (~1h GitHub App installation token, or a JWT
 // with a live iat/exp), so it can never build-cache-hit — and neither can
 // anything chained after it. With Chromium previously downstream of that clone
-// step, EVERY per-project warm bake re-downloaded the ~150MB Chrome-for-Testing
+// step, EVERY per-workspace warm bake re-downloaded the ~150MB Chrome-for-Testing
 // from cdn.playwright.dev, live-observed timing out staging's ke2e suite
 // ("Downloading Chrome for Testing ... timed out after 30000ms"). Chromium now
 // sits immediately after the toolchain floor — a prefix that is byte-identical
-// across the shared default image AND every per-project warm bake — so its
+// across the shared default image AND every per-workspace warm bake — so its
 // build-cache key is identical everywhere and one cache-populating build (e.g.
-// the shared-default rebuild) serves every later warm bake, for every project.
+// the shared-default rebuild) serves every later warm bake, for every workspace.
 // (b) Regardless of cache state, hardened the Chromium download itself:
 // PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT=300000 (was Playwright's 30s default)
 // + a 5-attempt backoff retry loop around `playwright install --with-deps
 // chromium`, so a transient CDN blip no longer fails the whole image build.
 // v28: v27's cache-order fix made the Chromium RUN text byte-identical across
-// bakes, but under concurrency (3+ simultaneous per-project bakes) the
+// bakes, but under concurrency (3+ simultaneous per-workspace bakes) the
 // opportunistic build-cache STILL did not reliably hit — the provider's
 // build-cache is not something we can observe or guarantee from here, so
-// per-project warm bakes kept re-downloading Chromium and saturating egress
-// (root cause of the v0.10.11 prod rollback). Two changes: (a) per-project warm
+// per-workspace warm bakes kept re-downloading Chromium and saturating egress
+// (root cause of the v0.10.11 prod rollback). Two changes: (a) per-workspace warm
 // bakes now prefer building FROM the already-built default image
-// (buildPerProjectWarmFromBaseDockerfile in dockerfile-layer.ts, wired through
-// ensurePerProjectWarmImage) — Chromium is INHERITED, not re-installed, so
+// (buildPerWorkspaceWarmFromBaseDockerfile in dockerfile-layer.ts, wired through
+// ensurePerWorkspaceWarmImage) — Chromium is INHERITED, not re-installed, so
 // there is no download to miss, no matter what the provider's cache does. This
 // requires the default image to already be `active` on the provider; when it
 // isn't (or the provider can't report an image ref), the builder falls back to
@@ -184,8 +184,8 @@ const FINGERPRINT_EXCLUDES = ['node_modules', '.bin', 'dist', '.turbo', '.cache'
 // PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT to 1800000 (30min, was 300000/5min) as
 // a safety net for that fallback path under a cold cache.
 // v29: fix the BASE default image rebuild (the gap v27/v28 left open). v27/v28
-// only moved Chromium above the per-project warm-repo clone + instance warm-up,
-// and made per-project bakes inherit Chromium FROM the base — but in the base
+// only moved Chromium above the per-workspace warm-repo clone + instance warm-up,
+// and made per-workspace bakes inherit Chromium FROM the base — but in the base
 // image's own build (kortixToolchainLayer with no warmRepo) Chromium STILL sat
 // BELOW the opencode install, the `opencode serve` migration-bake, and the
 // config-deps bun install. The migration-bake writes a sqlite db with live
@@ -230,7 +230,7 @@ function readPositiveIntEnv(name: string, fallback: number): number {
 /** Pretty resolved view used by both the boot path and the UI. */
 export interface ResolvedTemplate {
   templateId: string | null; // null only for a synthesized platform default
-  projectId: string | null;
+  workspaceId: string | null;
   slug: string;
   name: string;
   isShared: boolean;
@@ -256,25 +256,25 @@ export interface ResolvedTemplate {
 }
 
 /**
- * List every template available to a project: the platform-shared default(s)
- * plus this project's own templates. Order: platform default first, then
- * project templates by creation order.
+ * List every template available to a workspace: the platform-shared default(s)
+ * plus this workspace's own templates. Order: platform default first, then
+ * workspace templates by creation order.
  *
  * Side effect: TOML-declared `[[sandbox.templates]]` entries are upserted into the DB
  * here, so the canonical list lives in the DB after a single read.
  */
 /**
- * Per-project throttle on TOML → DB sync. The manifest doesn't change between
+ * Per-workspace throttle on TOML → DB sync. The manifest doesn't change between
  * sessions of the same boot burst, so re-reading it (a git mirror fetch) on
  * every session boot is pure dead time. We refresh at most once per
- * TOML_SYNC_TTL_MS per project. Force-bypass with `forceTomlSync: true` after
+ * TOML_SYNC_TTL_MS per workspace. Force-bypass with `forceTomlSync: true` after
  * a manifest mutation (CR merge handles its own reconciliation).
  */
 const TOML_SYNC_TTL_MS = 60_000;
 const tomlSyncCache = new Map<string, number>();
 
 /**
- * Per-project cache of the resolved template list. Burst session-boot scenarios
+ * Per-workspace cache of the resolved template list. Burst session-boot scenarios
  * (e.g. dashboard opening N sessions back-to-back) hit the templates table
  * with the same query each time; even at ~5-15ms per round-trip, caching
  * for a few seconds shaves time off the hot path without risking staleness
@@ -283,58 +283,58 @@ const tomlSyncCache = new Map<string, number>();
 const TEMPLATE_LIST_TTL_MS = 5_000;
 const templateListCache = new Map<string, { at: number; value: ResolvedTemplate[] }>();
 
-/** Invalidate the in-memory template list cache for a project. Called from
+/** Invalidate the in-memory template list cache for a workspace. Called from
  *  the CRUD endpoints after a create / update / delete. */
-export function invalidateTemplateCache(projectId: string): void {
-  templateListCache.delete(projectId);
+export function invalidateTemplateCache(workspaceId: string): void {
+  templateListCache.delete(workspaceId);
 }
 
-export async function listTemplatesForProject(
-  project: GitBackedProject,
+export async function listTemplatesForWorkspace(
+  workspace: GitBackedWorkspace,
   opts: { forceTomlSync?: boolean } = {},
 ): Promise<ResolvedTemplate[]> {
   // Burst-cache: hot reads return without touching the DB.
   if (!opts.forceTomlSync) {
-    const cached = templateListCache.get(project.projectId);
+    const cached = templateListCache.get(workspace.workspaceId);
     if (cached && Date.now() - cached.at < TEMPLATE_LIST_TTL_MS) {
       return cached.value;
     }
   }
 
-  const last = tomlSyncCache.get(project.projectId) ?? 0;
+  const last = tomlSyncCache.get(workspace.workspaceId) ?? 0;
   if (opts.forceTomlSync || Date.now() - last > TOML_SYNC_TTL_MS) {
-    await syncManifestTemplatesForProject(project);
-    tomlSyncCache.set(project.projectId, Date.now());
+    await syncManifestTemplatesForWorkspace(workspace);
+    tomlSyncCache.set(workspace.workspaceId, Date.now());
   }
 
   const rows = await db
     .select()
     .from(sandboxTemplates)
-    .where(or(eq(sandboxTemplates.projectId, project.projectId), eq(sandboxTemplates.isShared, true)));
+    .where(or(eq(sandboxTemplates.workspaceId, workspace.workspaceId), eq(sandboxTemplates.isShared, true)));
 
   if (rows.length === 0) {
     // No DB rows at all — synthesize a platform default so the system still
     // works before migrations seed one.
     const value = [synthesizedDefault()];
-    templateListCache.set(project.projectId, { at: Date.now(), value });
+    templateListCache.set(workspace.workspaceId, { at: Date.now(), value });
     return value;
   }
 
-  // Project-scoped rows SHADOW shared rows with the same slug. So if a project
+  // Workspace-scoped rows SHADOW shared rows with the same slug. So if a workspace
   // defines its own `[[sandbox.templates]]` entry with slug
   // "default", that wins over the platform default. Otherwise the platform's
-  // shared row is the project's default.
-  const projectSlugs = new Set(rows.filter((r) => !r.isShared).map((r) => r.slug));
-  const deduped = rows.filter((r) => !r.isShared || !projectSlugs.has(r.slug));
+  // shared row is the workspace's default.
+  const workspaceSlugs = new Set(rows.filter((r) => !r.isShared).map((r) => r.slug));
+  const deduped = rows.filter((r) => !r.isShared || !workspaceSlugs.has(r.slug));
 
-  // Sort: shared (platform default) first, then project templates by createdAt.
+  // Sort: shared (platform default) first, then workspace templates by createdAt.
   deduped.sort((a, b) => {
     if (a.isShared && !b.isShared) return -1;
     if (!a.isShared && b.isShared) return 1;
     return a.createdAt.getTime() - b.createdAt.getTime();
   });
   const value = deduped.map(rowToResolved);
-  templateListCache.set(project.projectId, { at: Date.now(), value });
+  templateListCache.set(workspace.workspaceId, { at: Date.now(), value });
   return value;
 }
 
@@ -344,32 +344,32 @@ export async function listTemplatesForProject(
  */
 export class TemplateNotFoundError extends Error {
   constructor(readonly slug: string) {
-    super(`No sandbox template with slug "${slug}" in this project.`);
+    super(`No sandbox template with slug "${slug}" in this workspace.`);
     this.name = 'TemplateNotFoundError';
   }
 }
 
 /** Resolve a slug → ResolvedTemplate. Throws TemplateNotFoundError if slug missing. */
 export async function resolveTemplateBySlug(
-  project: GitBackedProject,
+  workspace: GitBackedWorkspace,
   slug: string | undefined,
 ): Promise<ResolvedTemplate> {
   const target = (slug ?? '').trim() || DEFAULT_SANDBOX_SLUG;
 
   // Fast path for the platform default — the overwhelming majority of boots.
   // The default template's identity is a constant (PLATFORM_DEFAULT_USER_DOCKERFILE),
-  // so it does NOT depend on the project's kortix.yaml. `listTemplatesForProject`
-  // would run `syncManifestTemplatesForProject` → `readManifest` → a host-side git
+  // so it does NOT depend on the workspace's kortix.yaml. `listTemplatesForWorkspace`
+  // would run `syncManifestTemplatesForWorkspace` → `readManifest` → a host-side git
   // fetch of the repo (15-30s cold) on every boot once the 60s TTL lapses — and
   // boots are minutes apart, so it lapses every time. Slug "default" is reserved
-  // (the manifest sync skips it and the manifest schema forbids it), so a project
+  // (the manifest sync skips it and the manifest schema forbids it), so a workspace
   // can never shadow it: the shared row is always the answer. Resolve it from the
   // DB directly and skip the git fetch entirely.
   if (target === DEFAULT_SANDBOX_SLUG) {
     return resolveDefaultTemplate();
   }
 
-  const items = await listTemplatesForProject(project);
+  const items = await listTemplatesForWorkspace(workspace);
   const match = items.find((t) => t.slug === target);
   if (match) return match;
   throw new TemplateNotFoundError(target);
@@ -381,28 +381,28 @@ export async function resolveTemplateBySlug(
  * The warm bake records its build under `<template>-warm`, which is not a template
  * (see WARM_BUILD_SLUG_SUFFIX). Every surface that hands a `latest_failure.slug` /
  * `latest_build.slug` back to the API — Retry build, Fix with agent — lands here.
- * Resolving the slug verbatim FIRST keeps a project that legitimately declares a
+ * Resolving the slug verbatim FIRST keeps a workspace that legitimately declares a
  * template named `foo-warm` working; only when that misses do we treat the `-warm`
  * as the derived-bake marker it usually is.
  */
 export async function resolveTemplateForBuildSlug(
-  project: GitBackedProject,
+  workspace: GitBackedWorkspace,
   slug: string | undefined,
 ): Promise<ResolvedTemplate> {
   try {
-    return await resolveTemplateBySlug(project, slug);
+    return await resolveTemplateBySlug(workspace, slug);
   } catch (err) {
     if (err instanceof TemplateNotFoundError && slug && isWarmBuildSlug(slug)) {
-      return resolveTemplateBySlug(project, templateSlugFromBuildSlug(slug));
+      return resolveTemplateBySlug(workspace, templateSlugFromBuildSlug(slug));
     }
     throw err;
   }
 }
 
 /**
- * Resolve the platform-shared default template — project-independent. The
+ * Resolve the platform-shared default template — workspace-independent. The
  * default's identity is a constant (PLATFORM_DEFAULT_USER_DOCKERFILE), so it
- * needs no project, no manifest, and no git fetch. Used by the session-boot
+ * needs no workspace, no manifest, and no git fetch. Used by the session-boot
  * fast path and the startup pre-build that mints the global default image.
  */
 export async function resolveDefaultTemplate(): Promise<ResolvedTemplate> {
@@ -415,16 +415,16 @@ export async function resolveDefaultTemplate(): Promise<ResolvedTemplate> {
 }
 
 /**
- * Fetch a single template row by (project, slug) — DB-only, no synthesis.
+ * Fetch a single template row by (workspace, slug) — DB-only, no synthesis.
  * Used by CRUD operations that must operate on a concrete row.
  */
 export async function getTemplateRow(
-  projectId: string | null,
+  workspaceId: string | null,
   slug: string,
 ): Promise<DbSandboxTemplate | null> {
   const conds = [eq(sandboxTemplates.slug, slug)];
-  if (projectId === null) conds.push(isNull(sandboxTemplates.projectId));
-  else conds.push(eq(sandboxTemplates.projectId, projectId));
+  if (workspaceId === null) conds.push(isNull(sandboxTemplates.workspaceId));
+  else conds.push(eq(sandboxTemplates.workspaceId, workspaceId));
   const [row] = await db
     .select()
     .from(sandboxTemplates)
@@ -443,7 +443,7 @@ export async function getTemplateById(templateId: string): Promise<DbSandboxTemp
 }
 
 export interface CreateTemplateInput {
-  projectId: string;
+  workspaceId: string;
   accountId: string;
   slug: string;
   name?: string;
@@ -456,13 +456,13 @@ export interface CreateTemplateInput {
   source?: 'toml' | 'ui';
 }
 
-/** Insert a new project-scoped template. Slug must be unique per project. */
+/** Insert a new workspace-scoped template. Slug must be unique per workspace. */
 export async function createTemplate(input: CreateTemplateInput): Promise<DbSandboxTemplate> {
   validateTemplateMutation(input);
   const [row] = await db
     .insert(sandboxTemplates)
     .values({
-      projectId: input.projectId,
+      workspaceId: input.workspaceId,
       accountId: input.accountId,
       slug: input.slug,
       name: input.name || input.slug,
@@ -478,7 +478,7 @@ export async function createTemplate(input: CreateTemplateInput): Promise<DbSand
       providerState: 'missing',
     })
     .returning();
-  invalidateTemplateCache(input.projectId);
+  invalidateTemplateCache(input.workspaceId);
   return row;
 }
 
@@ -492,18 +492,18 @@ export interface UpdateTemplateInput {
   diskGb?: number | null;
 }
 
-/** Patch a template by id. When `expectProjectId` is given, the row must belong
- *  to that project or the update is refused (returns null) — a data-layer guard
- *  against cross-tenant mutation so callers can't poison another project's
+/** Patch a template by id. When `expectWorkspaceId` is given, the row must belong
+ *  to that workspace or the update is refused (returns null) — a data-layer guard
+ *  against cross-tenant mutation so callers can't poison another workspace's
  *  template by id even if a handler-level ownership check is missing. */
 export async function updateTemplate(
   templateId: string,
   patch: UpdateTemplateInput,
-  expectProjectId?: string,
+  expectWorkspaceId?: string,
 ): Promise<DbSandboxTemplate | null> {
   const row = await getTemplateById(templateId);
   if (!row) return null;
-  if (expectProjectId !== undefined && row.projectId !== expectProjectId) return null;
+  if (expectWorkspaceId !== undefined && row.workspaceId !== expectWorkspaceId) return null;
   if (row.isShared) {
     throw new Error('Shared platform templates are read-only.');
   }
@@ -538,7 +538,7 @@ export async function updateTemplate(
     .set(next)
     .where(eq(sandboxTemplates.templateId, templateId))
     .returning();
-  if (updated?.projectId) invalidateTemplateCache(updated.projectId);
+  if (updated?.workspaceId) invalidateTemplateCache(updated.workspaceId);
   return updated;
 }
 
@@ -547,7 +547,7 @@ export async function deleteTemplate(templateId: string): Promise<boolean> {
   if (!row) return false;
   if (row.isShared) throw new Error('Shared platform templates cannot be deleted.');
   await db.delete(sandboxTemplates).where(eq(sandboxTemplates.templateId, templateId));
-  if (row.projectId) invalidateTemplateCache(row.projectId);
+  if (row.workspaceId) invalidateTemplateCache(row.workspaceId);
   return true;
 }
 
@@ -576,7 +576,7 @@ export async function refreshTemplateState(
  * spec). Used by builder.ts to know what to ask the provider for.
  */
 export async function computeTemplateIdentity(
-  project: GitBackedProject,
+  workspace: GitBackedWorkspace,
   template: ResolvedTemplate,
 ): Promise<{
   snapshotName: string;
@@ -596,7 +596,7 @@ export async function computeTemplateIdentity(
   swapKey: string;
 }> {
   const runtimeFingerprint = await currentRuntimeArtifactFingerprint();
-  const { dockerfile: userDockerfile, commit } = await resolveUserDockerfile(project, template);
+  const { dockerfile: userDockerfile, commit } = await resolveUserDockerfile(workspace, template);
   const hashInputs = {
     dockerfile: userDockerfile,
     contextTreeOid: template.isShared ? 'platform-default' : `template:${template.slug}`,
@@ -625,13 +625,13 @@ export async function computeTemplateIdentity(
 }
 
 export async function resolveUserDockerfile(
-  project: GitBackedProject,
+  workspace: GitBackedWorkspace,
   template: ResolvedTemplate,
 ): Promise<{ dockerfile: string; commit: string | null }> {
   if (template.isShared) return { dockerfile: PLATFORM_DEFAULT_USER_DOCKERFILE, commit: null };
   if (template.dockerfilePath) {
-    const commitSha = await resolveCommitSha(project, project.defaultBranch);
-    const bytes = await readRepoFile(project, template.dockerfilePath, commitSha);
+    const commitSha = await resolveCommitSha(workspace, workspace.defaultBranch);
+    const bytes = await readRepoFile(workspace, template.dockerfilePath, commitSha);
     const normalized = normalizeUserDockerfileForSnapshot(bytes);
     if (!normalized.trim()) {
       throw new Error(`Sandbox template "${template.slug}": Dockerfile ${template.dockerfilePath} is empty`);
@@ -696,7 +696,7 @@ const REAPABLE_SNAPSHOT_PREFIXES = ['kortix-default-', 'kortix-tpl-', 'kortix-wp
  * Delete a snapshot a template row just stopped pointing at. Best-effort and
  * heavily guarded: gated by KORTIX_SNAPSHOT_REAP_PREDECESSOR, restricted to our
  * managed namespaces, and skipped if ANY other template row still references the
- * name (snapshots are content-addressed, so two projects with byte-identical
+ * name (snapshots are content-addressed, so two workspaces with byte-identical
  * inputs share one image). Never throws — a failed reap just falls back to the
  * quota GC, and a cross-env row that still pointed at this (identical) name
  * self-heals via the boot-time rebuild-and-retry path.
@@ -753,7 +753,7 @@ function synthesizedDefault(): ResolvedTemplate {
   const tpl = buildDefaultSandboxTemplate();
   return {
     templateId: null,
-    projectId: null,
+    workspaceId: null,
     slug: tpl.slug,
     name: tpl.name ?? 'Default',
     isShared: true,
@@ -776,7 +776,7 @@ function synthesizedDefault(): ResolvedTemplate {
 function rowToResolved(row: DbSandboxTemplate): ResolvedTemplate {
   return {
     templateId: row.templateId,
-    projectId: row.projectId,
+    workspaceId: row.workspaceId,
     slug: row.slug,
     name: row.name,
     isShared: row.isShared,
@@ -797,19 +797,19 @@ function rowToResolved(row: DbSandboxTemplate): ResolvedTemplate {
 }
 
 /**
- * Upsert `sandbox.templates` entries from the project's kortix.yaml into the DB.
+ * Upsert `sandbox.templates` entries from the workspace's kortix.yaml into the DB.
  * Best-effort: a broken manifest never blocks the boot path.
  */
-async function syncManifestTemplatesForProject(project: GitBackedProject): Promise<void> {
+async function syncManifestTemplatesForWorkspace(workspace: GitBackedWorkspace): Promise<void> {
   try {
-    const parsed = await readManifest(project);
+    const parsed = await readManifest(workspace);
     const tomlTemplates = extractSandboxTemplates(parsed?.raw ?? null);
     for (const tpl of tomlTemplates) {
       if (tpl.slug === DEFAULT_SANDBOX_SLUG) continue;
       await db
         .insert(sandboxTemplates)
         .values({
-          projectId: project.projectId,
+          workspaceId: workspace.workspaceId,
           accountId: null,
           slug: tpl.slug,
           name: tpl.name ?? tpl.slug,
@@ -825,7 +825,7 @@ async function syncManifestTemplatesForProject(project: GitBackedProject): Promi
           providerState: 'missing',
         })
         .onConflictDoUpdate({
-          target: [sandboxTemplates.projectId, sandboxTemplates.slug],
+          target: [sandboxTemplates.workspaceId, sandboxTemplates.slug],
           set: {
             name: tpl.name ?? tpl.slug,
             image: tpl.image ?? null,
@@ -838,37 +838,37 @@ async function syncManifestTemplatesForProject(project: GitBackedProject): Promi
         });
     }
 
-    // Persist `sandbox.default` → projects.metadata.default_sandbox_slug, so
-    // session boot can cheaply pick the project's default template without a
+    // Persist `sandbox.default` → workspaces.metadata.default_sandbox_slug, so
+    // session boot can cheaply pick the workspace's default template without a
     // git fetch. Only honor a default that names a template we just synced
     // (else it would point at nothing); clear it otherwise.
     const wantedDefault = extractSandboxDefault(parsed?.raw ?? null);
     const validDefault =
       wantedDefault && tomlTemplates.some((t) => t.slug === wantedDefault) ? wantedDefault : null;
-    const [projectRow] = await db
-      .select({ metadata: projects.metadata })
-      .from(projects)
-      .where(eq(projects.projectId, project.projectId))
+    const [workspaceRow] = await db
+      .select({ metadata: workspaces.metadata })
+      .from(workspaces)
+      .where(eq(workspaces.workspaceId, workspace.workspaceId))
       .limit(1);
-    const meta = (projectRow?.metadata ?? {}) as Record<string, unknown>;
+    const meta = (workspaceRow?.metadata ?? {}) as Record<string, unknown>;
     const current = typeof meta.default_sandbox_slug === 'string' ? meta.default_sandbox_slug : null;
     if (current !== validDefault) {
       // FIX-J: SQL-side atomic merge of ONLY `default_sandbox_slug` (set / delete)
       // so this manifest-sync write can't revert a routing pin written between the
       // read above and this write.
       await db
-        .update(projects)
+        .update(workspaces)
         .set({
           metadata: validDefault
             ? metadataMerge({ default_sandbox_slug: validDefault })
             : metadataMerge({}, ['default_sandbox_slug']),
           updatedAt: new Date(),
         })
-        .where(eq(projects.projectId, project.projectId));
+        .where(eq(workspaces.workspaceId, workspace.workspaceId));
     }
   } catch (err) {
     console.warn(
-      `[templates] manifest sync failed for ${project.projectId}:`,
+      `[templates] manifest sync failed for ${workspace.workspaceId}:`,
       err instanceof Error ? err.message : err,
     );
   }

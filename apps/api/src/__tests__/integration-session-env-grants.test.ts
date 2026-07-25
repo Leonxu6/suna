@@ -1,7 +1,7 @@
 /**
  * Integration test (real local DB): session-env injection under the secrets v2
  * identifier model. Authorization is centralized on the agent's `secrets`
- * grant, applied BY IDENTIFIER via `listProjectSecretsSnapshotForUser` (the
+ * grant, applied BY IDENTIFIER via `listWorkspaceSecretsSnapshotForUser` (the
  * resolver `buildSessionSandboxEnvVars` calls at sandbox boot) — there is no
  * resource-side allow-list and no per-secret member/group sharing left to test.
  *
@@ -13,19 +13,19 @@
  */
 import { describe, expect, test, beforeAll, afterAll } from 'bun:test';
 import { and, eq, sql, inArray } from 'drizzle-orm';
-import { projectSecrets, projectSessions } from '@kortix/db';
+import { workspaceSecrets, workspaceSessions } from '@kortix/db';
 import { db } from '../shared/db';
-import { resolveSandboxEnvSnapshot } from '../projects/lib/sandbox-env-sync';
-import { buildSessionSandboxEnvVars } from '../projects/lib/sessions';
+import { resolveSandboxEnvSnapshot } from '../workspaces/lib/sandbox-env-sync';
+import { buildSessionSandboxEnvVars } from '../workspaces/lib/sessions';
 import {
   AmbiguousSecretGrantError,
-  encryptProjectSecret,
+  encryptWorkspaceSecret,
   intersectSecretGrants,
-  listProjectSecretsSnapshotForUser,
-  writeSharedProjectSecret,
-} from '../projects/secrets';
+  listWorkspaceSecretsSnapshotForUser,
+  writeSharedWorkspaceSecret,
+} from '../workspaces/secrets';
 
-let ctx: { projectId: string; accountId: string } | null = null;
+let ctx: { workspaceId: string; accountId: string } | null = null;
 const USER = crypto.randomUUID();
 const SESSION_ID = `e2e-clobber-${crypto.randomUUID()}`;
 const SUFFIX = crypto.randomUUID().slice(0, 8).toUpperCase().replace(/-/g, '');
@@ -43,53 +43,53 @@ const PRINCIPAL_SESSION = `e2e-principal-${crypto.randomUUID()}`;
 
 beforeAll(async () => {
   const rows = (await db.execute(
-    sql`select project_id, account_id from kortix.projects limit 1`,
-  )) as unknown as Array<{ project_id: string; account_id: string }>;
+    sql`select workspace_id, account_id from kortix.workspaces limit 1`,
+  )) as unknown as Array<{ workspace_id: string; account_id: string }>;
   if (!rows[0]) return;
-  ctx = { projectId: rows[0].project_id, accountId: rows[0].account_id };
+  ctx = { workspaceId: rows[0].workspace_id, accountId: rows[0].account_id };
 
   // Two identifiers, SAME key — the headline secrets-v2 scenario.
-  await writeSharedProjectSecret({ projectId: ctx.projectId, identifier: PRIMARY, name: KEY, value: 'primary-val' });
-  await writeSharedProjectSecret({ projectId: ctx.projectId, identifier: BACKUP, name: KEY, value: 'backup-val' });
-  await writeSharedProjectSecret({ projectId: ctx.projectId, name: UNSCOPED, value: 'open-val' });
+  await writeSharedWorkspaceSecret({ workspaceId: ctx.workspaceId, identifier: PRIMARY, name: KEY, value: 'primary-val' });
+  await writeSharedWorkspaceSecret({ workspaceId: ctx.workspaceId, identifier: BACKUP, name: KEY, value: 'backup-val' });
+  await writeSharedWorkspaceSecret({ workspaceId: ctx.workspaceId, name: UNSCOPED, value: 'open-val' });
 
   // One identifier with a shared value plus a distinct personal override for
   // OWNER and for RESTARTER — so the resolved value differs by principal.
-  await writeSharedProjectSecret({
-    projectId: ctx.projectId,
+  await writeSharedWorkspaceSecret({
+    workspaceId: ctx.workspaceId,
     identifier: OVERRIDE_IDENT,
     name: OVERRIDE_KEY,
     value: 'shared-val',
   });
   const now = new Date();
-  await db.insert(projectSecrets).values([
+  await db.insert(workspaceSecrets).values([
     {
-      projectId: ctx.projectId,
+      workspaceId: ctx.workspaceId,
       identifier: OVERRIDE_IDENT,
       name: OVERRIDE_KEY,
       ownerUserId: OWNER,
       active: true,
-      valueEnc: encryptProjectSecret(ctx.projectId, 'owner-val'),
+      valueEnc: encryptWorkspaceSecret(ctx.workspaceId, 'owner-val'),
       scope: 'runtime',
       updatedAt: now,
     },
     {
-      projectId: ctx.projectId,
+      workspaceId: ctx.workspaceId,
       identifier: OVERRIDE_IDENT,
       name: OVERRIDE_KEY,
       ownerUserId: RESTARTER,
       active: true,
-      valueEnc: encryptProjectSecret(ctx.projectId, 'restarter-val'),
+      valueEnc: encryptWorkspaceSecret(ctx.workspaceId, 'restarter-val'),
       scope: 'runtime',
       updatedAt: now,
     },
   ]);
   // A session OWNED by OWNER — used to prove sandbox-boot resolves secrets as the
   // owner even when some other principal provisions the run.
-  await db.insert(projectSessions).values({
+  await db.insert(workspaceSessions).values({
     sessionId: PRINCIPAL_SESSION,
     accountId: ctx.accountId,
-    projectId: ctx.projectId,
+    workspaceId: ctx.workspaceId,
     branchName: `kaab-principal-${SUFFIX}`,
     createdBy: OWNER,
     agentName: 'default',
@@ -98,22 +98,22 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!ctx) return;
-  await db.delete(projectSessions).where(eq(projectSessions.sessionId, SESSION_ID));
-  await db.delete(projectSessions).where(eq(projectSessions.sessionId, PRINCIPAL_SESSION));
+  await db.delete(workspaceSessions).where(eq(workspaceSessions.sessionId, SESSION_ID));
+  await db.delete(workspaceSessions).where(eq(workspaceSessions.sessionId, PRINCIPAL_SESSION));
   await db
-    .delete(projectSecrets)
+    .delete(workspaceSecrets)
     .where(
       and(
-        eq(projectSecrets.projectId, ctx.projectId),
-        inArray(projectSecrets.identifier, [PRIMARY, BACKUP, UNSCOPED, OVERRIDE_IDENT]),
+        eq(workspaceSecrets.workspaceId, ctx.workspaceId),
+        inArray(workspaceSecrets.identifier, [PRIMARY, BACKUP, UNSCOPED, OVERRIDE_IDENT]),
       ),
     );
 });
 
-describe('listProjectSecretsSnapshotForUser — session env injection by identifier', () => {
+describe('listWorkspaceSecretsSnapshotForUser — session env injection by identifier', () => {
   test('an agent granted ONE identifier gets exactly that value under the shared key', async () => {
-    if (!ctx) { console.warn('[integration] no project in local DB — skipping'); return; }
-    const { env, names } = await listProjectSecretsSnapshotForUser(ctx.projectId, USER, [PRIMARY]);
+    if (!ctx) { console.warn('[integration] no workspace in local DB — skipping'); return; }
+    const { env, names } = await listWorkspaceSecretsSnapshotForUser(ctx.workspaceId, USER, [PRIMARY]);
     expect(env[KEY]).toBe('primary-val');
     expect(names).toContain(KEY);
     // Only the granted identifier's key is present — nothing else leaks in.
@@ -122,13 +122,13 @@ describe('listProjectSecretsSnapshotForUser — session env injection by identif
 
   test('a DIFFERENT identifier grant gets the OTHER value under the same key', async () => {
     if (!ctx) return;
-    const { env } = await listProjectSecretsSnapshotForUser(ctx.projectId, USER, [BACKUP]);
+    const { env } = await listWorkspaceSecretsSnapshotForUser(ctx.workspaceId, USER, [BACKUP]);
     expect(env[KEY]).toBe('backup-val');
   });
 
   test("'all' (default/back-compat) sees every identifier, deterministically resolving the shared key", async () => {
     if (!ctx) return;
-    const { env, names } = await listProjectSecretsSnapshotForUser(ctx.projectId, USER, 'all');
+    const { env, names } = await listWorkspaceSecretsSnapshotForUser(ctx.workspaceId, USER, 'all');
     expect(env[UNSCOPED]).toBe('open-val');
     expect(names).toContain(UNSCOPED);
     // One of the two GMAPS values wins deterministically — never both/neither.
@@ -138,13 +138,13 @@ describe('listProjectSecretsSnapshotForUser — session env injection by identif
   test('an agent granted BOTH identifiers for the same key is ambiguous — rejected', async () => {
     if (!ctx) return;
     await expect(
-      listProjectSecretsSnapshotForUser(ctx.projectId, USER, [PRIMARY, BACKUP]),
+      listWorkspaceSecretsSnapshotForUser(ctx.workspaceId, USER, [PRIMARY, BACKUP]),
     ).rejects.toThrow(AmbiguousSecretGrantError);
   });
 
   test('an unscoped (single-identifier) secret is unaffected by the collision above', async () => {
     if (!ctx) return;
-    const { env } = await listProjectSecretsSnapshotForUser(ctx.projectId, USER, [UNSCOPED]);
+    const { env } = await listWorkspaceSecretsSnapshotForUser(ctx.workspaceId, USER, [UNSCOPED]);
     expect(env).toEqual({ [UNSCOPED]: 'open-val' });
   });
 
@@ -156,37 +156,37 @@ describe('listProjectSecretsSnapshotForUser — session env injection by identif
     // session allowlist of [UNSCOPED] must inject ONLY that secret — proving the
     // narrowing against the real DB, end-to-end with the functions in the path.
     const narrowed = intersectSecretGrants('all', [UNSCOPED]);
-    const { env } = await listProjectSecretsSnapshotForUser(ctx.projectId, USER, narrowed);
+    const { env } = await listWorkspaceSecretsSnapshotForUser(ctx.workspaceId, USER, narrowed);
     expect(env).toEqual({ [UNSCOPED]: 'open-val' });
 
     // A null allowlist is a passthrough — every secret the grant already allowed
     // (byte-identical to pre-KaaB).
     const passthrough = intersectSecretGrants('all', null);
-    const { names } = await listProjectSecretsSnapshotForUser(ctx.projectId, USER, passthrough);
+    const { names } = await listWorkspaceSecretsSnapshotForUser(ctx.workspaceId, USER, passthrough);
     expect(names).toContain(UNSCOPED);
     expect(names).toContain(KEY);
   });
 
   test('resolveSandboxEnvSnapshot (hot-push) reads + applies the session secretsAllowlist — the CLOBBER FIX', async () => {
     if (!ctx) return;
-    await db.insert(projectSessions).values({
+    await db.insert(workspaceSessions).values({
       sessionId: SESSION_ID,
       accountId: ctx.accountId,
-      projectId: ctx.projectId,
+      workspaceId: ctx.workspaceId,
       branchName: `kaab-clobber-${SUFFIX}`,
       createdBy: USER,
       agentName: 'default',
       secretsAllowlist: [UNSCOPED],
     });
-    const narrowed = await resolveSandboxEnvSnapshot(ctx.projectId, SESSION_ID);
+    const narrowed = await resolveSandboxEnvSnapshot(ctx.workspaceId, SESSION_ID);
     expect(narrowed?.env[UNSCOPED]).toBe('open-val');
     expect(narrowed?.env[KEY]).toBeUndefined();
 
     await db
-      .update(projectSessions)
+      .update(workspaceSessions)
       .set({ secretsAllowlist: null })
-      .where(eq(projectSessions.sessionId, SESSION_ID));
-    const passthroughSnap = await resolveSandboxEnvSnapshot(ctx.projectId, SESSION_ID);
+      .where(eq(workspaceSessions.sessionId, SESSION_ID));
+    const passthroughSnap = await resolveSandboxEnvSnapshot(ctx.workspaceId, SESSION_ID);
     expect(passthroughSnap?.env[UNSCOPED]).toBe('open-val');
     expect(passthroughSnap?.env[KEY]).toBeDefined();
   });
@@ -195,8 +195,8 @@ describe('listProjectSecretsSnapshotForUser — session env injection by identif
     if (!ctx) return;
     // Control: the two principals genuinely resolve DIFFERENT values for the same
     // identifier — so an incorrect principal would be observable.
-    const asOwner = await listProjectSecretsSnapshotForUser(ctx.projectId, OWNER, [OVERRIDE_IDENT]);
-    const asRestarter = await listProjectSecretsSnapshotForUser(ctx.projectId, RESTARTER, [
+    const asOwner = await listWorkspaceSecretsSnapshotForUser(ctx.workspaceId, OWNER, [OVERRIDE_IDENT]);
+    const asRestarter = await listWorkspaceSecretsSnapshotForUser(ctx.workspaceId, RESTARTER, [
       OVERRIDE_IDENT,
     ]);
     expect(asOwner.env[OVERRIDE_KEY]).toBe('owner-val');
@@ -210,7 +210,7 @@ describe('listProjectSecretsSnapshotForUser — session env injection by identif
     // `defaultBranch` omitted → agent grant defaults to 'all' (no git/manifest).
     const env = await buildSessionSandboxEnvVars({
       accountId: ctx.accountId,
-      projectId: ctx.projectId,
+      workspaceId: ctx.workspaceId,
       sessionId: PRINCIPAL_SESSION,
       userId: RESTARTER,
       repoUrl: 'https://example.test/principal.git',

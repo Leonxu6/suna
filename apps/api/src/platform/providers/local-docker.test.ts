@@ -218,7 +218,7 @@ describe('local-docker provider — create()', () => {
     expect(asMap.KORTIX_CLI_TOKEN).toBe('cli-tok');
   });
 
-  // Regression: buildSessionRuntimeEnv() (projects/lib/session-runtime-env.ts)
+  // Regression: buildSessionRuntimeEnv() (workspaces/lib/session-runtime-env.ts)
   // unconditionally sets KORTIX_API_URL/KORTIX_FRONTEND_URL from the generic
   // public config.KORTIX_URL for EVERY provider — the right value for a
   // remote cloud sandbox, but WRONG for local-docker, whose container must

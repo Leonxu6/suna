@@ -36,8 +36,8 @@ function baseUrl(): string {
   return (config.AGENTMAIL_API_URL || 'https://api.agentmail.to/v0').replace(/\/+$/, '');
 }
 
-export function resolveAgentMailApiKey(projectKey?: string | null): string | null {
-  return projectKey || config.AGENTMAIL_API_KEY || null;
+export function resolveAgentMailApiKey(workspaceKey?: string | null): string | null {
+  return workspaceKey || config.AGENTMAIL_API_KEY || null;
 }
 
 export function isAgentMailInboxLimitError(err: unknown): boolean {

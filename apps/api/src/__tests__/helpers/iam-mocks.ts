@@ -7,14 +7,14 @@
 // resolves to src/iam/... — the same module the suites import as '../iam/...'.
 import { mock } from 'bun:test';
 
-/** No-op the IAM policy-sync writes (project/member grant + revoke). */
+/** No-op the IAM policy-sync writes (workspace/member grant + revoke). */
 export function mockIamMembershipSyncNoop(): void {
   mock.module('../../iam/membership-sync', () => ({
     syncMemberAccountPolicy: async () => {},
     removeMemberPolicies: async () => {},
-    removeProjectPoliciesForMember: async () => {},
-    syncProjectMemberPolicy: async () => {},
-    removeProjectMemberPolicy: async () => {},
+    removeWorkspacePoliciesForMember: async () => {},
+    syncWorkspaceMemberPolicy: async () => {},
+    removeWorkspaceMemberPolicy: async () => {},
   }));
 }
 
@@ -36,10 +36,10 @@ export function mockIamEngineAllowAll(
     listAccessibleResources: async () => ({ mode: 'all', ids: [] }),
     // Per-resource (agent/skill) list filter, re-exported from the dispatcher.
     // Allow-all → no filtering: every resource id passes through.
-    filterAccessibleProjectResources: async (
+    filterAccessibleWorkspaceResources: async (
       _userId: string,
       _accountId: string,
-      _projectId: string,
+      _workspaceId: string,
       _type: string,
       ids: readonly string[],
     ) => [...ids],

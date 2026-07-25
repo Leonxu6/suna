@@ -1,5 +1,5 @@
 // GAP C1 — "Connected" in the provider UI today only means a secret row
-// exists in project_secrets; it never proves the key actually works against
+// exists in workspace_secrets; it never proves the key actually works against
 // the provider. This module makes ONE cheap, single-attempt, non-streaming
 // completion through the exact same resolution + upstream path a real turn
 // uses (resolveCandidates -> callUpstream), and classifies the outcome into a
@@ -9,7 +9,7 @@
 //   invalid       — the provider rejected the key (401/403, or a reauth-
 //                    required resolution error like an expired Codex
 //                    session). Safe to show red.
-//   not_connected — no key is configured for this project/provider at all.
+//   not_connected — no key is configured for this workspace/provider at all.
 //   unknown        — we couldn't get a clean answer either way (timeout,
 //                    network error, 429 rate limit, 5xx, or a resolution
 //                    failure unrelated to credentials like "model not
@@ -17,7 +17,7 @@
 //                    unrelated failure must not read as "your key is dead".
 //
 // Deliberately non-blocking: nothing here writes to gateway_request_logs or
-// spend, and a project's "Connected" state never depends on this succeeding
+// spend, and a workspace's "Connected" state never depends on this succeeding
 // — connecting a key always works exactly as it does today; verification is
 // a separate, additive signal layered on top.
 import {
@@ -89,7 +89,7 @@ function upstreamErrorHint(body: string | undefined): string | undefined {
 
 /**
  * Attempt to verify that the credential connected for `providerId` on this
- * project actually works, via one cheap live completion. Never throws — any
+ * workspace actually works, via one cheap live completion. Never throws — any
  * unexpected failure classifies as `unknown` rather than propagating, since
  * this is a best-effort signal layered on top of "Connected", not a gate on
  * it.

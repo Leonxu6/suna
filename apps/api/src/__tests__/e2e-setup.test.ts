@@ -40,7 +40,7 @@ function createSetupTestApp() {
 // ─── Setup / Teardown ───────────────────────────────────────────────────────
 
 beforeAll(() => {
-  // Create test project structure
+  // Create test workspace structure
   mkdirSync(TEST_DIR, { recursive: true });
   mkdirSync(resolve(TEST_DIR, 'scripts'), { recursive: true });
   mkdirSync(resolve(TEST_DIR, 'deploy', 'docker', 'sandbox'), { recursive: true });
@@ -52,7 +52,7 @@ beforeAll(() => {
   writeFileSync(resolve(TEST_DIR, '.env.example'), 'KORTIX_BILLING_INTERNAL_ENABLED=false\nANTHROPIC_API_KEY=\n');
   writeFileSync(resolve(TEST_DIR, 'deploy', 'docker', 'sandbox', '.env.example'), 'ANTHROPIC_API_KEY=\nKORTIX_BILLING_INTERNAL_ENABLED=false\n');
 
-  // Point CWD at the test dir so getProjectRoot() finds it
+  // Point CWD at the test dir so getWorkspaceRoot() finds it
   process.chdir(TEST_DIR);
 });
 

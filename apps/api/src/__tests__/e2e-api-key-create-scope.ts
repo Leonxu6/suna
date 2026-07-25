@@ -1,15 +1,15 @@
 #!/usr/bin/env bun
 /**
- * Live E2E for creating a PROJECT-SCOPED API key THROUGH THE API
- * (POST /v1/accounts/tokens { project_id }). Run against a running API + Postgres.
+ * Live E2E for creating a WORKSPACE-SCOPED API key THROUGH THE API
+ * (POST /v1/accounts/tokens { workspace_id }). Run against a running API + Postgres.
  *
  *   bun run apps/api/src/__tests__/e2e-api-key-create-scope.ts
  *
  * Steps:
  *   1. Mint an account-wide admin key (direct insert) to authenticate the create.
- *   2. Discover the account's projects via GET /projects.
- *   3. POST /accounts/tokens { name, project_id: A } → expect 201 + project_id === A.
- *   4. The scoped key reads project A (200) but is 403 on project B + on /projects.
+ *   2. Discover the account's workspaces via GET /workspaces.
+ *   3. POST /accounts/tokens { name, workspace_id: A } → expect 201 + workspace_id === A.
+ *   4. The scoped key reads workspace A (200) but is 403 on workspace B + on /workspaces.
  *   5. Clean up both keys.
  */
 import { sql } from 'drizzle-orm';
@@ -34,7 +34,7 @@ async function call<T>(token: string, path: string, init?: RequestInit): Promise
 }
 
 async function main() {
-  process.stdout.write('\n  \x1b[1mAPI key create-scope E2E\x1b[0m  (POST /accounts/tokens { project_id })\n');
+  process.stdout.write('\n  \x1b[1mAPI key create-scope E2E\x1b[0m  (POST /accounts/tokens { workspace_id })\n');
   dim('api', API_BASE);
 
   const res = await db.execute<{ user_id: string; account_id: string }>(
@@ -51,94 +51,94 @@ async function main() {
   `);
   dim('admin', `${admin.secretKey.slice(0, 18)}…`);
 
-  const projects = await call<Array<Record<string, unknown>>>(admin.secretKey, '/projects');
-  if (projects.status !== 200) die(`GET /projects → ${projects.status}`);
-  const ids = (projects.body ?? []).map((p) => (p.id ?? p.project_id) as string).filter(Boolean);
-  if (ids.length < 1) die('account has no projects to scope to');
+  const workspaces = await call<Array<Record<string, unknown>>>(admin.secretKey, '/workspaces');
+  if (workspaces.status !== 200) die(`GET /workspaces → ${workspaces.status}`);
+  const ids = (workspaces.body ?? []).map((p) => (p.id ?? p.workspace_id) as string).filter(Boolean);
+  if (ids.length < 1) die('account has no workspaces to scope to');
   const [projA, projB] = ids;
   dim('projA', projA);
   if (projB) dim('projB', projB);
 
-  const foreignRes = await db.execute<{ project_id: string; account_id: string }>(sql`
-    select project_id, account_id
-    from kortix.projects
+  const foreignRes = await db.execute<{ workspace_id: string; account_id: string }>(sql`
+    select workspace_id, account_id
+    from kortix.workspaces
     where account_id <> ${owner.account_id}
     order by created_at desc
     limit 1
   `);
-  const foreignRows = (foreignRes as unknown as { rows?: Array<{ project_id: string; account_id: string }> }).rows
-    ?? (foreignRes as unknown as Array<{ project_id: string; account_id: string }>);
-  const foreignProject = foreignRows[0] ?? null;
+  const foreignRows = (foreignRes as unknown as { rows?: Array<{ workspace_id: string; account_id: string }> }).rows
+    ?? (foreignRes as unknown as Array<{ workspace_id: string; account_id: string }>);
+  const foreignWorkspace = foreignRows[0] ?? null;
 
-  // 3. CREATE a project-scoped key via the API — the new capability.
-  const created = await call<{ secret_key: string; token_id: string; project_id: string | null }>(
+  // 3. CREATE a workspace-scoped key via the API — the new capability.
+  const created = await call<{ secret_key: string; token_id: string; workspace_id: string | null }>(
     admin.secretKey, '/accounts/tokens',
-    { method: 'POST', body: JSON.stringify({ name: 'e2e-create-scope-key', project_id: projA }) },
+    { method: 'POST', body: JSON.stringify({ name: 'e2e-create-scope-key', workspace_id: projA }) },
   );
   if (created.status !== 201) die(`create → ${created.status} ${JSON.stringify(created.body)}`);
-  if (created.body.project_id !== projA) die(`created key not scoped: project_id=${created.body.project_id}`);
-  ok('POST /accounts/tokens { project_id } → 201, scoped to projA');
+  if (created.body.workspace_id !== projA) die(`created key not scoped: workspace_id=${created.body.workspace_id}`);
+  ok('POST /accounts/tokens { workspace_id } → 201, scoped to projA');
   const scoped = created.body.secret_key;
 
   // 4. The scope holds.
-  const a = await call(scoped, `/projects/${projA}`);
-  if (a.status !== 200) die(`scoped key on its own project → ${a.status}`);
-  ok('scoped key reads its own project → 200');
+  const a = await call(scoped, `/workspaces/${projA}`);
+  if (a.status !== 200) die(`scoped key on its own workspace → ${a.status}`);
+  ok('scoped key reads its own workspace → 200');
 
   if (projB) {
-    const b = await call(scoped, `/projects/${projB}`);
-    if (b.status !== 403) die(`scoped key on a different project should 403, got ${b.status}`);
-    ok('scoped key on a different project → 403');
+    const b = await call(scoped, `/workspaces/${projB}`);
+    if (b.status !== 403) die(`scoped key on a different workspace should 403, got ${b.status}`);
+    ok('scoped key on a different workspace → 403');
   }
 
-  const enumr = await call(scoped, '/projects');
-  if (enumr.status !== 403) die(`scoped key enumerating projects should 403, got ${enumr.status}`);
-  ok('scoped key cannot enumerate projects → 403');
+  const enumr = await call(scoped, '/workspaces');
+  if (enumr.status !== 403) die(`scoped key enumerating workspaces should 403, got ${enumr.status}`);
+  ok('scoped key cannot enumerate workspaces → 403');
 
   if (projB) {
-    const createdB = await call<{ token_id: string; secret_key: string; project_id: string | null }>(
+    const createdB = await call<{ token_id: string; secret_key: string; workspace_id: string | null }>(
       admin.secretKey,
       '/accounts/tokens',
-      { method: 'POST', body: JSON.stringify({ name: 'e2e-create-scope-key-b', project_id: projB }) },
+      { method: 'POST', body: JSON.stringify({ name: 'e2e-create-scope-key-b', workspace_id: projB }) },
     );
     if (createdB.status !== 201) die(`create projB token → ${createdB.status} ${JSON.stringify(createdB.body)}`);
-    const wrongProjectRevoke = await call<Record<string, unknown>>(
+    const wrongWorkspaceRevoke = await call<Record<string, unknown>>(
       admin.secretKey,
-      `/projects/${projA}/cli-token/${createdB.body.token_id}`,
+      `/workspaces/${projA}/cli-token/${createdB.body.token_id}`,
       { method: 'DELETE' },
     );
-    if (wrongProjectRevoke.status !== 404) {
+    if (wrongWorkspaceRevoke.status !== 404) {
       die(
-        `revoking projB token through projA route should 404, got ${wrongProjectRevoke.status}: ${JSON.stringify(wrongProjectRevoke.body)}`,
+        `revoking projB token through projA route should 404, got ${wrongWorkspaceRevoke.status}: ${JSON.stringify(wrongWorkspaceRevoke.body)}`,
       );
     }
-    ok('DELETE /projects/<projA>/cli-token/<projB-token> → 404');
-    const rightProjectRevoke = await call<Record<string, unknown>>(
+    ok('DELETE /workspaces/<projA>/cli-token/<projB-token> → 404');
+    const rightWorkspaceRevoke = await call<Record<string, unknown>>(
       admin.secretKey,
-      `/projects/${projB}/cli-token/${createdB.body.token_id}`,
+      `/workspaces/${projB}/cli-token/${createdB.body.token_id}`,
       { method: 'DELETE' },
     );
-    if (rightProjectRevoke.status !== 200) {
+    if (rightWorkspaceRevoke.status !== 200) {
       die(
-        `revoking projB token through projB route should 200, got ${rightProjectRevoke.status}: ${JSON.stringify(rightProjectRevoke.body)}`,
+        `revoking projB token through projB route should 200, got ${rightWorkspaceRevoke.status}: ${JSON.stringify(rightWorkspaceRevoke.body)}`,
       );
     }
-    ok('DELETE /projects/<projB>/cli-token/<projB-token> → 200');
+    ok('DELETE /workspaces/<projB>/cli-token/<projB-token> → 200');
   }
 
-  if (foreignProject) {
-    dim('foreign', `${foreignProject.project_id} (${foreignProject.account_id})`);
+  if (foreignWorkspace) {
+    dim('foreign', `${foreignWorkspace.workspace_id} (${foreignWorkspace.account_id})`);
     const foreignCreate = await call<Record<string, unknown>>(
       admin.secretKey,
       '/accounts/tokens',
-      { method: 'POST', body: JSON.stringify({ name: 'e2e-foreign-scope-denied', project_id: foreignProject.project_id }) },
+      { method: 'POST', body: JSON.stringify({ name: 'e2e-foreign-scope-denied', workspace_id: foreignWorkspace.workspace_id }) },
     );
     if (foreignCreate.status !== 403) {
-      die(`foreign project scope mint should 403, got ${foreignCreate.status}: ${JSON.stringify(foreignCreate.body)}`);
+      die(`foreign workspace scope mint should 403, got ${foreignCreate.status}: ${JSON.stringify(foreignCreate.body)}`);
     }
-    ok('POST /accounts/tokens rejects a project_id from a different account → 403');
+    ok('POST /accounts/tokens rejects a workspace_id from a different account → 403');
   } else {
-    dim('foreign', 'skipped (no second account project available)');
+    dim('foreign', 'skipped (no second account workspace available)');
   }
 
   // 5. Clean up.

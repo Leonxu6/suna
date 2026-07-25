@@ -134,28 +134,28 @@ export function isInviteEmailConfigured(): boolean {
 // Public, share-anywhere invite URL. The same link is embedded in the invite
 // email and returned by every invite API route, so a copied link behaves
 // exactly like one received via email. Single source of truth for both the
-// account- and project-level invite flows.
+// account- and workspace-level invite flows.
 export function buildInviteUrl(inviteId: string): string {
   const base = (config.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
   return `${base}/invites/${inviteId}`;
 }
 
 // Sends the invite email for both account-level invites (join the team) and
-// project-level invites (collaborate on a specific project). The two flows
-// share one transport + template; pass `projectName` to frame the copy around
-// a project instead of the whole account. Both create an `account_invitations`
+// workspace-level invites (collaborate on a specific workspace). The two flows
+// share one transport + template; pass `workspaceName` to frame the copy around
+// a workspace instead of the whole account. Both create an `account_invitations`
 // row redeemed at the same /invites/:id link.
 export async function sendAccountInviteEmail(opts: {
   email: string;
   accountName: string;
   inviterEmail: string | null;
   inviteId: string;
-  // Display label for the role chip (account: admin|member, project:
+  // Display label for the role chip (account: admin|member, workspace:
   // manager|editor|user). Rendered verbatim (uppercased).
   role?: string;
-  // When set, the invite is framed as joining this project rather than the
-  // whole account/team (project-level /access/invite flow).
-  projectName?: string | null;
+  // When set, the invite is framed as joining this workspace rather than the
+  // whole account/team (workspace-level /access/invite flow).
+  workspaceName?: string | null;
 }): Promise<EmailDeliveryResult> {
   const url = buildInviteUrl(opts.inviteId);
 
@@ -169,12 +169,12 @@ export async function sendAccountInviteEmail(opts: {
       )}</span></div>`
     : '';
 
-  const target = opts.projectName
-    ? `the <span style="${S.strong}">${escapeHtml(opts.projectName)}</span> project`
+  const target = opts.workspaceName
+    ? `the <span style="${S.strong}">${escapeHtml(opts.workspaceName)}</span> workspace`
     : `the <span style="${S.strong}">${escapeHtml(opts.accountName)}</span> team`;
 
-  const signupTail = opts.projectName
-    ? 'the project will appear in your account automatically.'
+  const signupTail = opts.workspaceName
+    ? 'the workspace will appear in your account automatically.'
     : 'the team will appear in your accounts list automatically.';
 
   const body = `
@@ -189,14 +189,14 @@ export async function sendAccountInviteEmail(opts: {
     </p>
   `;
 
-  const subjectTarget = opts.projectName
-    ? `collaborate on "${opts.projectName}"`
+  const subjectTarget = opts.workspaceName
+    ? `collaborate on "${opts.workspaceName}"`
     : `join "${opts.accountName}"`;
 
   const html = renderEmail({
     kicker: "You're invited",
-    title: opts.projectName
-      ? `Join ${opts.projectName} on Kortix`
+    title: opts.workspaceName
+      ? `Join ${opts.workspaceName} on Kortix`
       : `Join ${opts.accountName} on Kortix`,
     body,
   });
@@ -209,14 +209,14 @@ export async function sendAccountInviteEmail(opts: {
   });
 }
 
-export async function sendProjectAccessRequestEmail(opts: {
+export async function sendWorkspaceAccessRequestEmail(opts: {
   email: string;
-  projectName: string | null;
+  workspaceName: string | null;
   requesterEmail: string;
   reviewUrl: string;
   message?: string | null;
 }): Promise<EmailDeliveryResult> {
-  const projectName = opts.projectName?.trim() || 'a Kortix project';
+  const workspaceName = opts.workspaceName?.trim() || 'a Kortix workspace';
   const message = opts.message?.trim();
   const messageBlock = message
     ? `<p style="${S.p}"><span style="${S.strong}">Message:</span><br />${escapeHtml(message)}</p>`
@@ -225,25 +225,25 @@ export async function sendProjectAccessRequestEmail(opts: {
   const body = `
     <p style="${S.p}">
       <span style="${S.strong}">${escapeHtml(opts.requesterEmail)}</span>
-      requested access to <span style="${S.strong}">${escapeHtml(projectName)}</span>.
+      requested access to <span style="${S.strong}">${escapeHtml(workspaceName)}</span>.
     </p>
     ${messageBlock}
     <a href="${escapeHtml(opts.reviewUrl)}" style="${S.btn}">Review request</a>
     <p style="${S.smallNote}">
-      Project managers can approve or decline this from Customize → Members.
+      Workspace managers can approve or decline this from Customize → Members.
     </p>
   `;
 
   const html = renderEmail({
     kicker: 'Access request',
-    title: 'Review project access',
+    title: 'Review workspace access',
     body,
   });
 
   return send({
     to: opts.email,
-    subject: `${opts.requesterEmail} requested access to ${projectName}`,
+    subject: `${opts.requesterEmail} requested access to ${workspaceName}`,
     html,
-    category: 'project-access-request',
+    category: 'workspace-access-request',
   });
 }

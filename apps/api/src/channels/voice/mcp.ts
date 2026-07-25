@@ -2,7 +2,7 @@
  * The voice MCP — how a Kortix agent spawns and talks to a voice agent.
  *
  * JSON-RPC 2.0 over streamable HTTP, mounted at /v1/mcp/voice and registered in
- * the project's opencode config. Served from the API rather than shipped as a
+ * the workspace's opencode config. Served from the API rather than shipped as a
  * sandbox binary on purpose: the tool surface can then change with an API deploy
  * instead of a snapshot rebake, which is the slow and risky half of any change
  * here (in-flight sandboxes keep whatever was baked into their image).
@@ -33,7 +33,7 @@ interface JsonRpcRequest {
 }
 
 export interface VoiceMcpContext {
-  projectId: string;
+  workspaceId: string;
   sessionId: string;
   /** Joins a meeting and starts a call bound to this session. */
   spawn(input: { meetingUrl: string; voice?: string | null }): Promise<{ callId: string; botId: string | null }>;

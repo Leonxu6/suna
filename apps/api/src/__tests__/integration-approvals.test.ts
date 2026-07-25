@@ -6,11 +6,11 @@
  *   - re-resolving a resolved one 409s, an invalid decision 400s,
  *   - deny flips it to `denied`,
  *   - and the per-session /audit trail surfaces the action + who approved it.
- * Reuses the local DB's owner (a manager on every project) as the caller.
+ * Reuses the local DB's owner (a manager on every workspace) as the caller.
  */
 import { describe, expect, test, beforeAll, afterAll } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { executorExecutions, projectSessions } from '@kortix/db';
+import { executorExecutions, workspaceSessions } from '@kortix/db';
 import { db } from '../shared/db';
 import { app } from '../index';
 import { waitForApprovalDecision } from '../executor/db-deps';
@@ -20,7 +20,7 @@ import { getCreditAccount, setDemoEnterprise } from '../billing/repositories/cre
 const minted: string[] = [];
 const execIds: string[] = [];
 const SESSION = crypto.randomUUID();
-let ctx: { projectId: string; accountId: string; userId: string } | null = null;
+let ctx: { workspaceId: string; accountId: string; userId: string } | null = null;
 let secret = '';
 let priorDemoEnterprise = false;
 
@@ -32,20 +32,20 @@ beforeAll(async () => {
     sql`alter table kortix.credit_accounts add column if not exists demo_enterprise boolean not null default false`,
   );
   const rows = (await db.execute(sql`
-    select p.project_id, p.account_id, m.user_id
-    from kortix.projects p
+    select p.workspace_id, p.account_id, m.user_id
+    from kortix.workspaces p
     join kortix.account_members m on m.account_id = p.account_id and m.account_role = 'owner'
-    limit 1`)) as unknown as Array<{ project_id: string; account_id: string; user_id: string }>;
+    limit 1`)) as unknown as Array<{ workspace_id: string; account_id: string; user_id: string }>;
   const r = rows[0];
   if (!r) return;
-  ctx = { projectId: r.project_id, accountId: r.account_id, userId: r.user_id };
+  ctx = { workspaceId: r.workspace_id, accountId: r.account_id, userId: r.user_id };
   const t = await createAccountToken({ accountId: ctx.accountId, userId: ctx.userId, name: 'approvals-test' });
   minted.push(t.tokenId);
   secret = t.secretKey;
-  await db.insert(projectSessions).values({
+  await db.insert(workspaceSessions).values({
     sessionId: SESSION,
     accountId: ctx.accountId,
-    projectId: ctx.projectId,
+    workspaceId: ctx.workspaceId,
     branchName: 'approvals-test',
     createdBy: ctx.userId,
     visibility: 'private',
@@ -59,7 +59,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const id of execIds) await db.delete(executorExecutions).where(eq(executorExecutions.executionId, id));
-  await db.delete(projectSessions).where(eq(projectSessions.sessionId, SESSION));
+  await db.delete(workspaceSessions).where(eq(workspaceSessions.sessionId, SESSION));
   for (const id of minted) await db.execute(sql`delete from kortix.account_tokens where token_id = ${id}`);
   if (ctx) await setDemoEnterprise(ctx.accountId, priorDemoEnterprise);
 });
@@ -69,7 +69,7 @@ async function seedPending(): Promise<string> {
     .insert(executorExecutions)
     .values({
       accountId: ctx!.accountId,
-      projectId: ctx!.projectId,
+      workspaceId: ctx!.workspaceId,
       actionPath: 'github.repos.delete',
       actingUserId: ctx!.userId,
       sessionId: SESSION,
@@ -105,7 +105,7 @@ async function seedResolved(kind: 'genuine' | 'consumed' | 'ok' | 'error'): Prom
     .insert(executorExecutions)
     .values({
       accountId: ctx!.accountId,
-      projectId: ctx!.projectId,
+      workspaceId: ctx!.workspaceId,
       actionPath: 'github.repos.delete',
       actingUserId: ctx!.userId,
       sessionId: SESSION,
@@ -130,16 +130,16 @@ const authPost = (path: string, body: unknown) =>
 describe('approvals inbox + resolution', () => {
   test('pending → inbox → approve → resolved (leaves inbox) → re-approve 409 → audit shows approver', async () => {
     if (!ctx) {
-      console.warn('[integration] no project/owner in local DB — skipping');
+      console.warn('[integration] no workspace/owner in local DB — skipping');
       return;
     }
     const execId = await seedPending();
 
-    const list = await authGet(`/v1/projects/${ctx.projectId}/approvals`);
+    const list = await authGet(`/v1/workspaces/${ctx.workspaceId}/approvals`);
     expect(list.status).toBe(200);
     expect((await list.json()).approvals.some((a: any) => a.execution_id === execId)).toBe(true);
 
-    const ap = await authPost(`/v1/projects/${ctx.projectId}/approvals/${execId}`, { decision: 'approve' });
+    const ap = await authPost(`/v1/workspaces/${ctx.workspaceId}/approvals/${execId}`, { decision: 'approve' });
     expect(ap.status).toBe(200);
     const [after] = await db.select().from(executorExecutions).where(eq(executorExecutions.executionId, execId));
     // Approve clears the gate to the terminal `ok` + stamps the resolver.
@@ -147,13 +147,13 @@ describe('approvals inbox + resolution', () => {
     expect(after.approvedBy).toBe(ctx.userId);
     expect(after.resolvedAt).toBeTruthy();
 
-    const list2 = await authGet(`/v1/projects/${ctx.projectId}/approvals`);
+    const list2 = await authGet(`/v1/workspaces/${ctx.workspaceId}/approvals`);
     expect((await list2.json()).approvals.some((a: any) => a.execution_id === execId)).toBe(false);
 
-    const again = await authPost(`/v1/projects/${ctx.projectId}/approvals/${execId}`, { decision: 'approve' });
+    const again = await authPost(`/v1/workspaces/${ctx.workspaceId}/approvals/${execId}`, { decision: 'approve' });
     expect(again.status).toBe(409);
 
-    const audit = await authGet(`/v1/projects/${ctx.projectId}/sessions/${SESSION}/audit`);
+    const audit = await authGet(`/v1/workspaces/${ctx.workspaceId}/sessions/${SESSION}/audit`);
     expect(audit.status).toBe(200);
     const auditBody = await audit.json();
     expect(auditBody.audit_access).toBe(true);
@@ -165,12 +165,12 @@ describe('approvals inbox + resolution', () => {
     if (!ctx) return;
     // A resolved action (history) + a still-pending one.
     const resolvedId = await seedPending();
-    await authPost(`/v1/projects/${ctx.projectId}/approvals/${resolvedId}`, { decision: 'approve' });
+    await authPost(`/v1/workspaces/${ctx.workspaceId}/approvals/${resolvedId}`, { decision: 'approve' });
     const pendingId = await seedPending();
 
     await setDemoEnterprise(ctx.accountId, false);
     try {
-      const res = await authGet(`/v1/projects/${ctx.projectId}/sessions/${SESSION}/audit`);
+      const res = await authGet(`/v1/workspaces/${ctx.workspaceId}/sessions/${SESSION}/audit`);
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.audit_access).toBe(false);
@@ -186,7 +186,7 @@ describe('approvals inbox + resolution', () => {
   test('deny flips the action to denied + records the denier', async () => {
     if (!ctx) return;
     const execId = await seedPending();
-    const dn = await authPost(`/v1/projects/${ctx.projectId}/approvals/${execId}`, { decision: 'deny' });
+    const dn = await authPost(`/v1/workspaces/${ctx.workspaceId}/approvals/${execId}`, { decision: 'deny' });
     expect(dn.status).toBe(200);
     const [after] = await db.select().from(executorExecutions).where(eq(executorExecutions.executionId, execId));
     expect(after.status).toBe('denied');
@@ -199,8 +199,8 @@ describe('approvals inbox + resolution', () => {
     if (!ctx) return;
     const execId = await seedPending();
     const [a, b] = await Promise.all([
-      authPost(`/v1/projects/${ctx.projectId}/approvals/${execId}`, { decision: 'approve' }),
-      authPost(`/v1/projects/${ctx.projectId}/approvals/${execId}`, { decision: 'deny' }),
+      authPost(`/v1/workspaces/${ctx.workspaceId}/approvals/${execId}`, { decision: 'approve' }),
+      authPost(`/v1/workspaces/${ctx.workspaceId}/approvals/${execId}`, { decision: 'deny' }),
     ]);
     const statuses = [a.status, b.status].sort();
     expect(statuses).toEqual([200, 409]);
@@ -209,21 +209,21 @@ describe('approvals inbox + resolution', () => {
   test('needs-input summary counts the session, and decrements when resolved', async () => {
     if (!ctx) return;
     const execId = await seedPending();
-    const res = await authGet(`/v1/projects/${ctx.projectId}/approvals/needs-input`);
+    const res = await authGet(`/v1/workspaces/${ctx.workspaceId}/approvals/needs-input`);
     expect(res.status).toBe(200);
     const body = await res.json();
     const before = body.sessions[SESSION] ?? 0;
     expect(before).toBeGreaterThanOrEqual(1);
     // Resolving one drops this session's count by exactly one.
-    await authPost(`/v1/projects/${ctx.projectId}/approvals/${execId}`, { decision: 'approve' });
-    const after = await (await authGet(`/v1/projects/${ctx.projectId}/approvals/needs-input`)).json();
+    await authPost(`/v1/workspaces/${ctx.workspaceId}/approvals/${execId}`, { decision: 'approve' });
+    const after = await (await authGet(`/v1/workspaces/${ctx.workspaceId}/approvals/needs-input`)).json();
     expect(after.sessions[SESSION] ?? 0).toBe(before - 1);
   });
 
   test('an invalid decision is rejected 400', async () => {
     if (!ctx) return;
     const execId = await seedPending();
-    const bad = await authPost(`/v1/projects/${ctx.projectId}/approvals/${execId}`, { decision: 'maybe' });
+    const bad = await authPost(`/v1/workspaces/${ctx.workspaceId}/approvals/${execId}`, { decision: 'maybe' });
     expect(bad.status).toBe(400);
   });
 });
@@ -239,7 +239,7 @@ describe('waitForApprovalDecision (gateway pause/resume)', () => {
       waitForApprovalDecision(execId, 5000),
       (async () => {
         await new Promise((r) => setTimeout(r, 400));
-        await authPost(`/v1/projects/${ctx!.projectId}/approvals/${execId}`, { decision: 'approve' });
+        await authPost(`/v1/workspaces/${ctx!.workspaceId}/approvals/${execId}`, { decision: 'approve' });
       })(),
     ]);
     expect(outcome).toBe('approved');
@@ -252,7 +252,7 @@ describe('waitForApprovalDecision (gateway pause/resume)', () => {
       waitForApprovalDecision(execId, 5000),
       (async () => {
         await new Promise((r) => setTimeout(r, 400));
-        await authPost(`/v1/projects/${ctx!.projectId}/approvals/${execId}`, { decision: 'deny' });
+        await authPost(`/v1/workspaces/${ctx!.workspaceId}/approvals/${execId}`, { decision: 'deny' });
       })(),
     ]);
     expect(outcome).toBe('denied');

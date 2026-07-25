@@ -14,7 +14,7 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { projectSessions, sessionSandboxes } from '@kortix/db';
+import { workspaceSessions, sessionSandboxes } from '@kortix/db';
 import { runWithContext } from '../lib/request-context';
 import { classifyPtyWebSocketPath } from '../platform/providers/pty-ingress';
 
@@ -23,13 +23,13 @@ import { classifyPtyWebSocketPath } from '../platform/providers/pty-ingress';
 const TEST_USER_ID = '00000000-0000-4000-a000-000000000001';
 const TEST_SANDBOX_ID = 'sandbox-abc-123';
 const TEST_SESSION_SANDBOX_ID = '11111111-1111-4111-8111-111111111111';
-const TEST_PROJECT_ID = '33333333-3333-4333-8333-333333333333';
+const TEST_WORKSPACE_ID = '33333333-3333-4333-8333-333333333333';
 const TEST_SERVICE_KEY = 'test-service-key-123';
 const TEST_PORT = 8080;
 
 let mockDbSandbox: any = {
   sandboxId: TEST_SESSION_SANDBOX_ID,
-  projectId: TEST_PROJECT_ID,
+  workspaceId: TEST_WORKSPACE_ID,
   accountId: 'account-001',
   agentName: 'default',
   status: 'active',
@@ -101,22 +101,22 @@ mock.module('../shared/db', () => {
     db: {
       select: (fields: any) => {
         // Determine which table is being queried by inspecting selected fields
-        // The preview proxy selects several session_sandboxes projections and
+        // The preview proxy selects several session_sandboxes workspaceions and
         // { accountRole } from account_members.
         const fieldKeys = fields ? Object.keys(fields) : [];
-        // `createdBy` is the unambiguous signal for the projectSessions
+        // `createdBy` is the unambiguous signal for the workspaceSessions
         // owner/agent lookup (sandbox-env-sync.ts) — check it BEFORE the loose
         // sandbox-field check below, since that query also selects `agentName`
         // (a field the sandbox-row query shape shares), which would otherwise
         // misclassify it as a sandbox-table query and starve resolveOwnerRawEnv.
-        const isProjectSessionQuery = fieldKeys.includes('createdBy');
-        const isSandboxQuery = !isProjectSessionQuery && fieldKeys.some((key) =>
-          ['accountId', 'sandboxId', 'projectId', 'agentName', 'status', 'config', 'provider', 'baseUrl'].includes(key),
+        const isWorkspaceSessionQuery = fieldKeys.includes('createdBy');
+        const isSandboxQuery = !isWorkspaceSessionQuery && fieldKeys.some((key) =>
+          ['accountId', 'sandboxId', 'workspaceId', 'agentName', 'status', 'config', 'provider', 'baseUrl'].includes(key),
         );
         const isMembershipQuery = fieldKeys.includes('accountRole');
 
         const rowsFor = (ordered = false): any[] => {
-          if (isProjectSessionQuery) return [{ createdBy: TEST_USER_ID }];
+          if (isWorkspaceSessionQuery) return [{ createdBy: TEST_USER_ID }];
           if (isSandboxQuery) {
             const rows = mockSandboxRows();
             return ordered ? sortPreferredSandboxRows(rows) : rows;
@@ -166,10 +166,10 @@ mock.module('../shared/preview-ownership', () => ({
     userId && mockDbSandbox && mockDbMembership
       ? { userId, sandboxId: mockSandboxRows()[0]?.sandboxId ?? sandboxId, sandboxRole: 'member', scopes: ['*'] }
       : null,
-  // combinedAuth is bypassed in this suite (see above), so no project-scoped
+  // combinedAuth is bypassed in this suite (see above), so no workspace-scoped
   // PAT ever reaches this — stub so the real module's shape stays satisfied
   // for anything that imports it.
-  resolveSandboxProjectId: async () => null,
+  resolveSandboxWorkspaceId: async () => null,
 }));
 
 // Daytona SDK mock
@@ -195,6 +195,12 @@ mock.module('../shared/daytona', () => ({
 }));
 
 mock.module('../platform/providers', () => ({
+  SandboxTemplateNotFoundError: class SandboxTemplateNotFoundError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'SandboxTemplateNotFoundError';
+    }
+  },
   WarmRuntimeUnavailableError: class WarmRuntimeUnavailableError extends Error {
     constructor(message: string) {
       super(message);
@@ -252,31 +258,37 @@ mock.module('../config', () => ({
   },
 }));
 
-mock.module('../projects/secrets', () => {
-  const snapshot = (projectId: string) => ({
+mock.module('../workspaces/secrets', () => {
+  const snapshot = (workspaceId: string) => ({
     env: {
       OPENROUTER_API_KEY: 'sk-live',
       SENTRY_DSN: 'https://example.test/1',
     },
     names: ['OPENROUTER_API_KEY', 'SENTRY_DSN'],
-    revision: `rev-${projectId}`,
+    revision: `rev-${workspaceId}`,
   });
   return {
     AmbiguousSecretGrantError: class AmbiguousSecretGrantError extends Error {},
     resolveGrantedSecretEnv: () => ({}),
+    parseSessionSecretsAllowlist: () => null,
+    intersectSecretGrants: () => null,
+    secretKeyCollisionInAllowlist: () => false,
+    canonicalizeSecretsAllowlist: () => null,
+    secretsAllowlistPayloadConflicts: () => false,
     isValidSecretName: () => true,
     isValidIdentifier: () => true,
     identifierKeyConflicts: () => false,
-    encryptProjectSecret: (_projectId: string, value: string) => value,
-    decryptProjectSecret: (_projectId: string, value: string) => value,
-    writeSharedProjectSecret: async () => ({}),
-    listResolvedProjectSecrets: async () => [],
-    listProjectSecrets: async (projectId: string) => snapshot(projectId).env,
-    listProjectSecretsForUser: async (projectId: string) => snapshot(projectId).env,
-    listProjectSecretsSnapshot: async (projectId: string) => snapshot(projectId),
-    listProjectSecretsSnapshotForUser: async (projectId: string) => snapshot(projectId),
-    projectSecretsRevision: (env: Record<string, string>) => `rev-${Object.keys(env).sort().join('-')}`,
-    getProjectSecretValue: async () => null,
+    encryptWorkspaceSecret: (_workspaceId: string, value: string) => value,
+    decryptWorkspaceSecret: (_workspaceId: string, value: string) => value,
+    writeSharedWorkspaceSecret: async () => ({}),
+    listResolvedWorkspaceSecrets: async () => [],
+    listWorkspaceSecrets: async (workspaceId: string) => snapshot(workspaceId).env,
+    listWorkspaceSecretsForUser: async (workspaceId: string) => snapshot(workspaceId).env,
+    listWorkspaceSecretsSnapshot: async (workspaceId: string) => snapshot(workspaceId),
+    listWorkspaceSecretsSnapshotForUser: async (workspaceId: string) => snapshot(workspaceId),
+    workspaceSecretsRevision: (env: Record<string, string>) => `rev-${Object.keys(env).sort().join('-')}`,
+    getWorkspaceSecretValue: async () => null,
+    SESSION_SECRETS_ALLOWLIST_MAX_KEYS: 64,
   };
 });
 
@@ -330,6 +342,7 @@ const { sandboxProxyApp } = await import('../sandbox-proxy/index');
 const { verifyKortixUserContext, KORTIX_USER_CONTEXT_HEADER } = await import('../shared/kortix-user-context');
 const { resolvePreviewWsUpstream } = await import('../sandbox-proxy/routes/preview');
 const { invalidateSandbox } = await import('../sandbox-proxy/backend');
+const { __resetPromptDedupe } = await import('../sandbox-proxy/prompt-dedupe');
 
 // ─── Test app factory ────────────────────────────────────────────────────────
 
@@ -367,13 +380,14 @@ function createProxyTestApp() {
 // ─── Reset ───────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  __resetPromptDedupe();
   invalidateSandbox(TEST_SANDBOX_ID);
   invalidateSandbox('platinum-oc-http');
   invalidateSandbox('daytona-oc-http');
   mockDbSandbox = {
     sandboxId: TEST_SESSION_SANDBOX_ID,
     sessionId: '22222222-2222-4222-8222-222222222222',
-    projectId: TEST_PROJECT_ID,
+    workspaceId: TEST_WORKSPACE_ID,
     accountId: 'account-001',
     status: 'active',
     config: { serviceKey: TEST_SERVICE_KEY },
@@ -672,7 +686,7 @@ describe('Preview proxy: forwarding', () => {
     expect(mockResolvedPreviewPorts).toEqual([4096]);
   });
 
-  test('syncs latest project secrets before forwarding prompt_async', async () => {
+  test('syncs latest workspace secrets before forwarding prompt_async', async () => {
     mockFetchResponses = [
       { status: 200, body: '{"ok":true,"changed":true,"revision":"rev"}' },
       { status: 204, body: '' },
@@ -810,7 +824,7 @@ describe('Preview proxy: forwarding', () => {
     });
   });
 
-  test('returns a clean proxy error when project env sync is rejected', async () => {
+  test('returns a clean proxy error when workspace env sync is rejected', async () => {
     mockFetchResponses = [{ status: 401, body: '{"error":"unauthorized"}' }];
     const app = createProxyTestApp();
     const res = await app.request(`/v1/p/${TEST_SANDBOX_ID}/8000/session/ses_123/prompt_async`, {
@@ -829,7 +843,7 @@ describe('Preview proxy: forwarding', () => {
     expect(mockFetchCalls[0].url).toBe('https://preview.daytona.io/proxy-url/kortix/env');
   });
 
-  test('does not retry non-transient project env sync HTTP errors that mention network failures', async () => {
+  test('does not retry non-transient workspace env sync HTTP errors that mention network failures', async () => {
     mockFetchResponses = [{ status: 500, body: '{"error":"connection refused to metadata store"}' }];
     const app = createProxyTestApp();
     const res = await app.request(`/v1/p/${TEST_SANDBOX_ID}/8000/session/ses_123/prompt_async`, {
@@ -849,7 +863,7 @@ describe('Preview proxy: forwarding', () => {
     expect(mockFetchCalls[0].url).toBe('https://preview.daytona.io/proxy-url/kortix/env');
   });
 
-  test('retries transient project env sync failures before forwarding prompt_async', async () => {
+  test('retries transient workspace env sync failures before forwarding prompt_async', async () => {
     mockFetchResponses = [
       { status: 502, body: 'Bad Gateway' },
       { status: 200, body: '{"ok":true,"changed":true,"revision":"rev"}' },
@@ -874,7 +888,7 @@ describe('Preview proxy: forwarding', () => {
     ]);
   });
 
-  test('retries fetch-level project env sync connection failures before forwarding prompt_async', async () => {
+  test('retries fetch-level workspace env sync connection failures before forwarding prompt_async', async () => {
     mockFetchResponses = [
       {
         status: 0,
@@ -988,7 +1002,7 @@ describe('Preview proxy: forwarding', () => {
       call.table === sessionSandboxes && call.updates.lastUsedAt instanceof Date,
     )).toBe(true);
     expect(mockDbUpdateCalls.some((call) =>
-      call.table === projectSessions && call.updates.status === 'running',
+      call.table === workspaceSessions && call.updates.status === 'running',
     )).toBe(true);
   });
 

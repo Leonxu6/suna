@@ -34,17 +34,17 @@ mock.module('../../config', () => ({ config }));
 
 // `resolvedSecret` is the legacy single-value behavior every non-Bedrock test
 // below still relies on (one BYOK provider = one envVar). Bedrock resolves
-// TWO project secrets by distinct name (bearer token + region) in the same
+// TWO workspace secrets by distinct name (bearer token + region) in the same
 // call, so `secretsByName` lets a test pin per-name values; any name not in
 // `secretsByName` falls back to `resolvedSecret` for backward compatibility.
 let resolvedSecret: string | null = null;
 let secretsByName: Record<string, string | null> = {};
-const getProjectSecretValue = mock(async (_projectId: string, name: string) => {
+const getWorkspaceSecretValue = mock(async (_workspaceId: string, name: string) => {
   if (name in secretsByName) return secretsByName[name] ?? null;
   return resolvedSecret;
 });
-mock.module('../../projects/secrets', () => ({
-  getProjectSecretValue,
+mock.module('../../workspaces/secrets', () => ({
+  getWorkspaceSecretValue,
 }));
 
 class CodexRefreshError extends Error {}
@@ -125,7 +125,7 @@ mock.module('../models/catalog-models', () => ({
 const { resolveCandidates, resolveCachedAccountTier } = await import('./resolve-candidates');
 
 function principal(overrides: Record<string, unknown> = {}) {
-  return { userId: 'u1', accountId: crypto.randomUUID(), projectId: 'p1', ...overrides };
+  return { userId: 'u1', accountId: crypto.randomUUID(), workspaceId: 'p1', ...overrides };
 }
 
 beforeEach(() => {
@@ -148,7 +148,7 @@ beforeEach(() => {
   livePricingCalls = [];
   getAccountTier.mockClear();
   getCachedAccountTier.mockClear();
-  getProjectSecretValue.mockClear();
+  getWorkspaceSecretValue.mockClear();
   resolveCodexCredential.mockClear();
 });
 
@@ -191,22 +191,22 @@ describe('resolveCandidates — BYOK billingMode / free-tier / managed-fallback'
   });
 
   // Bedrock is a STANDALONE BYOK provider (its own bearer-token key + regional
-  // endpoint), NOT the cloud-only managed/credits path. A project that connects
+  // endpoint), NOT the cloud-only managed/credits path. A workspace that connects
   // its own AWS_BEARER_TOKEN_BEDROCK resolves to a `kind:'bedrock'` descriptor
   // carrying that key and the bare Bedrock model id — routed through the bedrock
   // transport exactly like the managed Bedrock path, just with the user's own
   // credentials. KORTIX_MANAGED_PROVIDER_ENABLED is irrelevant here.
   //
-  // Regression coverage: the region MUST come from the project's OWN
+  // Regression coverage: the region MUST come from the workspace's OWN
   // AWS_REGION secret, never from deployment/operator config — an earlier
   // version of this fix baked resolveCatalogUpstream's baseUrl from
   // config.AWS_BEDROCK_REGION (the MANAGED path's operator setting), which
-  // would have silently routed every BYOK Bedrock project to the operator's
-  // region regardless of which region the project's own bearer token was
-  // actually issued for. This test pins a project region that differs from
+  // would have silently routed every BYOK Bedrock workspace to the operator's
+  // region regardless of which region the workspace's own bearer token was
+  // actually issued for. This test pins a workspace region that differs from
   // both the managed default (us-west-2) and the BYOK default (us-east-1) to
-  // prove it's genuinely read from the project secret.
-  test('BYOK Bedrock: standalone provider, builds a kind:bedrock descriptor from the PROJECT-OWNED bearer token + region', async () => {
+  // prove it's genuinely read from the workspace secret.
+  test('BYOK Bedrock: standalone provider, builds a kind:bedrock descriptor from the WORKSPACE-OWNED bearer token + region', async () => {
     catalogUpstream = { envVar: 'AWS_BEARER_TOKEN_BEDROCK', kind: 'bedrock' };
     secretsByName = {
       AWS_BEARER_TOKEN_BEDROCK: 'bedrock-bearer-key',
@@ -224,10 +224,10 @@ describe('resolveCandidates — BYOK billingMode / free-tier / managed-fallback'
       resolvedModel: 'us.anthropic.claude-opus-4-8',
     });
     // The bearer token AND the region are each looked up under their own
-    // AWS-standard secret name, project-wide (shared) only — there is no
+    // AWS-standard secret name, workspace-wide (shared) only — there is no
     // per-caller/private lookup.
-    expect(getProjectSecretValue).toHaveBeenCalledWith('p1', 'AWS_BEARER_TOKEN_BEDROCK');
-    expect(getProjectSecretValue).toHaveBeenCalledWith('p1', 'AWS_REGION');
+    expect(getWorkspaceSecretValue).toHaveBeenCalledWith('p1', 'AWS_BEARER_TOKEN_BEDROCK');
+    expect(getWorkspaceSecretValue).toHaveBeenCalledWith('p1', 'AWS_REGION');
   });
 
   test('BYOK Bedrock with no AWS_REGION set: falls back to the BYOK default (us-east-1), not the managed AWS_BEDROCK_REGION default', async () => {
@@ -274,7 +274,7 @@ describe('resolveCandidates — BYOK billingMode / free-tier / managed-fallback'
     expect(livePricingCalls).toEqual(['anthropic/claude-sonnet-4.6']);
   });
 
-  test('Bedrock with no project key connected: provider_not_connected (never a silent managed fallback)', async () => {
+  test('Bedrock with no workspace key connected: provider_not_connected (never a silent managed fallback)', async () => {
     catalogUpstream = { envVar: 'AWS_BEARER_TOKEN_BEDROCK', kind: 'bedrock' };
     secretsByName = { AWS_BEARER_TOKEN_BEDROCK: null };
     const p = principal();
@@ -417,9 +417,9 @@ describe('resolveCandidates — managed model tier gating', () => {
 });
 
 describe('resolveCandidates — codex + unknown provider', () => {
-  test('codex provider without a projectId throws provider_not_connected', async () => {
+  test('codex provider without a workspaceId throws provider_not_connected', async () => {
     await expect(
-      resolveCandidates(principal({ projectId: undefined }), 'codex/gpt-5.5'),
+      resolveCandidates(principal({ workspaceId: undefined }), 'codex/gpt-5.5'),
     ).rejects.toMatchObject({ code: 'provider_not_connected' });
   });
 

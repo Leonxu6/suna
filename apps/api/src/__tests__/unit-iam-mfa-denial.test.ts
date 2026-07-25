@@ -7,7 +7,7 @@ import { buildDenialError } from '../iam/dispatcher';
 
 describe('buildDenialError', () => {
   test('account_mfa_required → 403 with machine-readable code in the body', async () => {
-    const err = buildDenialError('project.create', 'account_mfa_required');
+    const err = buildDenialError('workspace.create', 'account_mfa_required');
     expect(err.status).toBe(403);
     const res = err.getResponse();
     expect(res.headers.get('content-type')).toContain('application/json');
@@ -17,7 +17,7 @@ describe('buildDenialError', () => {
   });
 
   test('ordinary role denial → humanized message, NO code', async () => {
-    const err = buildDenialError('project.create', 'account_role_insufficient');
+    const err = buildDenialError('workspace.create', 'account_role_insufficient');
     expect(err.status).toBe(403);
     const res = err.getResponse();
     const text = await res.text();

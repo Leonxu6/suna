@@ -5,46 +5,46 @@ import {
   serializeManifest,
   triggerSpecToTomlEntry,
   KNOWN_SCHEMA_VERSION,
-} from '../projects/triggers';
+} from '../workspaces/triggers';
 
-const MIN_PROJECT = `
-[project]
+const MIN_WORKSPACE = `
+[workspace]
 name = "test"
 `;
 
 function manifestWith(triggersBlock: string): string {
   return [
     `kortix_version = ${KNOWN_SCHEMA_VERSION}`,
-    MIN_PROJECT,
+    MIN_WORKSPACE,
     triggersBlock,
   ].join('\n');
 }
 
 describe('kortix manifest — schema versioning', () => {
   test('missing kortix_version is treated as v1 (back-compat)', () => {
-    const parsed = parseManifestString(MIN_PROJECT);
+    const parsed = parseManifestString(MIN_WORKSPACE);
     expect(parsed.schemaVersion).toBe(1);
   });
 
   test('explicit kortix_version = 1 round-trips', () => {
-    const parsed = parseManifestString(`kortix_version = 1\n${MIN_PROJECT}`);
+    const parsed = parseManifestString(`kortix_version = 1\n${MIN_WORKSPACE}`);
     expect(parsed.schemaVersion).toBe(1);
   });
 
   test('a future major version is rejected with a clear error', () => {
-    expect(() => parseManifestString(`kortix_version = 99\n${MIN_PROJECT}`)).toThrow(/Unsupported kortix\.toml schema version 99/);
+    expect(() => parseManifestString(`kortix_version = 99\n${MIN_WORKSPACE}`)).toThrow(/Unsupported kortix\.toml schema version 99/);
   });
 
   // kortix_version 2 (the `agents:` map manifest — spec §2.1/§2.2) must NOT
   // throw here: this reader (readManifest → parseManifestString) is what the
   // whole session/trigger grant pipeline reads through (extractAgents in
-  // ../projects/agents.ts is the v2-aware consumer). Rejecting v2 at THIS
-  // layer was the runtime-wiring bug the fix closes — every v2 project would
+  // ../workspaces/agents.ts is the v2-aware consumer). Rejecting v2 at THIS
+  // layer was the runtime-wiring bug the fix closes — every v2 workspace would
   // otherwise resolve to either fully-unrestricted (a swallowed read error) or
   // every-session-rejected, instead of the agent's declared grant.
   test('kortix_version 2 no longer throws — the reader every consumer (agents/triggers) reads through', () => {
     const parsed = parseManifestString(
-      'kortix_version: 2\ndefault_agent: support\nproject:\n  name: test\nagents:\n  support:\n    description: x\n',
+      'kortix_version: 2\ndefault_agent: support\nworkspace:\n  name: test\nagents:\n  support:\n    description: x\n',
       'yaml',
       'kortix.yaml',
     );
@@ -52,11 +52,11 @@ describe('kortix manifest — schema versioning', () => {
   });
 
   test('a version above the v2 ceiling is still rejected', () => {
-    expect(() => parseManifestString(`kortix_version = 3\n${MIN_PROJECT}`)).toThrow(/Unsupported kortix\.toml schema version 3/);
+    expect(() => parseManifestString(`kortix_version = 3\n${MIN_WORKSPACE}`)).toThrow(/Unsupported kortix\.toml schema version 3/);
   });
 
   test('serialize always emits kortix_version as the first key', () => {
-    const parsed = parseManifestString(`kortix_version = 1\n${MIN_PROJECT}`);
+    const parsed = parseManifestString(`kortix_version = 1\n${MIN_WORKSPACE}`);
     const out = serializeManifest(parsed);
     expect(out.indexOf('kortix_version')).toBe(0);
   });
@@ -257,12 +257,12 @@ prompt_template = "legacy field name"
 
 describe('[[triggers]] — validation errors', () => {
   test('an empty manifest yields zero triggers, no errors', () => {
-    const parsed = parseManifestString(MIN_PROJECT);
+    const parsed = parseManifestString(MIN_WORKSPACE);
     expect(extractTriggers(parsed)).toEqual({ specs: [], errors: [] });
   });
 
   test('a [triggers] table (single brackets) is rejected with guidance', () => {
-    const parsed = parseManifestString(`${MIN_PROJECT}\n[triggers]\nslug = "x"\n`);
+    const parsed = parseManifestString(`${MIN_WORKSPACE}\n[triggers]\nslug = "x"\n`);
     const { specs, errors } = extractTriggers(parsed);
     expect(specs).toEqual([]);
     expect(errors[0]!.error).toMatch(/array of tables/);
@@ -335,7 +335,7 @@ secret_env = "my-secret"
 prompt = "x"
 `));
     const { errors } = extractTriggers(parsed);
-    expect(errors[0]!.error).toMatch(/project_secrets name/);
+    expect(errors[0]!.error).toMatch(/workspace_secrets name/);
   });
 
   test('rejects duplicate slugs — first wins, second errors', () => {
@@ -707,12 +707,12 @@ describe('[[triggers]] — runtime parser ⇄ schema gate agreement', () => {
 // Regression guard: trigger `path` / error `path` breadcrumbs used to
 // hard-code `kortix.toml` regardless of which file the manifest actually came
 // from. They now derive the filename from the parsed manifest's own `path`
-// (set by `parseManifestString`), so a `kortix.yaml` project's spec/error
+// (set by `parseManifestString`), so a `kortix.yaml` workspace's spec/error
 // paths say `kortix.yaml`, not a lie about a file that doesn't exist there.
 describe('[[triggers]] — spec/error `path` derives from the manifest\'s own filename', () => {
   test('a yaml manifest\'s trigger spec path says kortix.yaml', () => {
     const manifest = parseManifestString(
-      `kortix_version: ${KNOWN_SCHEMA_VERSION}\nproject:\n  name: test\ntriggers:\n  - slug: nightly\n    type: cron\n    cron: "0 9 * * *"\n    prompt: go\n`,
+      `kortix_version: ${KNOWN_SCHEMA_VERSION}\nworkspace:\n  name: test\ntriggers:\n  - slug: nightly\n    type: cron\n    cron: "0 9 * * *"\n    prompt: go\n`,
       'yaml',
       'kortix.yaml',
     );
@@ -723,7 +723,7 @@ describe('[[triggers]] — spec/error `path` derives from the manifest\'s own fi
 
   test('a yaml manifest\'s `[triggers]` (non-array) error path says kortix.yaml', () => {
     const manifest = parseManifestString(
-      `kortix_version: ${KNOWN_SCHEMA_VERSION}\nproject:\n  name: test\ntriggers:\n  slug: nightly\n`,
+      `kortix_version: ${KNOWN_SCHEMA_VERSION}\nworkspace:\n  name: test\ntriggers:\n  slug: nightly\n`,
       'yaml',
       'kortix.yaml',
     );

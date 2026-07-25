@@ -1,6 +1,6 @@
 /**
  * E2E for the executor HTTP surface — drives the REAL Hono router + REAL gateway
- * via app.fetch(), with in-memory backends. Connectors are project-wide visible
+ * via app.fetch(), with in-memory backends. Connectors are workspace-wide visible
  * (no per-connector member/agent scoping); credentials are split per
  * (connector, user) and resolved by mode. Proves auth, catalog, a tool call,
  * denials, admin sync, and policy enforcement.
@@ -13,8 +13,8 @@ import {
   type DefaultMode,
   type ExecutorPrincipal,
   type ExecutorRouterDeps,
-  type ProjectPoliciesViewResponse,
-  type ProjectPolicyView,
+  type WorkspacePoliciesViewResponse,
+  type WorkspacePolicyView,
 } from '../executor/router';
 import type {
   GatewayAction,
@@ -26,7 +26,7 @@ import { resolveEffectiveAction, type Policy } from '../executor/policy';
 import type { ConnectorAuthDiscovery } from '../executor/auth-discovery';
 
 const ACCOUNT = 'acct-1';
-const PROJECT = 'proj-1';
+const WORKSPACE = 'proj-1';
 const ALICE = 'user-alice';
 const BOB = 'user-bob';
 
@@ -37,9 +37,9 @@ interface World {
   groups: Map<string, string[]>;
   /** Connector-scoped policies, keyed by connectorId. */
   policiesByConnector: Map<string, Policy[]>;
-  /** Project-scoped policies (apply to all connectors in this project). */
-  projectPolicies: Policy[];
-  /** Project default_mode (`risk` | `allow_all`). */
+  /** Workspace-scoped policies (apply to all connectors in this workspace). */
+  workspacePolicies: Policy[];
+  /** Workspace default_mode (`risk` | `allow_all`). */
   defaultMode: DefaultMode;
   executions: ExecutionRecord[];
   upstream: Array<{ url: string; method: string; headers: Record<string, string>; body?: string }>;
@@ -81,7 +81,7 @@ function freshWorld(): World {
     credentials: new Map([['conn-stripe|shared', 'sk_live_xyz']]),
     groups: new Map(),
     policiesByConnector: new Map(),
-    projectPolicies: [],
+    workspacePolicies: [],
     defaultMode: 'allow_all',
     executions: [],
     upstream: [],
@@ -115,7 +115,7 @@ function makeGatewayDeps(): GatewayDeps {
       return world.credentials.get(credKey(connector.connectorId, userId)) ?? null;
     },
     loadPolicies: async (connectorId) => world.policiesByConnector.get(connectorId) ?? [],
-    loadProjectPolicies: async () => world.projectPolicies,
+    loadWorkspacePolicies: async () => world.workspacePolicies,
     loadDefaultMode: async () => world.defaultMode,
     enforcePolicies: true,
     recordExecution: async (r) => {
@@ -137,7 +137,7 @@ function principalFor(userId: string): ExecutorPrincipal {
   return {
     userId,
     accountId: ACCOUNT,
-    projectId: PROJECT,
+    workspaceId: WORKSPACE,
     sessionId: 'sess-1',
     subject: { userId, groupIds: world.groups.get(userId) ?? [] },
   };
@@ -158,7 +158,7 @@ function catalogFor(p: ExecutorPrincipal): CatalogConnector[] {
           resolveEffectiveAction({
             fullPath: a.path,
             relPath: a.relPath,
-            projectPolicies: world.projectPolicies,
+            workspacePolicies: world.workspacePolicies,
             connectorPolicies,
             risk: a.risk,
             defaultMode: world.defaultMode,
@@ -187,9 +187,9 @@ const deps: ExecutorRouterDeps = {
     const u = c.req.header('x-test-user');
     return u ? principalFor(u) : null;
   },
-  resolveProjectPrincipal: async (c, projectId) => {
+  resolveWorkspacePrincipal: async (c, workspaceId) => {
     const u = c.req.header('x-test-user');
-    return u && projectId === PROJECT ? principalFor(u) : null;
+    return u && workspaceId === WORKSPACE ? principalFor(u) : null;
   },
   makeGatewayDeps,
   listCatalog: async (p) => catalogFor(p),
@@ -197,7 +197,7 @@ const deps: ExecutorRouterDeps = {
     const u = c.req.header('x-test-admin');
     return u ? { accountId: ACCOUNT, userId: u } : null;
   },
-  // Read-tier (project.connector.read): a plain member can LIST connectors but
+  // Read-tier (workspace.connector.read): a plain member can LIST connectors but
   // not administer them. Admin implies reader, mirroring the real role chain.
   resolveReader: async (c) => {
     const u = c.req.header('x-test-reader') ?? c.req.header('x-test-admin');
@@ -225,26 +225,26 @@ const deps: ExecutorRouterDeps = {
   getDiscoverIntegration: async (id) => ({ item: { id }, variants: [] }),
   syncConnectors: async () => ({ synced: world.connectors.size, errors: [] }),
   discoverConnectorAuth: async () => detectedBearer,
-  createConnector: async (_projectId, _accountId, draft) => {
+  createConnector: async (_workspaceId, _accountId, draft) => {
     world.connectorDrafts.push(draft);
     return { ok: true, sync: { synced: 1, errors: [] } };
   },
-  setConnectorCredential: async (_projectId, _slug, input) => {
+  setConnectorCredential: async (_workspaceId, _slug, input) => {
     world.credentialInputs.push(input);
     return { ok: true };
   },
-  getProjectPolicies: async (): Promise<ProjectPoliciesViewResponse> => ({
-    policies: world.projectPolicies.map((p) => ({ match: p.match, action: p.action })),
+  getWorkspacePolicies: async (): Promise<WorkspacePoliciesViewResponse> => ({
+    policies: world.workspacePolicies.map((p) => ({ match: p.match, action: p.action })),
     defaultMode: world.defaultMode,
     errors: [],
   }),
-  setProjectPolicies: async (
-    _projectId,
+  setWorkspacePolicies: async (
+    _workspaceId,
     _accountId,
-    policies: ProjectPolicyView[],
+    policies: WorkspacePolicyView[],
     defaultMode,
   ) => {
-    world.projectPolicies = policies.map((p, i) => ({
+    world.workspacePolicies = policies.map((p, i) => ({
       match: p.match,
       action: p.action,
       position: i,
@@ -363,12 +363,12 @@ describe('POST /call', () => {
 });
 
 describe('admin routes', () => {
-  test('Discover list/detail are project-admin scoped and preserve query values', async () => {
-    const denied = await req(`/projects/${PROJECT}/discover/integrations?q=finance`);
+  test('Discover list/detail are workspace-admin scoped and preserve query values', async () => {
+    const denied = await req(`/workspaces/${WORKSPACE}/discover/integrations?q=finance`);
     expect(denied.status).toBe(403);
 
     const pageResponse = await req(
-      `/projects/${PROJECT}/discover/integrations?q=finance&cursor=48`,
+      `/workspaces/${WORKSPACE}/discover/integrations?q=finance&cursor=48`,
       { headers: { 'x-test-admin': ALICE } },
     );
     expect(pageResponse.status).toBe(200);
@@ -380,7 +380,7 @@ describe('admin routes', () => {
     });
 
     const detailResponse = await req(
-      `/projects/${PROJECT}/discover/integrations/detail?id=${encodeURIComponent('openapi/1forge-com')}`,
+      `/workspaces/${WORKSPACE}/discover/integrations/detail?id=${encodeURIComponent('openapi/1forge-com')}`,
       { headers: { 'x-test-admin': ALICE } },
     );
     expect(detailResponse.status).toBe(200);
@@ -391,9 +391,9 @@ describe('admin routes', () => {
   });
 
   test('list shows credential mode + secretSet', async () => {
-    expect((await req(`/projects/${PROJECT}/connectors`)).status).toBe(403);
+    expect((await req(`/workspaces/${WORKSPACE}/connectors`)).status).toBe(403);
     const json = await (
-      await req(`/projects/${PROJECT}/connectors`, { headers: { 'x-test-admin': ALICE } })
+      await req(`/workspaces/${WORKSPACE}/connectors`, { headers: { 'x-test-admin': ALICE } })
     ).json();
     expect(json.connectors[0]).toMatchObject({
       slug: 'stripe',
@@ -406,7 +406,7 @@ describe('admin routes', () => {
     expect(
       (
         await (
-          await req(`/projects/${PROJECT}/connectors/sync`, {
+          await req(`/workspaces/${WORKSPACE}/connectors/sync`, {
             method: 'POST',
             headers: { 'x-test-admin': ALICE },
           })
@@ -424,7 +424,7 @@ describe('admin routes', () => {
       client_secret: 'client-secret',
       scopes: ['https://graph.microsoft.com/.default'],
     };
-    const response = await req(`/projects/${PROJECT}/connectors/sharepoint/credential`, {
+    const response = await req(`/workspaces/${WORKSPACE}/connectors/sharepoint/credential`, {
       method: 'PUT',
       headers: { 'x-test-admin': ALICE, 'content-type': 'application/json' },
       body: JSON.stringify({ oauth2 }),
@@ -435,7 +435,7 @@ describe('admin routes', () => {
   });
 
   test('previews source authentication metadata', async () => {
-    const res = await req(`/projects/${PROJECT}/connectors/auth-discovery`, {
+    const res = await req(`/workspaces/${WORKSPACE}/connectors/auth-discovery`, {
       method: 'POST',
       headers: { 'x-test-admin': ALICE, 'content-type': 'application/json' },
       body: JSON.stringify({ provider: 'postman', spec: 'https://example.com/collection.json' }),
@@ -445,7 +445,7 @@ describe('admin routes', () => {
   });
 
   test('omitted auth applies the source recommendation before create', async () => {
-    const res = await req(`/projects/${PROJECT}/connectors`, {
+    const res = await req(`/workspaces/${WORKSPACE}/connectors`, {
       method: 'POST',
       headers: { 'x-test-admin': ALICE, 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -460,7 +460,7 @@ describe('admin routes', () => {
   });
 
   test('explicit none is a durable opt-out and skips source discovery', async () => {
-    const res = await req(`/projects/${PROJECT}/connectors`, {
+    const res = await req(`/workspaces/${WORKSPACE}/connectors`, {
       method: 'POST',
       headers: { 'x-test-admin': ALICE, 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -475,8 +475,8 @@ describe('admin routes', () => {
     expect((await res.json()).authDiscovery).toBeUndefined();
   });
 
-  test('a read-tier member can LIST connectors (project.connector.read is member-baseline)', async () => {
-    const res = await req(`/projects/${PROJECT}/connectors`, {
+  test('a read-tier member can LIST connectors (workspace.connector.read is member-baseline)', async () => {
+    const res = await req(`/workspaces/${WORKSPACE}/connectors`, {
       headers: { 'x-test-reader': ALICE },
     });
     expect(res.status).toBe(200);
@@ -485,7 +485,7 @@ describe('admin routes', () => {
   });
 
   test('a read-tier member still cannot administer connectors (sync stays write-gated)', async () => {
-    const res = await req(`/projects/${PROJECT}/connectors/sync`, {
+    const res = await req(`/workspaces/${WORKSPACE}/connectors/sync`, {
       method: 'POST',
       headers: { 'x-test-reader': ALICE },
     });
@@ -493,7 +493,7 @@ describe('admin routes', () => {
   });
 
   test('the old connector sharing route is gone (404)', async () => {
-    const put = await req(`/projects/${PROJECT}/connectors/stripe/sharing`, {
+    const put = await req(`/workspaces/${WORKSPACE}/connectors/stripe/sharing`, {
       method: 'PUT',
       headers: { 'x-test-admin': ALICE, 'content-type': 'application/json' },
       body: JSON.stringify({ mode: 'members', memberIds: [ALICE] }),
@@ -554,7 +554,7 @@ describe('connector-scoped policy enforcement', () => {
   });
 });
 
-describe('project-scoped policy enforcement', () => {
+describe('workspace-scoped policy enforcement', () => {
   const callCharges = () =>
     req('/call', {
       method: 'POST',
@@ -562,31 +562,31 @@ describe('project-scoped policy enforcement', () => {
       body: JSON.stringify({ connector: 'stripe', action: 'charges.create', args: {} }),
     });
 
-  test('project [[policies]] use fully-qualified match (stripe.charges.*)', async () => {
-    world.projectPolicies = [{ match: 'stripe.charges.*', action: 'block', position: 0 }];
+  test('workspace [[policies]] use fully-qualified match (stripe.charges.*)', async () => {
+    world.workspacePolicies = [{ match: 'stripe.charges.*', action: 'block', position: 0 }];
     const res = await callCharges();
     expect(res.status).toBe(403);
     expect((await res.json()).reason).toBe('policy_block');
   });
 
-  test('project block overrides connector always_run (admin trust)', async () => {
-    world.projectPolicies = [{ match: '*.charges.*', action: 'block', position: 0 }];
+  test('workspace block overrides connector always_run (admin trust)', async () => {
+    world.workspacePolicies = [{ match: '*.charges.*', action: 'block', position: 0 }];
     world.policiesByConnector.set('conn-stripe', [
       { match: '*', action: 'always_run', position: 0 },
     ]);
     expect((await callCharges()).status).toBe(403);
   });
 
-  test('project require_approval beats connector always_run', async () => {
-    world.projectPolicies = [{ match: 'stripe.*', action: 'require_approval', position: 0 }];
+  test('workspace require_approval beats connector always_run', async () => {
+    world.workspacePolicies = [{ match: 'stripe.*', action: 'require_approval', position: 0 }];
     world.policiesByConnector.set('conn-stripe', [
       { match: '*', action: 'always_run', position: 0 },
     ]);
     expect((await callCharges()).status).toBe(202);
   });
 
-  test('project-blocked tool hidden from catalog (defense in depth)', async () => {
-    world.projectPolicies = [{ match: 'stripe.charges.*', action: 'block', position: 0 }];
+  test('workspace-blocked tool hidden from catalog (defense in depth)', async () => {
+    world.workspacePolicies = [{ match: 'stripe.charges.*', action: 'block', position: 0 }];
     const json = await (await req('/connectors', { headers: { 'x-test-user': ALICE } })).json();
     expect(json.connectors[0].actions).toHaveLength(0);
   });
@@ -644,13 +644,13 @@ describe('default_mode (risk-driven)', () => {
 
 describe('admin policy CRUD', () => {
   test('GET /policies — empty by default', async () => {
-    const res = await req(`/projects/${PROJECT}/policies`, { headers: { 'x-test-admin': ALICE } });
+    const res = await req(`/workspaces/${WORKSPACE}/policies`, { headers: { 'x-test-admin': ALICE } });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ policies: [], defaultMode: 'allow_all', errors: [] });
   });
 
   test('PUT /policies → write-through, then GET reflects it', async () => {
-    const put = await req(`/projects/${PROJECT}/policies`, {
+    const put = await req(`/workspaces/${WORKSPACE}/policies`, {
       method: 'PUT',
       headers: { 'x-test-admin': ALICE, 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -663,7 +663,7 @@ describe('admin policy CRUD', () => {
     });
     expect(put.status).toBe(200);
     const get = await (
-      await req(`/projects/${PROJECT}/policies`, { headers: { 'x-test-admin': ALICE } })
+      await req(`/workspaces/${WORKSPACE}/policies`, { headers: { 'x-test-admin': ALICE } })
     ).json();
     expect(get.defaultMode).toBe('risk');
     expect(get.policies).toEqual([
@@ -673,7 +673,7 @@ describe('admin policy CRUD', () => {
   });
 
   test('PUT /policies — written rule now enforces at /call', async () => {
-    await req(`/projects/${PROJECT}/policies`, {
+    await req(`/workspaces/${WORKSPACE}/policies`, {
       method: 'PUT',
       headers: { 'x-test-admin': ALICE, 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -691,7 +691,7 @@ describe('admin policy CRUD', () => {
   });
 
   test('PUT — invalid action rejected (400)', async () => {
-    const put = await req(`/projects/${PROJECT}/policies`, {
+    const put = await req(`/workspaces/${WORKSPACE}/policies`, {
       method: 'PUT',
       headers: { 'x-test-admin': ALICE, 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -703,7 +703,7 @@ describe('admin policy CRUD', () => {
   });
 
   test('PUT — missing match rejected (400)', async () => {
-    const put = await req(`/projects/${PROJECT}/policies`, {
+    const put = await req(`/workspaces/${WORKSPACE}/policies`, {
       method: 'PUT',
       headers: { 'x-test-admin': ALICE, 'content-type': 'application/json' },
       body: JSON.stringify({ policies: [{ action: 'block' }], defaultMode: 'allow_all' }),
@@ -712,8 +712,8 @@ describe('admin policy CRUD', () => {
   });
 
   test('GET/PUT require admin auth (403 without)', async () => {
-    expect((await req(`/projects/${PROJECT}/policies`)).status).toBe(403);
-    expect((await req(`/projects/${PROJECT}/policies`, { method: 'PUT', body: '{}' })).status).toBe(
+    expect((await req(`/workspaces/${WORKSPACE}/policies`)).status).toBe(403);
+    expect((await req(`/workspaces/${WORKSPACE}/policies`, { method: 'PUT', body: '{}' })).status).toBe(
       403,
     );
   });

@@ -4,8 +4,8 @@
 // because:
 //   - assertAuthorized turns "denied" into an HTTPException so V2
 //     itself doesn't need to know about Hono.
-//   - listAccessibleResources collapses non-project resource types
-//     to mode:'none' (V2 only lists projects).
+//   - listAccessibleResources collapses non-workspace resource types
+//     to mode:'none' (V2 only lists workspaces).
 //   - The route layer + cache helper + iam/index.ts all pin their
 //     imports here; consolidating preserves that import path.
 
@@ -17,11 +17,11 @@ import type {
   RequestContext,
 } from './engine';
 import type { ResourceType } from './actions';
-import { authorizeV2, filterAccessibleProjectResources, listAccessibleProjectsV2 } from './engine-v2';
+import { authorizeV2, filterAccessibleWorkspaceResources, listAccessibleWorkspacesV2 } from './engine-v2';
 
 // Per-resource (agent/skill) list filter — see engine-v2. Re-exported here so the
 // route layer keeps a single iam import surface (the dispatcher), like authorize.
-export { filterAccessibleProjectResources };
+export { filterAccessibleWorkspaceResources };
 
 export async function authorize(
   userId: string,
@@ -77,7 +77,7 @@ export function buildDenialError(action: string, reason?: string): HTTPException
 }
 
 /**
- * Map action codes (`project.create`, `member.invite`, …) to a sentence
+ * Map action codes (`workspace.create`, `member.invite`, …) to a sentence
  * the user can act on. Unknown codes get a generic phrase with the code
  * suffixed for support visibility. Keep this list short — only the
  * actions that actually show up in user-visible 403s.
@@ -91,12 +91,12 @@ function humanizePermissionDenial(action: string): string {
 }
 
 const ACTION_VERBS: Record<string, string> = {
-  // Projects
-  'project.create': 'create projects',
-  'project.write': 'change this project',
-  'project.delete': 'delete projects',
-  // Project members
-  'project.members.manage': 'manage project members',
+  // Workspaces
+  'workspace.create': 'create workspaces',
+  'workspace.write': 'change this workspace',
+  'workspace.delete': 'delete workspaces',
+  // Workspace members
+  'workspace.members.manage': 'manage workspace members',
   // Account
   'account.write': 'change account settings',
   'account.delete': 'delete this account',
@@ -132,11 +132,11 @@ export async function listAccessibleResources(
   actingTokenId?: string,
   requestCtx: RequestContext = {},
 ): Promise<AccessibleResources> {
-  // V2 only supports project listings — sandboxes/triggers/channels are
-  // reached via their owning project, never listed standalone.
-  if (resourceType !== 'project') return { mode: 'none' };
+  // V2 only supports workspace listings — sandboxes/triggers/channels are
+  // reached via their owning workspace, never listed standalone.
+  if (resourceType !== 'workspace') return { mode: 'none' };
 
-  return listAccessibleProjectsV2(
+  return listAccessibleWorkspacesV2(
     userId,
     accountId,
     action,

@@ -8,9 +8,9 @@ import {
   executorConnectionProfiles,
   executorConnectors,
   executorCredentials,
-  projectSessionConnectorBindings,
-  projectSessions,
-  projects,
+  workspaceSessionConnectorBindings,
+  workspaceSessions,
+  workspaces,
   serviceAccounts,
 } from '@kortix/db';
 import { and, eq } from 'drizzle-orm';
@@ -30,14 +30,14 @@ import {
   resolveSessionConnectorProfile,
   sessionConnectorBindingsRequirePrivateVisibility,
   validateSessionConnectorBindings,
-} from '../projects/lib/session-connector-bindings';
-import { encryptProjectSecret } from '../projects/secrets';
+} from '../workspaces/lib/session-connector-bindings';
+import { encryptWorkspaceSecret } from '../workspaces/secrets';
 import { db } from '../shared/db';
 
 const ACCOUNT_A = crypto.randomUUID();
 const ACCOUNT_B = crypto.randomUUID();
-const PROJECT_A = crypto.randomUUID();
-const PROJECT_B = crypto.randomUUID();
+const WORKSPACE_A = crypto.randomUUID();
+const WORKSPACE_B = crypto.randomUUID();
 const CONNECTOR_A = crypto.randomUUID();
 const CONNECTOR_B = crypto.randomUUID();
 const EMAIL_CONNECTOR = crypto.randomUUID();
@@ -64,15 +64,15 @@ beforeAll(async () => {
     { accountId: ACCOUNT_A, name: 'profile-test-a' },
     { accountId: ACCOUNT_B, name: 'profile-test-b' },
   ]);
-  await db.insert(projects).values([
+  await db.insert(workspaces).values([
     {
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       accountId: ACCOUNT_A,
       name: 'profile-test-a',
       repoUrl: 'https://example.test/profile-a.git',
     },
     {
-      projectId: PROJECT_B,
+      workspaceId: WORKSPACE_B,
       accountId: ACCOUNT_B,
       name: 'profile-test-b',
       repoUrl: 'https://example.test/profile-b.git',
@@ -90,7 +90,7 @@ beforeAll(async () => {
     {
       connectorId: CONNECTOR_A,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       slug: 'veyris',
       name: 'VEYRIS',
       providerType: 'http',
@@ -99,7 +99,7 @@ beforeAll(async () => {
     {
       connectorId: CONNECTOR_B,
       accountId: ACCOUNT_B,
-      projectId: PROJECT_B,
+      workspaceId: WORKSPACE_B,
       slug: 'veyris',
       name: 'VEYRIS foreign',
       providerType: 'http',
@@ -108,7 +108,7 @@ beforeAll(async () => {
     {
       connectorId: EMAIL_CONNECTOR,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       slug: 'kortix_email',
       name: 'Email',
       providerType: 'channel',
@@ -119,7 +119,7 @@ beforeAll(async () => {
     {
       profileId: PROFILE_DEFAULT,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       connectorId: CONNECTOR_A,
       label: 'Default workspace',
       isDefault: true,
@@ -127,7 +127,7 @@ beforeAll(async () => {
     {
       profileId: PROFILE_A,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       connectorId: CONNECTOR_A,
       ownerType: 'member',
       ownerId: USER,
@@ -136,7 +136,7 @@ beforeAll(async () => {
     {
       profileId: PROFILE_B,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       connectorId: CONNECTOR_A,
       ownerType: 'member',
       ownerId: OTHER_USER,
@@ -145,7 +145,7 @@ beforeAll(async () => {
     {
       profileId: PROFILE_EXTERNAL,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       connectorId: CONNECTOR_A,
       ownerType: 'external',
       ownerId: 'managed-workspace',
@@ -154,7 +154,7 @@ beforeAll(async () => {
     {
       profileId: PROFILE_SERVICE_ACCOUNT,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       connectorId: CONNECTOR_A,
       ownerType: 'member',
       ownerId: SERVICE_ACCOUNT,
@@ -163,7 +163,7 @@ beforeAll(async () => {
     {
       profileId: EMAIL_PROFILE_DEFAULT,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       connectorId: EMAIL_CONNECTOR,
       label: 'Default email',
       isDefault: true,
@@ -171,38 +171,38 @@ beforeAll(async () => {
     {
       profileId: FOREIGN_PROFILE,
       accountId: ACCOUNT_B,
-      projectId: PROJECT_B,
+      workspaceId: WORKSPACE_B,
       connectorId: CONNECTOR_B,
       label: 'Foreign default',
       isDefault: true,
     },
   ]);
-  await db.insert(projectSessions).values([
+  await db.insert(workspaceSessions).values([
     {
       sessionId: SESSION_A,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       branchName: SESSION_A,
       createdBy: USER,
     },
     {
       sessionId: SESSION_B,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       branchName: SESSION_B,
       createdBy: OTHER_USER,
     },
     {
       sessionId: SESSION_DEFAULT,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       branchName: SESSION_DEFAULT,
       createdBy: USER,
     },
     {
       sessionId: SESSION_IMPERSONATION,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       branchName: SESSION_IMPERSONATION,
       createdBy: USER,
       visibility: 'private',
@@ -210,7 +210,7 @@ beforeAll(async () => {
     {
       sessionId: SESSION_SERVICE_ACCOUNT,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       branchName: SESSION_SERVICE_ACCOUNT,
       createdBy: SERVICE_ACCOUNT,
       visibility: 'private',
@@ -218,24 +218,24 @@ beforeAll(async () => {
     {
       sessionId: SESSION_AUTO_EMAIL,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       branchName: SESSION_AUTO_EMAIL,
       createdBy: USER,
     },
     {
       sessionId: SESSION_INHERIT_UNBOUND,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       branchName: SESSION_INHERIT_UNBOUND,
       createdBy: USER,
       connectorBindingsInheritUnbound: true,
     },
   ]);
-  await db.insert(projectSessionConnectorBindings).values([
+  await db.insert(workspaceSessionConnectorBindings).values([
     {
       sessionId: SESSION_A,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       connectorAlias: 'veyris',
       connectorId: CONNECTOR_A,
       profileId: PROFILE_A,
@@ -245,7 +245,7 @@ beforeAll(async () => {
     {
       sessionId: SESSION_B,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       connectorAlias: 'veyris',
       connectorId: CONNECTOR_A,
       profileId: PROFILE_B,
@@ -255,7 +255,7 @@ beforeAll(async () => {
     {
       sessionId: SESSION_IMPERSONATION,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       connectorAlias: 'veyris',
       connectorId: CONNECTOR_A,
       profileId: PROFILE_B,
@@ -265,7 +265,7 @@ beforeAll(async () => {
     {
       sessionId: SESSION_SERVICE_ACCOUNT,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       connectorAlias: 'veyris',
       connectorId: CONNECTOR_A,
       profileId: PROFILE_SERVICE_ACCOUNT,
@@ -277,7 +277,7 @@ beforeAll(async () => {
     {
       sessionId: SESSION_AUTO_EMAIL,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       connectorAlias: 'kortix_email',
       connectorId: EMAIL_CONNECTOR,
       profileId: EMAIL_PROFILE_DEFAULT,
@@ -289,7 +289,7 @@ beforeAll(async () => {
     {
       sessionId: SESSION_INHERIT_UNBOUND,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       connectorAlias: 'veyris',
       connectorId: CONNECTOR_A,
       profileId: PROFILE_DEFAULT,
@@ -301,29 +301,29 @@ beforeAll(async () => {
     {
       connectorId: CONNECTOR_A,
       profileId: PROFILE_DEFAULT,
-      valueEnc: encryptProjectSecret(PROJECT_A, 'default-capability'),
+      valueEnc: encryptWorkspaceSecret(WORKSPACE_A, 'default-capability'),
     },
     {
       connectorId: CONNECTOR_A,
       profileId: PROFILE_A,
-      valueEnc: encryptProjectSecret(PROJECT_A, 'workspace-a-capability'),
+      valueEnc: encryptWorkspaceSecret(WORKSPACE_A, 'workspace-a-capability'),
     },
     {
       connectorId: CONNECTOR_A,
       profileId: PROFILE_B,
-      valueEnc: encryptProjectSecret(PROJECT_A, 'workspace-b-capability'),
+      valueEnc: encryptWorkspaceSecret(WORKSPACE_A, 'workspace-b-capability'),
     },
   ]);
 });
 
 afterAll(async () => {
   await db.delete(executorCredentials).where(eq(executorCredentials.connectorId, CONNECTOR_A));
-  await db.delete(projectSessions).where(eq(projectSessions.projectId, PROJECT_A));
+  await db.delete(workspaceSessions).where(eq(workspaceSessions.workspaceId, WORKSPACE_A));
   await db
     .delete(executorConnectionProfiles)
-    .where(eq(executorConnectionProfiles.projectId, PROJECT_A));
-  await db.delete(projects).where(eq(projects.projectId, PROJECT_A));
-  await db.delete(projects).where(eq(projects.projectId, PROJECT_B));
+    .where(eq(executorConnectionProfiles.workspaceId, WORKSPACE_A));
+  await db.delete(workspaces).where(eq(workspaces.workspaceId, WORKSPACE_A));
+  await db.delete(workspaces).where(eq(workspaces.workspaceId, WORKSPACE_B));
   await db.delete(accounts).where(eq(accounts.accountId, ACCOUNT_A));
   await db.delete(accounts).where(eq(accounts.accountId, ACCOUNT_B));
 });
@@ -332,13 +332,13 @@ describe('session connector profile isolation', () => {
   test('two users sessions resolve only their distinct profiles and credentials', async () => {
     const a = await resolveSessionConnectorProfile({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       sessionId: SESSION_A,
       alias: 'veyris',
     });
     const b = await resolveSessionConnectorProfile({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       sessionId: SESSION_B,
       alias: 'veyris',
     });
@@ -357,15 +357,15 @@ describe('session connector profile isolation', () => {
     const principal = (sessionId: string, userId: string) => ({
       userId,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       sessionId,
       subject: { userId, groupIds: [] },
       agentGrant: { agent: 'veyris', connectors: ['veyris'] as string[], kortixCli: [] },
     });
     const depsA = makeDbGatewayDeps(principal(SESSION_A, USER));
     const depsB = makeDbGatewayDeps(principal(SESSION_B, OTHER_USER));
-    const connectorA = await depsA.loadConnectorBySlug(PROJECT_A, 'veyris');
-    const connectorB = await depsB.loadConnectorBySlug(PROJECT_A, 'veyris');
+    const connectorA = await depsA.loadConnectorBySlug(WORKSPACE_A, 'veyris');
+    const connectorB = await depsB.loadConnectorBySlug(WORKSPACE_A, 'veyris');
     expect(connectorA?.profileId).toBe(PROFILE_A);
     expect(connectorB?.profileId).toBe(PROFILE_B);
     if (!connectorA || !connectorB) throw new Error('Expected both gateway connectors');
@@ -376,7 +376,7 @@ describe('session connector profile isolation', () => {
   test('omitted binding resolves only the migrated/default profile', async () => {
     const resolved = await resolveSessionConnectorProfile({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       sessionId: SESSION_DEFAULT,
       alias: 'veyris',
     });
@@ -390,7 +390,7 @@ describe('session connector profile isolation', () => {
   test('a partially bound session fails closed for every unbound connector alias', async () => {
     const boundSessionEmail = await resolveSessionConnectorProfile({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       sessionId: SESSION_A,
       alias: 'kortix_email',
     });
@@ -398,7 +398,7 @@ describe('session connector profile isolation', () => {
 
     const legacySessionEmail = await resolveSessionConnectorProfile({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       sessionId: SESSION_DEFAULT,
       alias: 'kortix_email',
     });
@@ -409,14 +409,14 @@ describe('session connector profile isolation', () => {
     });
   });
 
-  test('inherit_unbound keeps the project-default fallback for unbound aliases while the explicit binding still wins', async () => {
+  test('inherit_unbound keeps the workspace-default fallback for unbound aliases while the explicit binding still wins', async () => {
     // SESSION_INHERIT_UNBOUND binds veyris (source: request) AND was created with
     // connector_bindings_inherit_unbound = true. The explicit veyris binding must
     // still win, but an UNBOUND alias (kortix_email) must fall through to the
-    // project default instead of failing closed the way SESSION_A does above.
+    // workspace default instead of failing closed the way SESSION_A does above.
     const boundVeyris = await resolveSessionConnectorProfile({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       sessionId: SESSION_INHERIT_UNBOUND,
       alias: 'veyris',
     });
@@ -424,7 +424,7 @@ describe('session connector profile isolation', () => {
 
     const unboundEmail = await resolveSessionConnectorProfile({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       sessionId: SESSION_INHERIT_UNBOUND,
       alias: 'kortix_email',
     });
@@ -441,17 +441,17 @@ describe('session connector profile isolation', () => {
     // selection. Its email alias resolves via that bound row…
     const email = await resolveSessionConnectorProfile({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       sessionId: SESSION_AUTO_EMAIL,
       alias: 'kortix_email',
     });
     expect(email).toMatchObject({ profileId: EMAIL_PROFILE_DEFAULT });
 
-    // …and an UNBOUND alias still falls back to the project default, instead of
+    // …and an UNBOUND alias still falls back to the workspace default, instead of
     // failing closed the way a caller-requested (source: 'request') binding would.
     const veyris = await resolveSessionConnectorProfile({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       sessionId: SESSION_AUTO_EMAIL,
       alias: 'veyris',
     });
@@ -464,7 +464,7 @@ describe('session connector profile isolation', () => {
 
   test('Executor ignores user-writable email routing metadata', async () => {
     await db
-      .update(projectSessions)
+      .update(workspaceSessions)
       .set({
         metadata: {
           email: {
@@ -474,23 +474,23 @@ describe('session connector profile isolation', () => {
           },
         },
       })
-      .where(eq(projectSessions.sessionId, SESSION_DEFAULT));
+      .where(eq(workspaceSessions.sessionId, SESSION_DEFAULT));
 
     const deps = makeDbGatewayDeps({
       userId: USER,
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       sessionId: SESSION_DEFAULT,
       subject: { userId: USER, groupIds: [] },
       agentGrant: { agent: 'veyris', connectors: ['kortix_email'], kortixCli: [] },
     });
-    expect(await deps.loadEmailSessionContext?.(PROJECT_A, SESSION_DEFAULT)).toBeNull();
+    expect(await deps.loadEmailSessionContext?.(WORKSPACE_A, SESSION_DEFAULT)).toBeNull();
   });
 
-  test('cross-project profile selection is rejected before session insert', async () => {
+  test('cross-workspace profile selection is rejected before session insert', async () => {
     const result = await validateSessionConnectorBindings({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       actingUserId: USER,
       actingPrincipalIsServiceAccount: false,
       mayManageSystemProfiles: true,
@@ -502,7 +502,7 @@ describe('session connector profile isolation', () => {
   test('a member may bind their own personal profile', async () => {
     const result = await validateSessionConnectorBindings({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       actingUserId: USER,
       actingPrincipalIsServiceAccount: false,
       mayManageSystemProfiles: false,
@@ -519,7 +519,7 @@ describe('session connector profile isolation', () => {
   test('manager privileges never allow binding another member personal profile', async () => {
     const result = await validateSessionConnectorBindings({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       actingUserId: USER,
       actingPrincipalIsServiceAccount: false,
       mayManageSystemProfiles: true,
@@ -531,7 +531,7 @@ describe('session connector profile isolation', () => {
   test('a service account cannot bind a member profile even when the owner id matches', async () => {
     const result = await validateSessionConnectorBindings({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       actingUserId: SERVICE_ACCOUNT,
       actingPrincipalIsServiceAccount: true,
       mayManageSystemProfiles: true,
@@ -543,7 +543,7 @@ describe('session connector profile isolation', () => {
   test('Executor rejects a pre-existing session bound to another member profile', async () => {
     const resolved = await resolveSessionConnectorProfile({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       sessionId: SESSION_IMPERSONATION,
       alias: 'veyris',
     });
@@ -553,7 +553,7 @@ describe('session connector profile isolation', () => {
   test('Executor rejects a pre-existing service-account session bound to a member profile', async () => {
     const resolved = await resolveSessionConnectorProfile({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       sessionId: SESSION_SERVICE_ACCOUNT,
       alias: 'veyris',
     });
@@ -563,7 +563,7 @@ describe('session connector profile isolation', () => {
   test('system profiles retain the explicit management capability path', async () => {
     const denied = await validateSessionConnectorBindings({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       actingUserId: USER,
       actingPrincipalIsServiceAccount: false,
       mayManageSystemProfiles: false,
@@ -573,7 +573,7 @@ describe('session connector profile isolation', () => {
 
     const unprivileged = await validateSessionConnectorBindings({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       actingUserId: USER,
       actingPrincipalIsServiceAccount: false,
       mayManageSystemProfiles: false,
@@ -581,7 +581,7 @@ describe('session connector profile isolation', () => {
     });
     const privileged = await validateSessionConnectorBindings({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       actingUserId: USER,
       actingPrincipalIsServiceAccount: false,
       mayManageSystemProfiles: true,
@@ -595,29 +595,29 @@ describe('session connector profile isolation', () => {
 
   test('a personal-profile binding fails closed if the session becomes shared', async () => {
     await db
-      .update(projectSessions)
+      .update(workspaceSessions)
       .set({ visibility: 'project' })
-      .where(eq(projectSessions.sessionId, SESSION_A));
+      .where(eq(workspaceSessions.sessionId, SESSION_A));
     const resolved = await resolveSessionConnectorProfile({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       sessionId: SESSION_A,
       alias: 'veyris',
     });
     expect(resolved).toBeNull();
     await db
-      .update(projectSessions)
+      .update(workspaceSessions)
       .set({ visibility: 'private' })
-      .where(eq(projectSessions.sessionId, SESSION_A));
+      .where(eq(workspaceSessions.sessionId, SESSION_A));
   });
 
   test('database rejects alias/profile tenant mismatch', async () => {
     let code: string | undefined;
     try {
-      await db.insert(projectSessionConnectorBindings).values({
+      await db.insert(workspaceSessionConnectorBindings).values({
         sessionId: SESSION_DEFAULT,
         accountId: ACCOUNT_A,
-        projectId: PROJECT_A,
+        workspaceId: WORKSPACE_A,
         connectorAlias: 'wrong-alias',
         connectorId: CONNECTOR_A,
         profileId: PROFILE_A,
@@ -636,7 +636,7 @@ describe('session connector profile isolation', () => {
       .where(eq(executorConnectionProfiles.profileId, PROFILE_A));
     const resolved = await resolveSessionConnectorProfile({
       accountId: ACCOUNT_A,
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       sessionId: SESSION_A,
       alias: 'veyris',
     });
@@ -670,7 +670,7 @@ describe('session connector profile isolation', () => {
     }) as typeof fetch;
     try {
       const result = await finalizePipedreamProfileConnection({
-        projectId: PROJECT_A,
+        workspaceId: WORKSPACE_A,
         slug: 'veyris',
         app: 'veyris',
         connectorId: CONNECTOR_A,
@@ -679,7 +679,7 @@ describe('session connector profile isolation', () => {
       });
       expect(result).toEqual({ connected: true, accountId: 'apn_profile_a' });
       expect(new URL(accountsUrl).searchParams.get('external_user_id')).toBe(
-        `${PROJECT_A}:veyris:${PROFILE_A}`,
+        `${WORKSPACE_A}:veyris:${PROFILE_A}`,
       );
       expect(
         await resolveProfileCredentialValue({ connectorId: CONNECTOR_A, profileId: PROFILE_A }),
@@ -687,7 +687,7 @@ describe('session connector profile isolation', () => {
     } finally {
       globalThis.fetch = realFetch;
       await upsertProfileCredential({
-        projectId: PROJECT_A,
+        workspaceId: WORKSPACE_A,
         connectorId: CONNECTOR_A,
         profileId: PROFILE_A,
         value: 'workspace-a-capability',
@@ -699,7 +699,7 @@ describe('session connector profile isolation', () => {
   test('legacy/default credential helpers never read, overwrite or delete custom profiles', async () => {
     expect(await resolveCredentialValue(CONNECTOR_A, null)).toBe('default-capability');
     await upsertCredential({
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       connectorId: CONNECTOR_A,
       userId: null,
       value: 'rotated-default',
@@ -714,7 +714,7 @@ describe('session connector profile isolation', () => {
       await resolveProfileCredentialValue({ connectorId: CONNECTOR_A, profileId: PROFILE_B }),
     ).toBe('workspace-b-capability');
     await upsertCredential({
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       connectorId: CONNECTOR_A,
       userId: null,
       value: 'default-capability',
@@ -735,7 +735,7 @@ describe('session connector profile isolation', () => {
     try {
       await upsertProfileOAuth2Credential(
         {
-          projectId: PROJECT_A,
+          workspaceId: WORKSPACE_A,
           connectorId: CONNECTOR_A,
           profileId: PROFILE_A,
           oauth2: {
@@ -765,7 +765,7 @@ describe('session connector profile isolation', () => {
       expect(acquisitions).toBe(2);
     } finally {
       await upsertProfileCredential({
-        projectId: PROJECT_A,
+        workspaceId: WORKSPACE_A,
         connectorId: CONNECTOR_A,
         profileId: PROFILE_A,
         value: 'workspace-a-capability',
@@ -789,7 +789,7 @@ describe('session connector profile isolation', () => {
     try {
       await upsertProfileOAuth2Credential(
         {
-          projectId: PROJECT_A,
+          workspaceId: WORKSPACE_A,
           connectorId: CONNECTOR_A,
           profileId: PROFILE_A,
           oauth2: {
@@ -814,7 +814,7 @@ describe('session connector profile isolation', () => {
       expect(acquisitions).toBe(2);
     } finally {
       await upsertProfileCredential({
-        projectId: PROJECT_A,
+        workspaceId: WORKSPACE_A,
         connectorId: CONNECTOR_A,
         profileId: PROFILE_A,
         value: 'workspace-a-capability',
@@ -825,7 +825,7 @@ describe('session connector profile isolation', () => {
 
   test('AgentMail profiles stay immutable per inbox and revoke on partial or final disconnect', async () => {
     await saveAgentMailInstall({
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       profileSlug: 'workspace_a',
       inboxId: 'inbox-workspace-a',
       email: 'a@example.test',
@@ -833,14 +833,14 @@ describe('session connector profile isolation', () => {
       apiKey: 'agentmail-key',
     });
     await saveAgentMailInstall({
-      projectId: PROJECT_A,
+      workspaceId: WORKSPACE_A,
       profileSlug: 'workspace_b',
       inboxId: 'inbox-workspace-b',
       email: 'b@example.test',
       displayName: 'Workspace B',
       apiKey: 'agentmail-key',
     });
-    await reconcileEmailConnectionProfiles(PROJECT_A, ACCOUNT_A);
+    await reconcileEmailConnectionProfiles(WORKSPACE_A, ACCOUNT_A);
 
     const profiles = await db
       .select({
@@ -865,16 +865,16 @@ describe('session connector profile isolation', () => {
     });
     if (!profileA || !profileB) throw new Error('Expected both AgentMail profiles');
 
-    await deleteAgentMailInstall(PROJECT_A, 'workspace_a');
-    await reconcileEmailConnectionProfiles(PROJECT_A, ACCOUNT_A);
+    await deleteAgentMailInstall(WORKSPACE_A, 'workspace_a');
+    await reconcileEmailConnectionProfiles(WORKSPACE_A, ACCOUNT_A);
     const [afterPartial] = await db
       .select({ status: executorConnectionProfiles.status })
       .from(executorConnectionProfiles)
       .where(eq(executorConnectionProfiles.profileId, profileA.profileId));
     expect(afterPartial?.status).toBe('revoked');
 
-    await deleteAgentMailInstall(PROJECT_A, 'workspace_b');
-    await reconcileEmailConnectionProfiles(PROJECT_A, ACCOUNT_A);
+    await deleteAgentMailInstall(WORKSPACE_A, 'workspace_b');
+    await reconcileEmailConnectionProfiles(WORKSPACE_A, ACCOUNT_A);
     const [afterFinal] = await db
       .select({ status: executorConnectionProfiles.status })
       .from(executorConnectionProfiles)

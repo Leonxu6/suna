@@ -1,6 +1,6 @@
 /**
  * Unit tests for the code.storage (Pierre) managed git backend
- * (projects/git-backends/code-storage.ts): JWT minting (alg/claims/scopes,
+ * (workspaces/git-backends/code-storage.ts): JWT minting (alg/claims/scopes,
  * repo-scoped vs org-wide), createRepo/deleteRepo request+response mapping,
  * buildUpstream's neutral {url, headers} shape for read vs write, and
  * seedFiles' commit-pack ndjson payload. All HTTP is mocked via
@@ -18,7 +18,7 @@ import {
   codeStorageGitAuthHeader,
   mintCodeStorageJwt,
   type GitConnectionRef,
-} from '../projects/git-backends';
+} from '../workspaces/git-backends';
 
 // Throwaway EC (P-256) and RSA keypairs — signing-only, never a live
 // code.storage credential.
@@ -63,10 +63,10 @@ afterEach(() => {
 function ref(overrides: Partial<GitConnectionRef> = {}): GitConnectionRef {
   return {
     provider: 'code-storage',
-    upstreamUrl: 'https://acme.code.storage/team/project-alpha.git',
+    upstreamUrl: 'https://acme.code.storage/team/workspace-alpha.git',
     externalRepoId: 'repo_7f2b3d9',
     repoOwner: null,
-    repoName: 'team/project-alpha',
+    repoName: 'team/workspace-alpha',
     installationId: null,
     credentialRef: null,
     defaultBranch: 'main',
@@ -78,12 +78,12 @@ function ref(overrides: Partial<GitConnectionRef> = {}): GitConnectionRef {
 
 describe('mintCodeStorageJwt', () => {
   test('signs ES256 for an EC private key, verifiable by a spec-compliant verifier', async () => {
-    const jwt = mintCodeStorageJwt({ repo: 'team/project-alpha', scopes: ['git:read'] });
+    const jwt = mintCodeStorageJwt({ repo: 'team/workspace-alpha', scopes: ['git:read'] });
     expect(decodeJwtHeader(jwt)).toEqual({ alg: 'ES256', typ: 'JWT' });
     const key = await importSPKI(EC_PUBLIC_PEM, 'ES256');
     const { payload } = await jwtVerify(jwt, key);
     expect(payload.iss).toBe('acme');
-    expect(payload.repo).toBe('team/project-alpha');
+    expect(payload.repo).toBe('team/workspace-alpha');
     expect(payload.scopes).toEqual(['git:read']);
   });
 
@@ -99,7 +99,7 @@ describe('mintCodeStorageJwt', () => {
   test('claims: iss/sub/scopes/iat/exp, repo-scoped', () => {
     const before = Math.floor(Date.now() / 1000);
     const jwt = mintCodeStorageJwt({
-      repo: 'team/project-alpha',
+      repo: 'team/workspace-alpha',
       scopes: ['git:write', 'git:read'],
       ttlSeconds: 120,
       subject: 'kortix-session-42',
@@ -107,7 +107,7 @@ describe('mintCodeStorageJwt', () => {
     const payload = decodeJwtPayload(jwt);
     expect(payload.iss).toBe('acme');
     expect(payload.sub).toBe('kortix-session-42');
-    expect(payload.repo).toBe('team/project-alpha');
+    expect(payload.repo).toBe('team/workspace-alpha');
     expect(payload.scopes).toEqual(['git:write', 'git:read']);
     expect(payload.iat as number).toBeGreaterThanOrEqual(before);
     expect(payload.exp as number).toBe((payload.iat as number) + 120);
@@ -149,13 +149,13 @@ describe('mintCodeStorageJwt', () => {
     // newlines flattened to the two-character sequence `\n`.
     const mangled = `"${EC_PRIVATE_PEM.trim().replace(/\n/g, '\\n')}"`;
     config.CODE_STORAGE_PRIVATE_KEY = mangled;
-    const jwt = mintCodeStorageJwt({ repo: 'team/project-alpha', scopes: ['git:read'] });
+    const jwt = mintCodeStorageJwt({ repo: 'team/workspace-alpha', scopes: ['git:read'] });
     expect(decodeJwtHeader(jwt)).toEqual({ alg: 'ES256', typ: 'JWT' });
     // Verifiable against the ORIGINAL (un-mangled) public key — proves the
     // normalized PEM signs identically to the clean one.
     const key = await importSPKI(EC_PUBLIC_PEM, 'ES256');
     const { payload } = await jwtVerify(jwt, key);
-    expect(payload.repo).toBe('team/project-alpha');
+    expect(payload.repo).toBe('team/workspace-alpha');
   });
 });
 
@@ -185,12 +185,12 @@ describe('isConfigured', () => {
 describe('buildUpstream', () => {
   test('write scope: url + Basic header carrying a self-minted git:write+git:read token', () => {
     const up = codeStorageBackend.buildUpstream(ref(), null, 'write');
-    expect(up.url).toBe('https://acme.code.storage/team/project-alpha.git');
+    expect(up.url).toBe('https://acme.code.storage/team/workspace-alpha.git');
     const [, encoded] = up.headers.Authorization!.split(' ');
     const [user, jwt] = Buffer.from(encoded!, 'base64').toString('utf8').split(':');
     expect(user).toBe('t');
     const payload = decodeJwtPayload(jwt!);
-    expect(payload.repo).toBe('team/project-alpha');
+    expect(payload.repo).toBe('team/workspace-alpha');
     expect(payload.scopes).toEqual(['git:write', 'git:read']);
   });
 
@@ -210,7 +210,7 @@ describe('buildUpstream', () => {
   test('CODE_STORAGE_GIT_HOST override changes the remote host', () => {
     config.CODE_STORAGE_GIT_HOST = 'git.acme-cluster.example';
     const up = codeStorageBackend.buildUpstream(ref(), 'tok', 'read');
-    expect(up.url).toBe('https://git.acme-cluster.example/team/project-alpha.git');
+    expect(up.url).toBe('https://git.acme-cluster.example/team/workspace-alpha.git');
   });
 });
 
@@ -239,15 +239,15 @@ describe('createRepo / deleteRepo (mocked HTTP)', () => {
       requests.push({ url: href, init });
       return json({
         repo_id: 'repo_7f2b3d9',
-        http_url: 'https://git.code.storage/acme/my-project',
+        http_url: 'https://git.code.storage/acme/my-workspace',
         message: 'repository created',
       });
     }) as unknown as typeof fetch;
 
     const repo = await codeStorageBackend.createRepo({
       accountId: 'acct-1',
-      projectId: 'proj-1',
-      slug: 'my-project',
+      workspaceId: 'proj-1',
+      slug: 'my-workspace',
       defaultBranch: 'main',
       isPrivate: true,
     });
@@ -262,22 +262,22 @@ describe('createRepo / deleteRepo (mocked HTTP)', () => {
     // Per the live create-repo.md schema (additionalProperties: false, no
     // `id` field): the target repo's identity comes from the JWT `repo`
     // claim, not the body — so the token MUST be repo-scoped to the slug.
-    expect(payload.repo).toBe('my-project');
+    expect(payload.repo).toBe('my-workspace');
     const sentBody = JSON.parse(String(requests[0]!.init?.body));
     expect(sentBody).toEqual({ default_branch: 'main' });
     expect(sentBody).not.toHaveProperty('id');
 
     expect(repo.provider).toBe('code-storage');
     expect(repo.externalRepoId).toBe('repo_7f2b3d9');
-    expect(repo.repoName).toBe('acme/my-project'); // parsed from http_url's path
-    expect(repo.upstreamUrl).toBe('https://acme.code.storage/acme/my-project.git');
+    expect(repo.repoName).toBe('acme/my-workspace'); // parsed from http_url's path
+    expect(repo.upstreamUrl).toBe('https://acme.code.storage/acme/my-workspace.git');
     expect(repo.defaultBranch).toBe('main');
     expect(repo.repoOwner).toBeNull();
     expect(repo.installationId).toBeNull();
     // initialToken: repo-scoped git:write(+read)
     expect(repo.initialToken).toBeTruthy();
     const initialPayload = decodeJwtPayload(repo.initialToken!);
-    expect(initialPayload.repo).toBe('acme/my-project');
+    expect(initialPayload.repo).toBe('acme/my-workspace');
     expect(initialPayload.scopes).toEqual(['git:write', 'git:read']);
   });
 
@@ -285,7 +285,7 @@ describe('createRepo / deleteRepo (mocked HTTP)', () => {
     globalThis.fetch = (async () => json({ repo_id: 'repo_x', message: 'ok' })) as unknown as typeof fetch;
     const repo = await codeStorageBackend.createRepo({
       accountId: 'a',
-      projectId: 'p',
+      workspaceId: 'p',
       slug: 'fallback-slug',
       defaultBranch: 'main',
       isPrivate: true,
@@ -299,7 +299,7 @@ describe('createRepo / deleteRepo (mocked HTTP)', () => {
     await expect(
       codeStorageBackend.createRepo({
         accountId: 'a',
-        projectId: 'p',
+        workspaceId: 'p',
         slug: 'dup',
         defaultBranch: 'main',
         isPrivate: true,
@@ -312,13 +312,13 @@ describe('createRepo / deleteRepo (mocked HTTP)', () => {
     globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
       const href = typeof url === 'string' || url instanceof URL ? String(url) : url.url;
       requests.push({ url: href, init });
-      return json({ repo_id: 'repo_x', http_url: 'https://git.code.storage/acme/my-project', message: 'ok' });
+      return json({ repo_id: 'repo_x', http_url: 'https://git.code.storage/acme/my-workspace', message: 'ok' });
     }) as unknown as typeof fetch;
 
     await codeStorageBackend.createRepo({
       accountId: 'a',
-      projectId: 'p',
-      slug: 'my-project',
+      workspaceId: 'p',
+      slug: 'my-workspace',
       defaultBranch: 'main',
       isPrivate: true,
     });
@@ -337,12 +337,12 @@ describe('createRepo / deleteRepo (mocked HTTP)', () => {
 
     expect(requests).toHaveLength(1);
     expect(requests[0]!.url).toBe(
-      `https://api.acme.code.storage/api/repos/${encodeURIComponent('team/project-alpha')}`,
+      `https://api.acme.code.storage/api/repos/${encodeURIComponent('team/workspace-alpha')}`,
     );
     expect(requests[0]!.init?.method).toBe('DELETE');
     const token = (requests[0]!.init?.headers as Record<string, string>).Authorization!.replace('Bearer ', '');
     const payload = decodeJwtPayload(token);
-    expect(payload.repo).toBe('team/project-alpha');
+    expect(payload.repo).toBe('team/workspace-alpha');
     expect(payload.scopes).toEqual(['repo:write']);
   });
 
@@ -425,16 +425,16 @@ describe('seedFiles (mocked HTTP, commit-pack ndjson)', () => {
       ref(),
       'git-write-token',
       [{ path: 'README.md', content: '# hello' }],
-      { branch: 'main', message: 'chore: scaffold Kortix project' },
+      { branch: 'main', message: 'chore: scaffold Kortix workspace' },
     );
 
     expect(urls).toHaveLength(1);
     expect(urls[0]).toBe(
-      `https://api.acme.code.storage/api/repos/${encodeURIComponent('team/project-alpha')}/commit-pack`,
+      `https://api.acme.code.storage/api/repos/${encodeURIComponent('team/workspace-alpha')}/commit-pack`,
     );
     const lines = parseNdjson(bodies[0]!);
     expect(lines[0].metadata.target_branch).toBe('main');
-    expect(lines[0].metadata.commit_message).toBe('chore: scaffold Kortix project');
+    expect(lines[0].metadata.commit_message).toBe('chore: scaffold Kortix workspace');
     expect(lines[0].metadata.files).toEqual([
       { path: 'README.md', operation: 'upsert', content_id: 'blob-0', mode: '100644' },
     ]);
@@ -444,11 +444,11 @@ describe('seedFiles (mocked HTTP, commit-pack ndjson)', () => {
     expect(lines[1].blob_chunk.eof).toBe(true);
   });
 
-  test('two sequential commits when baseFiles is set: deterministic scaffold, then project files', async () => {
+  test('two sequential commits when baseFiles is set: deterministic scaffold, then workspace files', async () => {
     await codeStorageBackend.seedFiles!(
       ref(),
       'git-write-token',
-      [{ path: 'kortix.yaml', content: 'name: my-project' }],
+      [{ path: 'kortix.yaml', content: 'name: my-workspace' }],
       {
         branch: 'main',
         message: 'ignored when baseFiles present',
@@ -458,11 +458,11 @@ describe('seedFiles (mocked HTTP, commit-pack ndjson)', () => {
 
     expect(urls).toHaveLength(2);
     const first = parseNdjson(bodies[0]!);
-    expect(first[0].metadata.commit_message).toBe('chore: scaffold Kortix project');
+    expect(first[0].metadata.commit_message).toBe('chore: scaffold Kortix workspace');
     expect(first[0].metadata.files[0].path).toBe('.kortix/agent.md');
 
     const second = parseNdjson(bodies[1]!);
-    expect(second[0].metadata.commit_message).toBe('chore: project setup');
+    expect(second[0].metadata.commit_message).toBe('chore: workspace setup');
     expect(second[0].metadata.files[0].path).toBe('kortix.yaml');
   });
 

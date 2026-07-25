@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 
-import { buildSessionRuntimeEnv } from '../projects/lib/session-runtime-env';
+import { buildSessionRuntimeEnv } from '../workspaces/lib/session-runtime-env';
 
 const base = {
-  projectId: 'proj-1',
+  workspaceId: 'proj-1',
   sessionId: 'sess-1',
-  repoUrl: 'https://github.com/kortix/project.git',
+  repoUrl: 'https://github.com/kortix/workspace.git',
   baseRef: 'main',
   agentName: 'default',
   apiUrl: 'https://api.kortix.test/v1',

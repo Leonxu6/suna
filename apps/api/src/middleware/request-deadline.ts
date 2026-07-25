@@ -66,7 +66,7 @@ const EXEMPT_PREFIXES = [
 ];
 
 // Path fragments for streaming or legitimately long *synchronous* endpoints
-// that live under otherwise-bounded prefixes (e.g. /v1/projects/:id/...).
+// that live under otherwise-bounded prefixes (e.g. /v1/workspaces/:id/...).
 // These either boot sandboxes, push git repos, or sweep batches — work that
 // can exceed the deadline while behaving correctly. Enumerated from 7 days of
 // prod duration data (2026-06-12).
@@ -90,7 +90,7 @@ const EXEMPT_FRAGMENTS = [
                               // plus its GET .../updates drift-listing route
   '/snapshots',               // sandbox template builds
   '/suna-migration',          // OG Suna → opencode migration runs
-  '/legacy-migration',        // legacy VM → project migration runs
+  '/legacy-migration',        // legacy VM → workspace migration runs
   '/oauth/',                  // provider OAuth device flow — `start` spawns
                               // OpenCode + waits for the device challenge, which
                               // can exceed the deadline on a cold replica
@@ -99,7 +99,7 @@ const EXEMPT_FRAGMENTS = [
 // Long synchronous creates that can't be matched by fragment without
 // catching unrelated routes: method + exact path (or path prefix) pairs.
 const EXEMPT_METHOD_PATHS: Array<{ method: string; path: string }> = [
-  { method: 'POST', path: '/v1/projects' },          // create + seed + provision
+  { method: 'POST', path: '/v1/workspaces' },          // create + seed + provision
 ];
 
 export function isExempt(c: Context): boolean {

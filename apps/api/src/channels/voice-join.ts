@@ -47,14 +47,14 @@ export interface VoiceJoinPatch {
  * join patch — is unchanged.
  */
 export function voiceJoinPatch(
-  projectId: string,
+  workspaceId: string,
   sessionId: string,
   bridgeUrl: string,
 ): VoiceJoinPatch | null {
   if (!bridgeUrl) return null;
   return {
     metadata: {
-      kortix_project_id: projectId,
+      kortix_workspace_id: workspaceId,
       kortix_session_id: sessionId,
       kortix_token: voiceSessionToken(sessionId),
     },

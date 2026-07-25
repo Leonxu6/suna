@@ -4,21 +4,21 @@ import {
   serializeManifest,
   extractTriggers,
   triggerSpecToTomlEntry,
-} from '../projects/triggers';
-import { draftToSpec, parseTriggerDraft } from '../projects/lib/triggers';
-import { extractAgents } from '../projects/agents';
-import { extractConnectors } from '../projects/connectors';
+} from '../workspaces/triggers';
+import { draftToSpec, parseTriggerDraft } from '../workspaces/lib/triggers';
+import { extractAgents } from '../workspaces/agents';
+import { extractConnectors } from '../workspaces/connectors';
 
 // Empirical ground truth for the dual-format (TOML v1 + YAML v2) manifest core:
 // parse → extract each resource → serialize → re-parse, for BOTH formats, and
-// prove the write path preserves the file's own format (a .yaml project must
+// prove the write path preserves the file's own format (a .yaml workspace must
 // never serialize back as TOML).
 
 const YAML_V2 = `kortix_version: 2
 default_agent: kortix
-project:
+workspace:
   name: probe
-  description: A probe project.
+  description: A probe workspace.
 env:
   required: []
   optional: [STRIPE_API_KEY]
@@ -31,7 +31,7 @@ agents:
     kortix_cli: all
     skills: all
   scout:
-    kortix_cli: [project.cr.open]
+    kortix_cli: [workspace.cr.open]
     connectors: [github]
 triggers:
   - slug: nightly
@@ -81,7 +81,7 @@ describe('YAML v2 manifest — parse + extract', () => {
     const names = specs.map((s) => s.name).sort();
     expect(names).toEqual(['kortix', 'scout']);
     const scout = specs.find((s) => s.name === 'scout')!;
-    expect(scout.kortixCli).toEqual(['project.cr.open']);
+    expect(scout.kortixCli).toEqual(['workspace.cr.open']);
     expect(scout.connectors).toEqual(['github']);
     const kortix = specs.find((s) => s.name === 'kortix')!;
     expect(kortix.connectors).toBe('all');
@@ -153,7 +153,7 @@ describe('draftToSpec — new trigger spec path uses the real manifest file', ()
         filter: null,
   };
 
-  test('YAML project → path is kortix.yaml#triggers.<slug> (not hardcoded toml)', () => {
+  test('YAML workspace → path is kortix.yaml#triggers.<slug> (not hardcoded toml)', () => {
     expect(draftToSpec(draft, 'kortix.yaml').path).toBe('kortix.yaml#triggers.nightly');
   });
 
@@ -165,9 +165,9 @@ describe('draftToSpec — new trigger spec path uses the real manifest file', ()
 describe('session_mode = pinned — parse, validate, serialize', () => {
   const yamlWith = (triggerExtra: string) => `kortix_version: 2
 default_agent: kortix
-project:
+workspace:
   name: probe
-  description: A probe project.
+  description: A probe workspace.
 env:
   required: []
   optional: []

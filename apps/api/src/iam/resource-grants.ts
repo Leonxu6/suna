@@ -2,15 +2,15 @@
  * IAM V2 per-RESOURCE scoping — engine + repository for iam_resource_grants.
  *
  * Scopes a member or group (Department) to a SPECIFIC agent or skill within a
- * project. This is the layer that answers "Marketing may use agent
+ * workspace. This is the layer that answers "Marketing may use agent
  * `outreach-bot` and skill `lead-research`, nothing else." It sits as an
- * INTERSECTION on top of the project-role / custom-policy verdict in
+ * INTERSECTION on top of the workspace-role / custom-policy verdict in
  * authorizeV2.
  *
  * Semantics — RESOURCE-ID-LEVEL activation (deliberately opt-in, no lockouts):
  *   - A resource (agent name / skill slug) becomes "scoped" once >=1 grant row
- *     exists for (project, resource_type, resource_id).
- *   - UNSCOPED resources (no grant rows) stay project-wide — scoping agent A
+ *     exists for (workspace, resource_type, resource_id).
+ *   - UNSCOPED resources (no grant rows) stay workspace-wide — scoping agent A
  *     restricts only agent A; agents B/C with no grant stay open to anyone who
  *     holds the capability. So creating the first grant never silently locks a
  *     department out of everything else.
@@ -20,8 +20,8 @@
  *     fold runs for human members only (service accounts are governed by their
  *     own policies + agentGrant).
  *
- * Cache: a project+type keyed memo (~15s TTL) holds the grant map; mutations
- * bust it synchronously on the writing replica (invalidateIamCacheForProject-
+ * Cache: a workspace+type keyed memo (~15s TTL) holds the grant map; mutations
+ * bust it synchronously on the writing replica (invalidateIamCacheForWorkspace-
  * Resources), with the same <=TTL cross-replica lag the rest of the IAM cache
  * already accepts. The empty (unscoped) map IS cached — that's the common,
  * hot-path case — and every mutation busts it.
@@ -46,15 +46,15 @@ import { iamResourceGrants } from '@kortix/db';
 import { db } from '../shared/db';
 import { ttlMemo } from '../shared/ttl-memo';
 import {
-  invalidateIamCacheForProjectResources,
-  registerProjectScopedMemo,
+  invalidateIamCacheForWorkspaceResources,
+  registerWorkspaceScopedMemo,
 } from './cache-invalidation';
 
 /** The resource kinds that support per-resource scoping today. `skill` and
  *  `secret` are READ/REVOKE-only back-compat holdovers — see the module
  *  doc comment above and CREATABLE_RESOURCE_GRANT_TYPES below. agent/skill ids
  *  come from the git config; secret ids are the secret NAME (uppercased key)
- *  from the project_secrets table. */
+ *  from the workspace_secrets table. */
 export const RESOURCE_GRANT_TYPES = ['agent', 'skill', 'secret'] as const;
 export type ResourceType = (typeof RESOURCE_GRANT_TYPES)[number];
 
@@ -88,8 +88,8 @@ const TTL_MS = (() => {
 
 /**
  * PURE. Is THIS resource accessible to a principal (userId + their group ids),
- * given the grant rows for that one (project, type, resourceId)?
- * - undefined/empty grants → accessible (unscoped resource = project-wide).
+ * given the grant rows for that one (workspace, type, resourceId)?
+ * - undefined/empty grants → accessible (unscoped resource = workspace-wide).
  * - has grants → accessible iff one matches the user or one of their groups.
  * Unit-tested directly (no DB) like the other pure engine helpers.
  */
@@ -128,26 +128,26 @@ export function isResourceExplicitlyGranted(
   return false;
 }
 
-export async function isProjectResourceExplicitlyGranted(
-  projectId: string,
+export async function isWorkspaceResourceExplicitlyGranted(
+  workspaceId: string,
   resourceType: ResourceType,
   resourceId: string,
   userId: string,
   groupIds: readonly string[],
 ): Promise<boolean> {
-  const map = await loadProjectResourceGrants(projectId, resourceType);
+  const map = await loadWorkspaceResourceGrants(workspaceId, resourceType);
   return isResourceExplicitlyGranted(map.get(resourceId), userId, groupIds);
 }
 
 /**
- * project+type keyed map: resourceId → granted principals (non-expired allows).
+ * workspace+type keyed map: resourceId → granted principals (non-expired allows).
  * Memoized; the empty map is cached too (the common unscoped case) and busted on
- * mutation. Registered as a project-scoped memo so a grant change drops it.
+ * mutation. Registered as a workspace-scoped memo so a grant change drops it.
  */
-const loadProjectResourceGrants = ttlMemo({
+const loadWorkspaceResourceGrants = ttlMemo({
   ttlMs: TTL_MS,
-  keyFn: (projectId: string, resourceType: string) => `${projectId}|${resourceType}`,
-  loader: async (projectId: string, resourceType: string) => {
+  keyFn: (workspaceId: string, resourceType: string) => `${workspaceId}|${resourceType}`,
+  loader: async (workspaceId: string, resourceType: string) => {
     const rows = await db
       .select({
         resourceId: iamResourceGrants.resourceId,
@@ -157,7 +157,7 @@ const loadProjectResourceGrants = ttlMemo({
       .from(iamResourceGrants)
       .where(
         and(
-          eq(iamResourceGrants.projectId, projectId),
+          eq(iamResourceGrants.workspaceId, workspaceId),
           eq(iamResourceGrants.resourceType, resourceType),
           eq(iamResourceGrants.effect, 'allow'),
           or(isNull(iamResourceGrants.expiresAt), gt(iamResourceGrants.expiresAt, sql`now()`)),
@@ -177,63 +177,63 @@ const loadProjectResourceGrants = ttlMemo({
   },
   shouldCache: () => true,
 });
-registerProjectScopedMemo(loadProjectResourceGrants);
+registerWorkspaceScopedMemo(loadWorkspaceResourceGrants);
 
-export { loadProjectResourceGrants };
+export { loadWorkspaceResourceGrants };
 
 /**
- * Cheap memoized gate: does this project scope ANY agent or skill? Lets read
+ * Cheap memoized gate: does this workspace scope ANY agent or skill? Lets read
  * paths (file routes, pickers) skip the whole denied-path computation — and the
  * config load it needs — in the common case where nothing is scoped. Two memo
  * hits, no DB round-trip on the hot path once warm.
  */
-export async function hasAnyResourceGrants(projectId: string): Promise<boolean> {
+export async function hasAnyResourceGrants(workspaceId: string): Promise<boolean> {
   const [agents, skills] = await Promise.all([
-    loadProjectResourceGrants(projectId, 'agent'),
-    loadProjectResourceGrants(projectId, 'skill'),
+    loadWorkspaceResourceGrants(workspaceId, 'agent'),
+    loadWorkspaceResourceGrants(workspaceId, 'skill'),
   ]);
   return agents.size > 0 || skills.size > 0;
 }
 
 /**
- * Of `resourceIds`, the ones with NO grant (unscoped = project-wide). Used to
+ * Of `resourceIds`, the ones with NO grant (unscoped = workspace-wide). Used to
  * show an unidentified caller (e.g. a not-logged-in Slack user) only the
- * project-wide agents/skills, never a scoped one's name.
+ * workspace-wide agents/skills, never a scoped one's name.
  */
 export async function unscopedResourceIds(
-  projectId: string,
+  workspaceId: string,
   resourceType: ResourceType,
   resourceIds: readonly string[],
 ): Promise<string[]> {
-  const map = await loadProjectResourceGrants(projectId, resourceType);
+  const map = await loadWorkspaceResourceGrants(workspaceId, resourceType);
   return resourceIds.filter((id) => !map.has(id));
 }
 
-/** Engine entry point: is (project, type, resourceId) accessible to this member? */
-export async function isProjectResourceAccessible(
-  projectId: string,
+/** Engine entry point: is (workspace, type, resourceId) accessible to this member? */
+export async function isWorkspaceResourceAccessible(
+  workspaceId: string,
   resourceType: ResourceType,
   resourceId: string,
   userId: string,
   groupIds: readonly string[],
 ): Promise<boolean> {
-  const map = await loadProjectResourceGrants(projectId, resourceType);
+  const map = await loadWorkspaceResourceGrants(workspaceId, resourceType);
   return isResourceAccessible(map.get(resourceId), userId, groupIds);
 }
 
 /**
  * Filter a list of resource ids to the ones this member can access — used to
- * hide ungranted agents/skills from the project config the UI renders. Returns
+ * hide ungranted agents/skills from the workspace config the UI renders. Returns
  * the input order. One memo hit for the whole list.
  */
 export async function filterAccessibleResourceIds(
-  projectId: string,
+  workspaceId: string,
   resourceType: ResourceType,
   resourceIds: readonly string[],
   userId: string,
   groupIds: readonly string[],
 ): Promise<string[]> {
-  const map = await loadProjectResourceGrants(projectId, resourceType);
+  const map = await loadWorkspaceResourceGrants(workspaceId, resourceType);
   return resourceIds.filter((id) => isResourceAccessible(map.get(id), userId, groupIds));
 }
 
@@ -250,8 +250,8 @@ interface ResourceGrantRow {
   createdAt: Date;
 }
 
-/** Every grant for a project (for the Members UI). */
-export async function listResourceGrants(projectId: string): Promise<ResourceGrantRow[]> {
+/** Every grant for a workspace (for the Members UI). */
+export async function listResourceGrants(workspaceId: string): Promise<ResourceGrantRow[]> {
   return db
     .select({
       grantId: iamResourceGrants.grantId,
@@ -264,13 +264,13 @@ export async function listResourceGrants(projectId: string): Promise<ResourceGra
       createdAt: iamResourceGrants.createdAt,
     })
     .from(iamResourceGrants)
-    .where(eq(iamResourceGrants.projectId, projectId));
+    .where(eq(iamResourceGrants.workspaceId, workspaceId));
 }
 
 /** Create or update a grant (idempotent on the unique principal+resource key). */
 export async function upsertResourceGrant(input: {
   accountId: string;
-  projectId: string;
+  workspaceId: string;
   resourceType: ResourceType;
   resourceId: string;
   principalType: PrincipalType;
@@ -284,7 +284,7 @@ export async function upsertResourceGrant(input: {
     .insert(iamResourceGrants)
     .values({
       accountId: input.accountId,
-      projectId: input.projectId,
+      workspaceId: input.workspaceId,
       resourceType: input.resourceType,
       resourceId: input.resourceId,
       principalType: input.principalType,
@@ -296,7 +296,7 @@ export async function upsertResourceGrant(input: {
     })
     .onConflictDoUpdate({
       target: [
-        iamResourceGrants.projectId,
+        iamResourceGrants.workspaceId,
         iamResourceGrants.resourceType,
         iamResourceGrants.resourceId,
         iamResourceGrants.principalType,
@@ -309,16 +309,16 @@ export async function upsertResourceGrant(input: {
       },
     })
     .returning({ grantId: iamResourceGrants.grantId });
-  invalidateIamCacheForProjectResources(input.projectId);
+  invalidateIamCacheForWorkspaceResources(input.workspaceId);
   return { grantId: row.grantId };
 }
 
-/** Delete a grant by id (scoped to the project so a stray id can't cross over). */
-export async function deleteResourceGrant(grantId: string, projectId: string): Promise<boolean> {
+/** Delete a grant by id (scoped to the workspace so a stray id can't cross over). */
+export async function deleteResourceGrant(grantId: string, workspaceId: string): Promise<boolean> {
   const deleted = await db
     .delete(iamResourceGrants)
-    .where(and(eq(iamResourceGrants.grantId, grantId), eq(iamResourceGrants.projectId, projectId)))
+    .where(and(eq(iamResourceGrants.grantId, grantId), eq(iamResourceGrants.workspaceId, workspaceId)))
     .returning({ grantId: iamResourceGrants.grantId });
-  invalidateIamCacheForProjectResources(projectId);
+  invalidateIamCacheForWorkspaceResources(workspaceId);
   return deleted.length > 0;
 }

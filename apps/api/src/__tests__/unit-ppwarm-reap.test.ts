@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { excludePinnedTargets, ppwarmReapTargets, perProjectWarmImageName } from '../snapshots/ppwarm-names';
+import { excludePinnedTargets, ppwarmReapTargets, perWorkspaceWarmImageName } from '../snapshots/ppwarm-names';
 
-// proj8 = first 8 hex chars of the projectId with dashes stripped.
+// proj8 = first 8 hex chars of the workspaceId with dashes stripped.
 const PROJ_A = '9ee8bc9c-5108-437f-a01f-6c5e26f2062c'; // proj8 = 9ee8bc9c
 const CURRENT = 'kortix-ppwarm-9ee8bc9c-aaaaaaaaaaaa';
 
 describe('ppwarmReapTargets — on-bake reap selector', () => {
-  test('reaps superseded tips of the same project, keeps the current', () => {
+  test('reaps superseded tips of the same workspace, keeps the current', () => {
     const names = [
       'kortix-ppwarm-9ee8bc9c-aaaaaaaaaaaa', // current
       'kortix-ppwarm-9ee8bc9c-bbbbbbbbbbbb', // superseded
@@ -18,11 +18,11 @@ describe('ppwarmReapTargets — on-bake reap selector', () => {
     ]);
   });
 
-  test('never touches another project (proj8-scoped)', () => {
+  test('never touches another workspace (proj8-scoped)', () => {
     const names = [
-      'kortix-ppwarm-9ee8bc9c-aaaaaaaaaaaa', // current, project A
-      'kortix-ppwarm-dc42fe89-bbbbbbbbbbbb', // project B — off-limits
-      'kortix-ppwarm-dc42fe89-cccccccccccc', // project B — off-limits
+      'kortix-ppwarm-9ee8bc9c-aaaaaaaaaaaa', // current, workspace A
+      'kortix-ppwarm-dc42fe89-bbbbbbbbbbbb', // workspace B — off-limits
+      'kortix-ppwarm-dc42fe89-cccccccccccc', // workspace B — off-limits
     ];
     expect(ppwarmReapTargets(PROJ_A, CURRENT, names)).toEqual([]);
   });
@@ -43,10 +43,10 @@ describe('ppwarmReapTargets — on-bake reap selector', () => {
     expect(ppwarmReapTargets(PROJ_A, CURRENT, [])).toEqual([]);
   });
 
-  test('integrates with perProjectWarmImageName: a moved tip makes the old image a target, a re-bake does not', () => {
+  test('integrates with perWorkspaceWarmImageName: a moved tip makes the old image a target, a re-bake does not', () => {
     const base = 'kortix-default-e881f000eae5';
-    const cur = perProjectWarmImageName(PROJ_A, 'tipB', base);
-    const old = perProjectWarmImageName(PROJ_A, 'tipA', base);
+    const cur = perWorkspaceWarmImageName(PROJ_A, 'tipB', base);
+    const old = perWorkspaceWarmImageName(PROJ_A, 'tipA', base);
     expect(cur.startsWith('kortix-ppwarm-9ee8bc9c-')).toBe(true);
     expect(old).not.toBe(cur);
     // moved tip: the old image is a reap target, the current is kept
@@ -66,8 +66,8 @@ describe('ppwarmReapTargets — on-bake reap selector', () => {
 });
 
 describe('excludePinnedTargets — FIX-K-lite proj8-collision guard', () => {
-  test("a colliding project B's LIVE pinned image sharing proj8 is NEVER reaped", () => {
-    // Project A and project B collide on proj8 (both 9ee8bc9c). A bakes and its
+  test("a colliding workspace B's LIVE pinned image sharing proj8 is NEVER reaped", () => {
+    // Workspace A and workspace B collide on proj8 (both 9ee8bc9c). A bakes and its
     // raw prefix-scoped selection sweeps up B's live pinned tip as a "superseded"
     // one — the exact org-wide-collision bug. The pinned guard keeps B's image.
     const bPinned = 'kortix-ppwarm-9ee8bc9c-bbbbbbbbbbbb'; // B's LIVE pinned image
@@ -79,7 +79,7 @@ describe('excludePinnedTargets — FIX-K-lite proj8-collision guard', () => {
     const raw = ppwarmReapTargets(PROJ_A, CURRENT, names);
     expect(raw.sort()).toEqual(['kortix-ppwarm-9ee8bc9c-aaaa00000000', bPinned]); // bug: B included
 
-    const pinned = new Set([bPinned]); // any project's active pin
+    const pinned = new Set([bPinned]); // any workspace's active pin
     const guarded = excludePinnedTargets(raw, pinned);
     expect(guarded).toEqual(['kortix-ppwarm-9ee8bc9c-aaaa00000000']); // A's superseded reaped
     expect(guarded).not.toContain(bPinned); // B's LIVE pinned image survives

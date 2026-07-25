@@ -163,8 +163,8 @@ const sandboxProxyLimiter = new TokenBucketRateLimiter('sandbox_proxy');
 const publicSessionShareLimiter = new TokenBucketRateLimiter('public_session_share');
 const demoRequestLimiter = new TokenBucketRateLimiter('demo_request');
 const checkEmailLimiter = new TokenBucketRateLimiter('check_email');
-const projectWebhookLimiter = new TokenBucketRateLimiter('project_webhook');
-const projectWebhookManifestRefreshLimiter = new TokenBucketRateLimiter('project_webhook_manifest_refresh');
+const workspaceWebhookLimiter = new TokenBucketRateLimiter('workspace_webhook');
+const workspaceWebhookManifestRefreshLimiter = new TokenBucketRateLimiter('workspace_webhook_manifest_refresh');
 export const sessionLlmLimiter = new TokenBucketRateLimiter('session_llm');
 
 export function createInviteAcceptRateLimitMiddleware() {
@@ -313,15 +313,15 @@ export function createCheckEmailRateLimitMiddleware() {
 }
 
 /**
- * Guards public project webhooks before the handler loads Git-backed trigger
+ * Guards public workspace webhooks before the handler loads Git-backed trigger
  * configuration. The rejection path does not write an audit row. An attacker
  * must not convert a request flood into a database-write flood.
  */
-export function createProjectWebhookRateLimitMiddleware() {
+export function createWorkspaceWebhookRateLimitMiddleware() {
   return async (c: Context, next: Next) => {
-    const projectId = c.req.param('projectId') || 'unknown';
-    const result = projectWebhookLimiter.check(`${projectId}:${clientIp(c)}`, {
-      limit: positiveInt((config as any).KORTIX_PROJECT_WEBHOOK_REQS_PER_MIN, 120),
+    const workspaceId = c.req.param('workspaceId') || 'unknown';
+    const result = workspaceWebhookLimiter.check(`${workspaceId}:${clientIp(c)}`, {
+      limit: positiveInt((config as any).KORTIX_WORKSPACE_WEBHOOK_REQS_PER_MIN, 120),
       windowMs: 60_000,
     });
     setHeaders(c, result);
@@ -337,11 +337,11 @@ export function createProjectWebhookRateLimitMiddleware() {
 }
 
 /**
- * Bound forced Git mirror refreshes by project, independent of source IP.
+ * Bound forced Git mirror refreshes by workspace, independent of source IP.
  * Each API replica owns a local mirror, so each replica needs its own budget.
  */
-export function consumeProjectWebhookManifestRefreshBudget(projectId: string): boolean {
-  return projectWebhookManifestRefreshLimiter.check(projectId, {
+export function consumeWorkspaceWebhookManifestRefreshBudget(workspaceId: string): boolean {
+  return workspaceWebhookManifestRefreshLimiter.check(workspaceId, {
     limit: 1,
     windowMs: 30_000,
   }).allowed;
@@ -353,7 +353,7 @@ export function resetRateLimiters() {
   publicSessionShareLimiter.reset();
   demoRequestLimiter.reset();
   checkEmailLimiter.reset();
-  projectWebhookLimiter.reset();
-  projectWebhookManifestRefreshLimiter.reset();
+  workspaceWebhookLimiter.reset();
+  workspaceWebhookManifestRefreshLimiter.reset();
   sessionLlmLimiter.reset();
 }

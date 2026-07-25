@@ -28,8 +28,8 @@
 // ROUTE-REGISTRATION ORDER — do not reorder them: OpenAPIHono registers
 // routes in import/execution order and that order is part of the contract.
 
-import './iam/groups'; // groups, group members, group→project grants
-import './iam/members'; // super-admin, member groups / project-access / effective(+batch)
+import './iam/groups'; // groups, group members, group→workspace grants
+import './iam/members'; // super-admin, member groups / workspace-access / effective(+batch)
 import './iam/mfa'; // account-wide MFA enforcement
 import './iam/scim-tokens'; // SCIM provisioning tokens
 import './iam/sso'; // SAML SSO provider + group mappings

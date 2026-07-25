@@ -1,5 +1,5 @@
 // resolveLlmGatewayBaseUrl is the ONE formula both session-sandbox.ts (boot)
-// and projects/lib/sandbox-env-sync.ts (hot env-push) must share — a second,
+// and workspaces/lib/sandbox-env-sync.ts (hot env-push) must share — a second,
 // hand-rolled copy at either call site is exactly how local-docker's
 // KORTIX_LLM_BASE_URL fix got silently undone by the very next prompt (the
 // hot-push path kept computing the generic public origin). These tests pin

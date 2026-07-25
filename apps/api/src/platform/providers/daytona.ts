@@ -7,7 +7,7 @@
 
 import { SandboxState } from '@daytonaio/sdk';
 import { config, SANDBOX_VERSION } from '../../config';
-import { triggerEmergencyDiskArchiveSweep } from '../../projects/disk-quota-guard';
+import { triggerEmergencyDiskArchiveSweep } from '../../workspaces/disk-quota-guard';
 import {
   archiveDaytonaSandboxById,
   getDaytona,
@@ -26,7 +26,7 @@ import { withTimeout, configuredTimeoutMs } from '../../shared/with-timeout';
 // loop). A single degraded upstream request on any of these calls hangs the
 // awaiting caller indefinitely. That is silently catastrophic on the reaper's
 // hot path (sandbox-reaper.ts): one stuck `getStatus`/`stop` call never lets
-// its Promise.all settle, which never lets runProjectMaintenance's outer
+// its Promise.all settle, which never lets runWorkspaceMaintenance's outer
 // Promise.all settle, which means its `finally` never runs — the
 // maintenanceRunning lock is stuck `true` forever and every future 5-minute
 // tick silently no-ops with zero error logs. Only a process restart clears the
@@ -67,8 +67,8 @@ function reportIfDiskQuotaError(err: unknown, reason: string): never {
   }
   throw err;
 }
-// (DAYTONA_SNAPSHOT was removed — every sandbox boots from its project's
-// own per-project snapshot, resolved by the snapshot builder. Callers
+// (DAYTONA_SNAPSHOT was removed — every sandbox boots from its workspace's
+// own per-workspace snapshot, resolved by the snapshot builder. Callers
 // must pass `opts.snapshot`; there is no shared platform-wide image.)
 
 // Labels stamped on every Kortix-managed Daytona box at create time. The
@@ -189,7 +189,7 @@ export class DaytonaProvider implements SandboxProvider {
       // Frontend base for user-facing dashboard links (never the API host).
       // Guaranteed here too so it is present even if a caller's env map omits it.
       KORTIX_FRONTEND_URL: sandboxFrontendBaseUrl(),
-      // Session identity, git context, KORTIX_TOKEN, and the project's own
+      // Session identity, git context, KORTIX_TOKEN, and the workspace's own
       // secrets (incl. provider keys set via `kortix providers`, picked up by
       // opencode at boot) — see buildSessionSandboxEnvVars() and
       // provisionSessionSandbox().
@@ -199,18 +199,18 @@ export class DaytonaProvider implements SandboxProvider {
       throw new Error('[daytona] create() called without KORTIX_SANDBOX_TOKEN — sandbox cannot authenticate to the Kortix router.');
     }
 
-    // Every Daytona sandbox boots from its project's own per-project
+    // Every Daytona sandbox boots from its workspace's own per-workspace
     // snapshot (`kortix-snap-…`), resolved by the snapshot builder before
     // we get here (see platform/services/session-sandbox.ts +
     // snapshots/builder.ts). There is intentionally no shared platform
-    // fallback: a missing snapshot means the project's first build
+    // fallback: a missing snapshot means the workspace's first build
     // hasn't finished, which is a session-creation error — not something
     // we paper over with an unrelated image.
     const snapshot = opts.snapshot;
     if (!snapshot) {
       throw new Error(
         'Daytona create() called without opts.snapshot. ' +
-        'Every sandbox must boot from a per-project snapshot built by ' +
+        'Every sandbox must boot from a per-workspace snapshot built by ' +
         'apps/api/src/snapshots/builder.ts. There is no shared fallback.',
       );
     }

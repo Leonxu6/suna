@@ -57,7 +57,7 @@ export interface CreateSandboxOpts {
   location?: string;
   /**
    * Override the provider's default snapshot/image with one built
-   * specifically for this project. The snapshot builder
+   * specifically for this workspace. The snapshot builder
    * (apps/api/src/snapshots/builder.ts) populates this when a session
    * boots; falls back to the provider-wide default when absent.
    */
@@ -139,7 +139,7 @@ export interface SandboxProvider {
    * same-machine provider (local-docker) whose sandboxes reach kortix-api
    * over the shared Docker network instead, so a loopback KORTIX_URL is
    * perfectly fine there. Session creation's reachability preflight
-   * (sandboxCallbackUnreachableReason in projects/lib/sessions.ts) is the
+   * (sandboxCallbackUnreachableReason in workspaces/lib/sessions.ts) is the
    * ONLY reader of this flag — keeping the capability on the provider
    * instead of a call-site `provider === 'local-docker'` check.
    */
@@ -165,7 +165,7 @@ export interface SandboxProvider {
   create(opts: CreateSandboxOpts): Promise<ProvisionResult>;
   /**
    * FIX-A: boot a sandbox from an EXACT provider template id (not a name). The
-   * boot path uses this to honor a project's activated
+   * boot path uses this to honor a workspace's activated
    * `active_sandbox_external_template_id` pin, so the running sandbox is the
    * precise warm image activation chose — the name path can drift behind a
    * truncated template list or an idempotent-adopt that reused a name. OPTIONAL:
@@ -213,7 +213,7 @@ export interface SandboxProvider {
 
 /**
  * Provider-native auto-stop is a BACKSTOP, not the primary stop mechanism.
- * The reaper (projects/sandbox-reaper.ts) is the primary: it asks the box's
+ * The reaper (workspaces/sandbox-reaper.ts) is the primary: it asks the box's
  * own opencode whether a turn is running before stopping, so it never kills
  * mid-work. The provider's native timer only sees inbound traffic — blind to
  * local tool runs — so at the reaper's TTL it WOULD kill working boxes (the

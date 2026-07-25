@@ -126,7 +126,7 @@ describe('classifyTurnError', () => {
   });
 
   test('agent-not-declared (legacy runtime failure) → "Agent unavailable"', () => {
-    const r = classifyTurnError({ message: 'Agent "old-bot" is not a declared agent in this project' });
+    const r = classifyTurnError({ message: 'Agent "old-bot" is not a declared agent in this workspace' });
     expect(r.title).toBe('Agent unavailable');
   });
 

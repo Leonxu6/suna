@@ -21,7 +21,7 @@ const usageApp = makeOpenApiApp<AppEnv>();
 usageApp.use('*', combinedAuth);
 // Sandbox agent tokens (kortix_ keys with a sandboxId) have no legitimate
 // reason to read account-wide usage/cost rollups — without this they'd see
-// every project's spend on multi-user accounts. See reject-sandbox-tokens.ts.
+// every workspace's spend on multi-user accounts. See reject-sandbox-tokens.ts.
 usageApp.use('*', rejectSandboxTokens);
 
 const UsageTotalsSchema = z

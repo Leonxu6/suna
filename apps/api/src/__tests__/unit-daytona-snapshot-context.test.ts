@@ -163,7 +163,7 @@ describe('Daytona snapshot build context', () => {
         cloneHeaders: {},
         branch: 'main',
         tip,
-        originUrl: 'https://api.example.test/v1/projects/project-1/git',
+        originUrl: 'https://api.example.test/v1/workspaces/workspace-1/git',
       },
     });
 

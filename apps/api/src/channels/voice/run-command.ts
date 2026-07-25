@@ -29,7 +29,7 @@
  * readable result.
  */
 import { eq } from 'drizzle-orm';
-import { projectSessions, sessionSandboxes } from '@kortix/db';
+import { workspaceSessions, sessionSandboxes } from '@kortix/db';
 import { db } from '../../shared/db';
 import {
   buildSandboxUpstreamHeaders,
@@ -75,9 +75,9 @@ async function loadSandboxForSession(
   if (!record) return null;
 
   const [session] = await db
-    .select({ createdBy: projectSessions.createdBy })
-    .from(projectSessions)
-    .where(eq(projectSessions.sessionId, sessionId))
+    .select({ createdBy: workspaceSessions.createdBy })
+    .from(workspaceSessions)
+    .where(eq(workspaceSessions.sessionId, sessionId))
     .limit(1);
 
   return { record, userId: session?.createdBy ?? null };

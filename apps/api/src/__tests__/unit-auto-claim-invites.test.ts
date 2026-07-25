@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test';
 
 // Unit-tests autoClaimPendingInvites in isolation. The whole point of the fix:
 // auto-claim silently joins the account + stamps accepted_at for PLAIN account
-// invites, but must leave PROJECT invites (the ones carrying bootstrap grants)
+// invites, but must leave WORKSPACE invites (the ones carrying bootstrap grants)
 // pending so the recipient goes through the explicit accept dialog — which is
-// the only path that applies the project_members grant.
+// the only path that applies the workspace_members grant.
 
 const accounts = { __table: 'accounts', accountId: 'accountId' };
 const accountMembers = { __table: 'accountMembers', userId: 'userId', accountId: 'accountId' };
@@ -57,8 +57,10 @@ const fakeDb = {
 
 mock.module('drizzle-orm', () => ({
   and: (...parts: unknown[]) => ({ op: 'and', parts }),
+  asc: (column: unknown) => ({ op: 'asc', column }),
   eq: (column: unknown, value: unknown) => ({ op: 'eq', column, value }),
   gt: (column: unknown, value: unknown) => ({ op: 'gt', column, value }),
+  inArray: (column: unknown, values: unknown[]) => ({ op: 'inArray', column, values }),
   isNull: (column: unknown) => ({ op: 'isNull', column }),
   sql: (...args: unknown[]) => ({ op: 'sql', args }),
   count: (column?: unknown) => ({ op: 'count', column }),
@@ -113,8 +115,8 @@ describe('autoClaimPendingInvites', () => {
     expect(inviteUpdates[0].acceptedAt).toBeInstanceOf(Date);
   });
 
-  test('does NOT claim a project invite (carries bootstrap grants): stays pending', async () => {
-    state.pending = [makeInvite({ bootstrapGrants: [{ project_id: 'p1', role: 'editor' }] })];
+  test('does NOT claim a workspace invite (carries bootstrap grants): stays pending', async () => {
+    state.pending = [makeInvite({ bootstrapGrants: [{ workspace_id: 'p1', role: 'editor' }] })];
 
     await autoClaimPendingInvites('user-1', 'invitee@example.com');
 
@@ -124,13 +126,13 @@ describe('autoClaimPendingInvites', () => {
     expect(inviteUpdates).toHaveLength(0);
   });
 
-  test('mixed batch: claims the plain invite, leaves the project invite pending', async () => {
+  test('mixed batch: claims the plain invite, leaves the workspace invite pending', async () => {
     state.pending = [
       makeInvite({ inviteId: 'plain', accountId: 'acct-plain', bootstrapGrants: [] }),
       makeInvite({
-        inviteId: 'project',
-        accountId: 'acct-project',
-        bootstrapGrants: [{ project_id: 'p1', role: 'member' }],
+        inviteId: 'workspace',
+        accountId: 'acct-workspace',
+        bootstrapGrants: [{ workspace_id: 'p1', role: 'member' }],
       }),
     ];
 

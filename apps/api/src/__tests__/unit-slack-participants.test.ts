@@ -27,7 +27,7 @@ mock.module('../shared/db', () => ({
 }));
 
 mock.module('../channels/install-store', () => ({
-  loadSlackTokenForProject: async () => 'xoxb',
+  loadSlackTokenForWorkspace: async () => 'xoxb',
 }));
 
 mock.module('../channels/slack-api', () => ({
@@ -37,7 +37,7 @@ mock.module('../channels/slack-api', () => ({
   },
 }));
 
-mock.module('../projects/lib/access', () => ({
+mock.module('../workspaces/lib/access', () => ({
   lookupEmailsByUserIds: async (ids: string[]) => new Map(ids.map((id) => [id, `${id}@example.com`])),
 }));
 
@@ -61,13 +61,13 @@ beforeEach(() => {
 });
 
 describe('Slack thread participants', () => {
-  test('unknown policy defaults to project-open sharing', () => {
-    expect(normalizeConversationPolicy('wat')).toBe('project_open');
+  test('unknown policy defaults to workspace-open sharing', () => {
+    expect(normalizeConversationPolicy('wat')).toBe('workspace_open');
   });
 
   test('session owner is allowed without a participant request', async () => {
     const allowed = await ensureSlackThreadParticipant({
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       teamId: 'T1',
       channel: 'C1',
       threadId: '90.0',
@@ -92,7 +92,7 @@ describe('Slack thread participants', () => {
     ];
 
     const allowed = await ensureSlackThreadParticipant({
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       teamId: 'T1',
       channel: 'C1',
       threadId: '90.0',
@@ -106,7 +106,8 @@ describe('Slack thread participants', () => {
 
     expect(allowed).toBe(false);
     expect(inserts[0]).toMatchObject({
-      workspaceId: 'T1',
+      platform: 'slack',
+      providerWorkspaceId: 'T1',
       threadId: '90.0',
       sessionId: 'sess-1',
       platformUserId: 'Urequester',
@@ -120,16 +121,16 @@ describe('Slack thread participants', () => {
 
   test('approving a participant stores approval and grants the session member', async () => {
     dbResults = [
-      [{ createdBy: 'owner-user' }], // projectSessions lookup
+      [{ createdBy: 'owner-user' }], // workspaceSessions lookup
       [], // participant upsert
-      [], // projectSessionGrants insert
+      [], // workspaceSessionGrants insert
     ];
 
     const result = await decideSlackThreadJoin({
       teamId: 'T1',
       channelId: 'C1',
       deciderSlackUserId: 'Uowner',
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       sessionId: 'sess-1',
       threadId: '90.0',
       requesterUserId: 'requester-user',
@@ -144,9 +145,9 @@ describe('Slack thread participants', () => {
     expect(ephemerals[0]?.text).toContain('approved');
   });
 
-  test('owner-only blocks linked project members without creating an approval request', async () => {
+  test('owner-only blocks linked workspace members without creating an approval request', async () => {
     const allowed = await ensureSlackThreadParticipant({
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       teamId: 'T1',
       channel: 'C1',
       threadId: '90.0',
@@ -176,7 +177,7 @@ describe('Slack thread participants', () => {
     ];
 
     const allowed = await ensureSlackThreadParticipant({
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       teamId: 'T1',
       channel: 'C1',
       threadId: '90.0',
@@ -194,17 +195,17 @@ describe('Slack thread participants', () => {
     expect(ephemerals[0]?.text).toContain('declined your request');
   });
 
-  test('project_open explicitly grants linked project members without owner approval', async () => {
-    dbResults = [[]]; // projectSessionGrants insert
+  test('workspace_open explicitly grants linked workspace members without owner approval', async () => {
+    dbResults = [[]]; // workspaceSessionGrants insert
 
     const allowed = await ensureSlackThreadParticipant({
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       teamId: 'T1',
       channel: 'C1',
       threadId: '90.0',
       sessionId: 'sess-1',
       sessionOwnerId: 'owner-user',
-      sessionMetadata: { slack: { conversation_policy: 'project_open' } },
+      sessionMetadata: { slack: { conversation_policy: 'workspace_open' } },
       channelPolicy: null,
       slackUserId: 'Urequester',
       actorUserId: 'requester-user',

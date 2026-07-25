@@ -25,8 +25,8 @@ export async function listGroups(accountId: string): Promise<
   Array<
     AccountGroup & {
       memberCount: number;
-      /** Number of project_group_grants attaching this group to a project. */
-      projectCount: number;
+      /** Number of workspace_group_grants attaching this group to a workspace. */
+      workspaceCount: number;
     }
   >
 > {
@@ -51,8 +51,8 @@ export async function listGroups(accountId: string): Promise<
         SELECT COUNT(*)::int FROM kortix.account_group_members agm
         WHERE agm.group_id = kortix.account_groups.group_id
       )`,
-      projectCount: sql<number>`(
-        SELECT COUNT(*)::int FROM kortix.project_group_grants pgg
+      workspaceCount: sql<number>`(
+        SELECT COUNT(*)::int FROM kortix.workspace_group_grants pgg
         WHERE pgg.group_id = kortix.account_groups.group_id
       )`,
     })
@@ -190,7 +190,7 @@ export async function addGroupMembers(args: {
     )
     .onConflictDoNothing()
     .returning({ userId: accountGroupMembers.userId });
-  // Group membership feeds project-role resolution — bust each added member so
+  // Group membership feeds workspace-role resolution — bust each added member so
   // any access the group grants is effective immediately, not after the TTL.
   invalidateIamCacheForUsers(filtered);
   return { added: inserted.length };

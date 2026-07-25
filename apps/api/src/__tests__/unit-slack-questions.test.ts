@@ -40,6 +40,7 @@ mock.module('../channels/slack/turn', () => ({
 // ─── dispatch.ts (consumed by interactivity.ts) ───────────────────────────────
 let spawnArgs: unknown[] | null = null;
 mock.module('../channels/slack/dispatch', () => ({
+  backfillChannelName: async () => {},
   spawnAgentTurn: async (...a: unknown[]) => {
     spawnArgs = a;
   },
@@ -48,7 +49,7 @@ mock.module('../channels/slack/dispatch', () => ({
 }));
 
 mock.module('../channels/install-store', () => ({
-  loadSlackTokenForProject: async () => 'xoxb-test',
+  loadSlackTokenForWorkspace: async () => 'xoxb-test',
   saveSlackOauthInstall: async () => {},
 }));
 
@@ -167,7 +168,7 @@ describe('postQuestion → interactive buttons', () => {
 
 describe('handleBlockAction → question answer click resumes the session', () => {
   test('a qa_ click spawns a follow-up turn carrying the chosen answer', async () => {
-    dbResults = [[{ projectId: 'proj-1' }]]; // chat_threads lookup
+    dbResults = [[{ workspaceId: 'proj-1' }]]; // chat_threads lookup
 
     await handleBlockAction({
       type: 'block_actions',

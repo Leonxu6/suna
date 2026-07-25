@@ -123,12 +123,12 @@ export async function createServiceAccount(args: {
  *  standing teammate. Distinct from listServiceAccounts (human bearer SAs). */
 export async function listAgentServiceAccounts(
   accountId: string,
-): Promise<Array<{ serviceAccountId: string; name: string; projectId: string | null; agentName: string | null }>> {
+): Promise<Array<{ serviceAccountId: string; name: string; workspaceId: string | null; agentName: string | null }>> {
   return db
     .select({
       serviceAccountId: serviceAccounts.serviceAccountId,
       name: serviceAccounts.name,
-      projectId: serviceAccounts.projectId,
+      workspaceId: serviceAccounts.workspaceId,
       agentName: serviceAccounts.agentName,
     })
     .from(serviceAccounts)
@@ -144,7 +144,7 @@ export async function listAgentServiceAccounts(
 
 /**
  * Get-or-create the auto-provisioned STANDING IDENTITY for a kortix.yaml
- * `agents:` agent. Idempotent per (account, project, agent) via the partial
+ * `agents:` agent. Idempotent per (account, workspace, agent) via the partial
  * unique index. The returned SA id is stamped onto the session's account_token
  * (service_account_id) so the agent authorizes AS this identity.
  *
@@ -154,13 +154,13 @@ export async function listAgentServiceAccounts(
  */
 export async function ensureAgentServiceAccount(args: {
   accountId: string;
-  projectId: string;
+  workspaceId: string;
   agentName: string;
   displayName?: string;
 }): Promise<string> {
   const match = and(
     eq(serviceAccounts.accountId, args.accountId),
-    eq(serviceAccounts.projectId, args.projectId),
+    eq(serviceAccounts.workspaceId, args.workspaceId),
     eq(serviceAccounts.agentName, args.agentName),
   );
   const existing = await db
@@ -181,7 +181,7 @@ export async function ensureAgentServiceAccount(args: {
       .insert(serviceAccounts)
       .values({
         accountId: args.accountId,
-        projectId: args.projectId,
+        workspaceId: args.workspaceId,
         agentName: args.agentName,
         name,
         secretHash,

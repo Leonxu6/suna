@@ -8,14 +8,14 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import {
   pendingTitleCaptures,
   scheduleTitleCaptureAfterPrompt,
-} from '../projects/opencode-title-capture';
+} from '../workspaces/opencode-title-capture';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function row(metadata: Record<string, unknown> = {}) {
   return {
     sessionId: 'session-1',
-    projectId: 'project-1',
+    workspaceId: 'workspace-1',
     accountId: 'account-1',
     opencodeSessionId: null,
     metadata,
@@ -24,7 +24,7 @@ function row(metadata: Record<string, unknown> = {}) {
 
 const input = (sessionId = 'session-1') => ({
   sessionId,
-  projectId: 'project-1',
+  workspaceId: 'workspace-1',
   externalId: 'sandbox-ext-1',
 });
 
@@ -109,7 +109,7 @@ describe('scheduleTitleCaptureAfterPrompt', () => {
 
   test('missing identifiers are ignored outright', () => {
     const h = harness({ loaded: null });
-    scheduleTitleCaptureAfterPrompt({ sessionId: '', projectId: 'p', externalId: 'x' }, h.options);
+    scheduleTitleCaptureAfterPrompt({ sessionId: '', workspaceId: 'p', externalId: 'x' }, h.options);
     expect(pendingTitleCaptures()).toBe(0);
   });
 });

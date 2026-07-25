@@ -11,7 +11,7 @@ export type SnapshotBuildWithSlug = SnapshotBuildStateLike & {
 };
 
 /**
- * Per-project warm images are optional accelerators. Their build state does not
+ * Per-workspace warm images are optional accelerators. Their build state does not
  * describe whether a shared or custom session template can launch.
  */
 export function sessionTemplateBuilds<T extends SnapshotBuildWithSlug>(

@@ -14,8 +14,8 @@ import { OPENCODE_VERSION } from '@kortix/shared';
 // and skips that boot-time network fetch (the multi-second "opencode-session-
 // created" stall).
 //
-// For that to hold, the STARTER template every project clones must pin the SAME
-// version — otherwise a freshly-scaffolded project carries a mismatched pin again.
+// For that to hold, the STARTER template every workspace clones must pin the SAME
+// version — otherwise a freshly-scaffolded workspace carries a mismatched pin again.
 // This test fails the build whenever an opencode bump in runtime-versions.json
 // isn't mirrored into the starter template, keeping the two in lockstep forever.
 const __dirname = dirname(fileURLToPath(import.meta.url));

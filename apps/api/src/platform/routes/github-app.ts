@@ -18,7 +18,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
  *      browser to the App's own install page — with a signed
  *      account-correlation state (reusing the EXISTING
  *      buildGitHubAppInstallUrl/verifyGitHubAppInstallStatePayload mechanism
- *      in projects/github.ts) so step 3 can find its way back to the
+ *      in workspaces/github.ts) so step 3 can find its way back to the
  *      initiating account.
  *   3. GET  /install-callback (public; GitHub → browser) — resolve the
  *      installation's owner, store owner+installationId, redirect to the
@@ -37,7 +37,7 @@ import {
   managedGithubInstallId,
   managedGithubOwner,
   managedGithubToken,
-} from '../../projects/git-backends/github';
+} from '../../workspaces/git-backends/github';
 import {
   buildGitHubAppInstallUrl,
   getGitHubAppInstallation,
@@ -46,7 +46,7 @@ import {
   signGitHubAppJwt,
   type GitHubAppInstallState,
   verifyGitHubAppInstallStatePayload,
-} from '../../projects/github';
+} from '../../workspaces/github';
 import type { AppEnv } from '../../types';
 import {
   managedGithubAppConfig,
@@ -416,7 +416,7 @@ githubAppSetupRouter.openapi(
 // ─── GET /install-callback ────────────────────────────────────────────────────
 // PUBLIC by necessity (GitHub → browser redirect after the operator picks
 // repos on the App's install page). Correlated back to the initiating account
-// via the signed install-state mechanism in projects/github.ts. The state
+// via the signed install-state mechanism in workspaces/github.ts. The state
 // purpose separates platform setup from account linking. Platform setup
 // updates the managed installation. Account linking returns to the
 // authenticated frontend callback, which consumes the stored nonce and writes
@@ -628,7 +628,7 @@ githubAppSetupRouter.openapi(
     // Reuse the git-backend's own resolution (githubBackend.isConfigured())
     // rather than re-deriving "is managed-git usable" here — it already
     // covers PAT + App-installation, so this route can never drift from what
-    // project creation actually does.
+    // workspace creation actually does.
     let configured = await githubBackend.isConfigured();
     const owner = managedGithubOwner();
     const slug = githubAppSlug();
@@ -667,7 +667,7 @@ githubAppSetupRouter.openapi(
 // instances). Validated by signing a JWT with the pasted creds and asking
 // GitHub to resolve the installation BEFORE anything is stored, so a typo'd
 // key or installation id fails loudly here instead of silently at the first
-// project creation.
+// workspace creation.
 
 export async function verifyPastedGithubAppInstallation(
   appId: string,
@@ -791,7 +791,7 @@ githubAppSetupRouter.openapi(
 // (here and in the web UI) as a dedicated fine-grained token scoped to the
 // repos it needs, NOT an everyday personal token. Validated against GitHub
 // before being stored so a bad token fails loudly here instead of at the
-// first project creation.
+// first workspace creation.
 
 githubAppSetupRouter.openapi(
   createRoute({

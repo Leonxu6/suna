@@ -5,7 +5,7 @@ import {
   accountInvitations,
   accountMembers,
   accounts,
-  projectMembers,
+  workspaceMembers,
 } from '@kortix/db';
 import { and, count, eq, gt, isNull, sql } from 'drizzle-orm';
 import { onMemberAdded, onMemberRemoved } from '../../billing/services/seat-management';
@@ -59,7 +59,7 @@ export function registerMemberRoutes(): void {
       // The member directory is visible to EVERY member of the account (the way
       // Slack / GitHub show teammates within one company), so all rows are
       // returned. What stays gated is the SENSITIVE per-member data (PAT count,
-      // MFA, group memberships, project grants): member-managers (owner / admin /
+      // MFA, group memberships, workspace grants): member-managers (owner / admin /
       // member.invite) see it on every row, everyone else only on their own —
       // enforced by canSeeSensitiveMemberColumns in the map below.
       const canManageMembers = (await authorize(userId, accountId, ACCOUNT_ACTIONS.MEMBER_INVITE))
@@ -80,16 +80,16 @@ export function registerMemberRoutes(): void {
       const visibleRows = rows;
 
       const emails = await lookupEmailsByUserIds(rows.map((r) => r.userId));
-      const projectGrantRows = await db
+      const workspaceGrantRows = await db
         .select({
-          userId: projectMembers.userId,
+          userId: workspaceMembers.userId,
           n: count(),
         })
-        .from(projectMembers)
-        .where(eq(projectMembers.accountId, accountId))
-        .groupBy(projectMembers.userId);
-      const projectGrantCountByUser = new Map(
-        projectGrantRows.map((r) => [r.userId, Number(r.n ?? 0)]),
+        .from(workspaceMembers)
+        .where(eq(workspaceMembers.accountId, accountId))
+        .groupBy(workspaceMembers.userId);
+      const workspaceGrantCountByUser = new Map(
+        workspaceGrantRows.map((r) => [r.userId, Number(r.n ?? 0)]),
       );
 
       // Group memberships for every member, in one query — so the member list can
@@ -177,8 +177,8 @@ export function registerMemberRoutes(): void {
               email: emails.get(r.userId) ?? null,
               account_role: r.accountRole,
               is_super_admin: r.isSuperAdmin,
-              explicit_project_count: showSensitive
-                ? (projectGrantCountByUser.get(r.userId) ?? 0)
+              explicit_workspace_count: showSensitive
+                ? (workspaceGrantCountByUser.get(r.userId) ?? 0)
                 : 0,
               groups: showSensitive ? (groupsByUser.get(r.userId) ?? []) : [],
               active_pat_count: showSensitive ? (patCountByUser.get(r.userId) ?? 0) : 0,
@@ -522,9 +522,9 @@ export function registerMemberRoutes(): void {
       }
 
       await db
-        .delete(projectMembers)
+        .delete(workspaceMembers)
         .where(
-          and(eq(projectMembers.accountId, accountId), eq(projectMembers.userId, targetUserId)),
+          and(eq(workspaceMembers.accountId, accountId), eq(workspaceMembers.userId, targetUserId)),
         );
 
       await db
@@ -631,12 +631,12 @@ export function registerMemberRoutes(): void {
         );
 
       if (newRole === 'owner' || newRole === 'admin') {
-        // Owners/admins get implicit Manager on every project; their direct
-        // project_members rows would shadow nothing useful, so clean them up.
+        // Owners/admins get implicit Manager on every workspace; their direct
+        // workspace_members rows would shadow nothing useful, so clean them up.
         await db
-          .delete(projectMembers)
+          .delete(workspaceMembers)
           .where(
-            and(eq(projectMembers.accountId, accountId), eq(projectMembers.userId, targetUserId)),
+            and(eq(workspaceMembers.accountId, accountId), eq(workspaceMembers.userId, targetUserId)),
           );
       }
       invalidateIamCacheForUser(targetUserId);
@@ -683,8 +683,8 @@ export function registerMemberRoutes(): void {
       }
 
       await db
-        .delete(projectMembers)
-        .where(and(eq(projectMembers.accountId, accountId), eq(projectMembers.userId, userId)));
+        .delete(workspaceMembers)
+        .where(and(eq(workspaceMembers.accountId, accountId), eq(workspaceMembers.userId, userId)));
 
       await db
         .delete(accountMembers)

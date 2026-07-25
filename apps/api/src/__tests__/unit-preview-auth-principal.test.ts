@@ -16,6 +16,15 @@ let allowedAccounts = new Set<string>(['acct-owner']);
 let allowedUsers = new Set<string>(['user-owner', 'sa-owner', 'pat-user-owner', 'user-fallback-owner']);
 let mockSupabaseUser: { id: string } | null = null;
 
+mock.module('../config', () => ({
+  SANDBOX_VERSION: 'test',
+  config: {
+    KORTIX_URL: 'https://api.example.test',
+    KORTIX_ENFORCE_SESSION_AGENT_LOCK: false,
+    KORTIX_SANDBOX_AUTOSTOP_MINUTES: 15,
+  },
+}));
+
 mock.module('../shared/crypto', () => ({
   isAccountToken: (t: string) => t.startsWith('kortix_pat_'),
   isServiceAccountToken: (t: string) => t.startsWith('kortix_sa_'),
@@ -23,6 +32,10 @@ mock.module('../shared/crypto', () => ({
 }));
 
 mock.module('../repositories/api-keys', () => ({
+  createApiKey: async () => ({ apiKey: {}, secretKey: 'test' }),
+  listApiKeys: async () => [],
+  revokeApiKey: async () => true,
+  deleteApiKey: async () => true,
   validateSecretKey: async (t: string) => {
     if (t === 'kortix_owner') return { isValid: true, accountId: 'acct-owner' };
     if (t === 'kortix_other') return { isValid: true, accountId: 'acct-other' };
@@ -31,6 +44,10 @@ mock.module('../repositories/api-keys', () => ({
 }));
 
 mock.module('../repositories/account-tokens', () => ({
+  createAccountToken: async () => ({ token: {}, secretKey: 'test' }),
+  listAccountTokens: async () => [],
+  revokeAccountToken: async () => true,
+  revokeAllAccountTokensForUser: async () => undefined,
   validateAccountToken: async (t: string) => {
     if (t === 'kortix_pat_owner') return { isValid: true, userId: 'pat-user-owner' };
     if (t === 'kortix_pat_other') return { isValid: true, userId: 'pat-user-other' };
@@ -39,6 +56,10 @@ mock.module('../repositories/account-tokens', () => ({
 }));
 
 mock.module('../repositories/service-accounts', () => ({
+  ensureAgentServiceAccount: async () => ({
+    serviceAccount: null,
+    token: null,
+  }),
   validateServiceAccountToken: async (t: string) => {
     if (t === 'kortix_sa_owner') {
       return { isValid: true, serviceAccountId: 'sa-owner', accountId: 'acct-owner' };
@@ -79,9 +100,9 @@ mock.module('../shared/preview-ownership', () => ({
       ? { userId, sandboxId: SANDBOX_ID, sandboxRole: 'member', scopes: ['*'] }
       : null,
   canAccessSandboxSession: async () => true,
-  // Not exercised by this suite (no project-scoped PATs here) — stub so the
+  // Not exercised by this suite (no workspace-scoped PATs here) — stub so the
   // real module's shape stays satisfied for anything that imports it.
-  resolveSandboxProjectId: async () => null,
+  resolveSandboxWorkspaceId: async () => null,
 }));
 
 const { authenticatePreviewPrincipal, extractPreviewToken } = await import('../sandbox-proxy/preview-auth');

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 
-// Account/agent/PROJECT-scoped default model preferences. A FIFO-ish chain mock
+// Account/agent/WORKSPACE-scoped default model preferences. A FIFO-ish chain mock
 // captures select rows + insert values without a real DB.
 
 let selectRows: any[] = [];
@@ -56,31 +56,31 @@ beforeEach(() => {
 });
 
 describe('getAccountModelDefaults', () => {
-  test('buckets account / agent / project rows (legacy project-less agent row, no projectId arg)', async () => {
+  test('buckets account / agent / workspace rows (legacy workspace-less agent row, no workspaceId arg)', async () => {
     selectRows = [
-      { scope: 'account', scopeKey: '', projectId: null, model: 'glm-5.2' },
-      { scope: 'agent', scopeKey: 'reviewer', projectId: null, model: 'claude-opus-4.8' },
-      { scope: 'project', scopeKey: 'p1', projectId: null, model: 'anthropic/claude-sonnet-4.6' },
-      { scope: 'project', scopeKey: 'p2', projectId: null, model: 'qwen3.7-max' },
+      { scope: 'account', scopeKey: '', workspaceId: null, model: 'glm-5.2' },
+      { scope: 'agent', scopeKey: 'reviewer', workspaceId: null, model: 'claude-opus-4.8' },
+      { scope: 'workspace', scopeKey: 'p1', workspaceId: null, model: 'anthropic/claude-sonnet-4.6' },
+      { scope: 'workspace', scopeKey: 'p2', workspaceId: null, model: 'qwen3.7-max' },
     ];
     const defaults = await getAccountModelDefaults('a1');
     expect(defaults.account).toBe('glm-5.2');
     expect(defaults.agents).toEqual({ reviewer: 'claude-opus-4.8' });
-    expect(defaults.projects).toEqual({ p1: 'anthropic/claude-sonnet-4.6', p2: 'qwen3.7-max' });
+    expect(defaults.workspaces).toEqual({ p1: 'anthropic/claude-sonnet-4.6', p2: 'qwen3.7-max' });
   });
 
   test('empty → all buckets empty', async () => {
-    expect(await getAccountModelDefaults('a1')).toEqual({ account: null, agents: {}, projects: {} });
+    expect(await getAccountModelDefaults('a1')).toEqual({ account: null, agents: {}, workspaces: {} });
   });
 
   // The core bug fix: agent-scope pins keyed only by agent name used to be
-  // account-wide, so project A and project B (same account, both declaring an
+  // account-wide, so workspace A and workspace B (same account, both declaring an
   // agent named 'kortix' in their own kortix.yaml) silently shared ONE pin.
-  describe('per-project agent pin isolation', () => {
-    test('project A and project B hold INDEPENDENT pins for the same agent name', async () => {
+  describe('per-workspace agent pin isolation', () => {
+    test('workspace A and workspace B hold INDEPENDENT pins for the same agent name', async () => {
       selectRows = [
-        { scope: 'agent', scopeKey: 'kortix', projectId: 'proj-a', model: 'anthropic/claude-opus-4.8' },
-        { scope: 'agent', scopeKey: 'kortix', projectId: 'proj-b', model: 'anthropic/claude-sonnet-4.6' },
+        { scope: 'agent', scopeKey: 'kortix', workspaceId: 'proj-a', model: 'anthropic/claude-opus-4.8' },
+        { scope: 'agent', scopeKey: 'kortix', workspaceId: 'proj-b', model: 'anthropic/claude-sonnet-4.6' },
       ];
       const defaultsA = await getAccountModelDefaults('a1', 'proj-a');
       const defaultsB = await getAccountModelDefaults('a1', 'proj-b');
@@ -88,17 +88,17 @@ describe('getAccountModelDefaults', () => {
       expect(defaultsB.agents).toEqual({ kortix: 'anthropic/claude-sonnet-4.6' });
     });
 
-    test('a pin for project A never leaks into project C (unrelated project, no pin of its own)', async () => {
+    test('a pin for workspace A never leaks into workspace C (unrelated workspace, no pin of its own)', async () => {
       selectRows = [
-        { scope: 'agent', scopeKey: 'kortix', projectId: 'proj-a', model: 'anthropic/claude-opus-4.8' },
+        { scope: 'agent', scopeKey: 'kortix', workspaceId: 'proj-a', model: 'anthropic/claude-opus-4.8' },
       ];
       const defaultsC = await getAccountModelDefaults('a1', 'proj-c');
       expect(defaultsC.agents).toEqual({});
     });
 
-    test('legacy project-less pin (project_id NULL) applies as a fallback to every project that has not re-pinned', async () => {
+    test('legacy workspace-less pin (workspace_id NULL) applies as a fallback to every workspace that has not re-pinned', async () => {
       selectRows = [
-        { scope: 'agent', scopeKey: 'kortix', projectId: null, model: 'legacy-shared-model' },
+        { scope: 'agent', scopeKey: 'kortix', workspaceId: null, model: 'legacy-shared-model' },
       ];
       const defaultsA = await getAccountModelDefaults('a1', 'proj-a');
       const defaultsB = await getAccountModelDefaults('a1', 'proj-b');
@@ -106,10 +106,10 @@ describe('getAccountModelDefaults', () => {
       expect(defaultsB.agents).toEqual({ kortix: 'legacy-shared-model' });
     });
 
-    test('a project-scoped pin overrides the legacy fallback for THAT project only', async () => {
+    test('a workspace-scoped pin overrides the legacy fallback for THAT workspace only', async () => {
       selectRows = [
-        { scope: 'agent', scopeKey: 'kortix', projectId: null, model: 'legacy-shared-model' },
-        { scope: 'agent', scopeKey: 'kortix', projectId: 'proj-a', model: 'proj-a-override' },
+        { scope: 'agent', scopeKey: 'kortix', workspaceId: null, model: 'legacy-shared-model' },
+        { scope: 'agent', scopeKey: 'kortix', workspaceId: 'proj-a', model: 'proj-a-override' },
       ];
       const defaultsA = await getAccountModelDefaults('a1', 'proj-a');
       const defaultsB = await getAccountModelDefaults('a1', 'proj-b');
@@ -117,20 +117,20 @@ describe('getAccountModelDefaults', () => {
       expect(defaultsB.agents).toEqual({ kortix: 'legacy-shared-model' });
     });
 
-    test('omitting projectId returns ONLY the legacy fallback, never another project\'s pin', async () => {
+    test('omitting workspaceId returns ONLY the legacy fallback, never another workspace\'s pin', async () => {
       selectRows = [
-        { scope: 'agent', scopeKey: 'kortix', projectId: null, model: 'legacy-shared-model' },
-        { scope: 'agent', scopeKey: 'kortix', projectId: 'proj-a', model: 'proj-a-override' },
+        { scope: 'agent', scopeKey: 'kortix', workspaceId: null, model: 'legacy-shared-model' },
+        { scope: 'agent', scopeKey: 'kortix', workspaceId: 'proj-a', model: 'proj-a-override' },
       ];
-      const noProjectContext = await getAccountModelDefaults('a1');
-      expect(noProjectContext.agents).toEqual({ kortix: 'legacy-shared-model' });
+      const noWorkspaceContext = await getAccountModelDefaults('a1');
+      expect(noWorkspaceContext.agents).toEqual({ kortix: 'legacy-shared-model' });
     });
 
-    test('different agent names on different projects coexist independently', async () => {
+    test('different agent names on different workspaces coexist independently', async () => {
       selectRows = [
-        { scope: 'agent', scopeKey: 'kortix', projectId: 'proj-a', model: 'opus' },
-        { scope: 'agent', scopeKey: 'reviewer', projectId: 'proj-a', model: 'sonnet' },
-        { scope: 'agent', scopeKey: 'kortix', projectId: 'proj-b', model: 'haiku' },
+        { scope: 'agent', scopeKey: 'kortix', workspaceId: 'proj-a', model: 'opus' },
+        { scope: 'agent', scopeKey: 'reviewer', workspaceId: 'proj-a', model: 'sonnet' },
+        { scope: 'agent', scopeKey: 'kortix', workspaceId: 'proj-b', model: 'haiku' },
       ];
       const defaultsA = await getAccountModelDefaults('a1', 'proj-a');
       expect(defaultsA.agents).toEqual({ kortix: 'opus', reviewer: 'sonnet' });
@@ -139,65 +139,65 @@ describe('getAccountModelDefaults', () => {
 });
 
 describe('upsertAccountModelPreference', () => {
-  test('project scope writes scope_key = projectId, project_id column stays null', async () => {
-    await upsertAccountModelPreference({ accountId: 'a1', scope: 'project', scopeKey: 'p1', model: 'glm-5.2' });
-    expect(insertedValues).toMatchObject({ accountId: 'a1', scope: 'project', scopeKey: 'p1', projectId: null, model: 'glm-5.2' });
+  test('workspace scope writes scope_key = workspaceId, workspace_id column stays null', async () => {
+    await upsertAccountModelPreference({ accountId: 'a1', scope: 'workspace', scopeKey: 'p1', model: 'glm-5.2' });
+    expect(insertedValues).toMatchObject({ accountId: 'a1', scope: 'workspace', scopeKey: 'p1', workspaceId: null, model: 'glm-5.2' });
     expect(conflictMode).toBe('update');
-    // Targets the GLOBAL partial index (account_id, scope, scope_key) WHERE project_id IS NULL.
+    // Targets the GLOBAL partial index (account_id, scope, scope_key) WHERE workspace_id IS NULL.
     expect(conflictConfig.target).toHaveLength(3);
     expect(conflictConfig.targetWhere).toBeDefined();
   });
 
-  test('account scope pins scope_key to empty string, project_id stays null', async () => {
+  test('account scope pins scope_key to empty string, workspace_id stays null', async () => {
     await upsertAccountModelPreference({ accountId: 'a1', scope: 'account', model: 'glm-5.2' });
     expect(insertedValues.scopeKey).toBe('');
-    expect(insertedValues.projectId).toBeNull();
+    expect(insertedValues.workspaceId).toBeNull();
   });
 
-  test('agent scope WITH a projectId writes project_id and targets the 4-column project partial index', async () => {
+  test('agent scope WITH a workspaceId writes workspace_id and targets the 4-column workspace partial index', async () => {
     await upsertAccountModelPreference({
       accountId: 'a1',
       scope: 'agent',
       scopeKey: 'kortix',
-      projectId: 'proj-a',
+      workspaceId: 'proj-a',
       model: 'anthropic/claude-opus-4.8',
     });
     expect(insertedValues).toMatchObject({
       accountId: 'a1',
       scope: 'agent',
       scopeKey: 'kortix',
-      projectId: 'proj-a',
+      workspaceId: 'proj-a',
       model: 'anthropic/claude-opus-4.8',
     });
     expect(conflictConfig.target).toHaveLength(4);
   });
 
-  test('agent scope WITHOUT a projectId falls back to the legacy global partial index (project_id null)', async () => {
+  test('agent scope WITHOUT a workspaceId falls back to the legacy global partial index (workspace_id null)', async () => {
     await upsertAccountModelPreference({
       accountId: 'a1',
       scope: 'agent',
       scopeKey: 'kortix',
       model: 'anthropic/claude-opus-4.8',
     });
-    expect(insertedValues.projectId).toBeNull();
+    expect(insertedValues.workspaceId).toBeNull();
     expect(conflictConfig.target).toHaveLength(3);
   });
 
-  test('projectId is ignored for non-agent scopes (never written)', async () => {
+  test('workspaceId is ignored for non-agent scopes (never written)', async () => {
     await upsertAccountModelPreference({
       accountId: 'a1',
-      scope: 'project',
+      scope: 'workspace',
       scopeKey: 'p1',
-      projectId: 'proj-a',
+      workspaceId: 'proj-a',
       model: 'glm-5.2',
     });
-    expect(insertedValues.projectId).toBeNull();
+    expect(insertedValues.workspaceId).toBeNull();
   });
 
   test('onlyIfAbsent uses INSERT … ON CONFLICT DO NOTHING (idempotent seed)', async () => {
     await upsertAccountModelPreference({
       accountId: 'a1',
-      scope: 'project',
+      scope: 'workspace',
       scopeKey: 'p1',
       model: 'glm-5.2',
       onlyIfAbsent: true,
@@ -207,19 +207,19 @@ describe('upsertAccountModelPreference', () => {
 });
 
 describe('deleteAccountModelPreference', () => {
-  test('agent scope with a projectId only targets that project\'s row', async () => {
-    await deleteAccountModelPreference({ accountId: 'a1', scope: 'agent', scopeKey: 'kortix', projectId: 'proj-a' });
+  test('agent scope with a workspaceId only targets that workspace\'s row', async () => {
+    await deleteAccountModelPreference({ accountId: 'a1', scope: 'agent', scopeKey: 'kortix', workspaceId: 'proj-a' });
     expect(deleteWhereArgs.length).toBeGreaterThan(0);
   });
 
-  test('agent scope without a projectId targets the legacy (project_id IS NULL) row only', async () => {
+  test('agent scope without a workspaceId targets the legacy (workspace_id IS NULL) row only', async () => {
     await deleteAccountModelPreference({ accountId: 'a1', scope: 'agent', scopeKey: 'kortix' });
     expect(deleteWhereArgs.length).toBeGreaterThan(0);
   });
 });
 
 // The join that lets a caller resolve the 'default' agent-name sentinel to
-// the owning project's declared default agent (see default-model.ts's
+// the owning workspace's declared default agent (see default-model.ts's
 // cachedSessionAgent) — the fix for agent-scope model pins silently never
 // applying to sessions whose agent_name never resolved past 'default'.
 describe('getSessionAgentContext', () => {
@@ -228,30 +228,30 @@ describe('getSessionAgentContext', () => {
     expect(await getSessionAgentContext('s-missing')).toBeNull();
   });
 
-  test('carries the joined project.metadata.default_agent as projectDefaultAgent', async () => {
+  test('carries the joined workspace.metadata.default_agent as workspaceDefaultAgent', async () => {
     selectRows = [
-      { agentName: 'default', metadata: {}, projectMetadata: { default_agent: 'kortix' } },
+      { agentName: 'default', metadata: {}, workspaceMetadata: { default_agent: 'kortix' } },
     ];
     const ctx = await getSessionAgentContext('s1');
-    expect(ctx).toEqual({ agentName: 'default', opencodeModel: null, projectDefaultAgent: 'kortix' });
+    expect(ctx).toEqual({ agentName: 'default', opencodeModel: null, workspaceDefaultAgent: 'kortix' });
   });
 
-  test('project metadata with no default_agent → projectDefaultAgent null', async () => {
-    selectRows = [{ agentName: 'default', metadata: {}, projectMetadata: { git: {} } }];
+  test('workspace metadata with no default_agent → workspaceDefaultAgent null', async () => {
+    selectRows = [{ agentName: 'default', metadata: {}, workspaceMetadata: { git: {} } }];
     const ctx = await getSessionAgentContext('s1');
-    expect(ctx?.projectDefaultAgent).toBeNull();
+    expect(ctx?.workspaceDefaultAgent).toBeNull();
   });
 
-  test('null project metadata (left join miss / never happens in practice, but must not throw) → projectDefaultAgent null', async () => {
-    selectRows = [{ agentName: 'default', metadata: {}, projectMetadata: null }];
+  test('null workspace metadata (left join miss / never happens in practice, but must not throw) → workspaceDefaultAgent null', async () => {
+    selectRows = [{ agentName: 'default', metadata: {}, workspaceMetadata: null }];
     const ctx = await getSessionAgentContext('s1');
-    expect(ctx?.projectDefaultAgent).toBeNull();
+    expect(ctx?.workspaceDefaultAgent).toBeNull();
   });
 
   test('blank-string default_agent is treated as unset', async () => {
-    selectRows = [{ agentName: 'default', metadata: {}, projectMetadata: { default_agent: '   ' } }];
+    selectRows = [{ agentName: 'default', metadata: {}, workspaceMetadata: { default_agent: '   ' } }];
     const ctx = await getSessionAgentContext('s1');
-    expect(ctx?.projectDefaultAgent).toBeNull();
+    expect(ctx?.workspaceDefaultAgent).toBeNull();
   });
 
   test('still surfaces the session-level opencode_model override unchanged', async () => {
@@ -259,14 +259,14 @@ describe('getSessionAgentContext', () => {
       {
         agentName: 'release-bot',
         metadata: { opencode_model: 'anthropic/claude-opus-4.8' },
-        projectMetadata: { default_agent: 'kortix' },
+        workspaceMetadata: { default_agent: 'kortix' },
       },
     ];
     const ctx = await getSessionAgentContext('s1');
     expect(ctx).toEqual({
       agentName: 'release-bot',
       opencodeModel: 'anthropic/claude-opus-4.8',
-      projectDefaultAgent: 'kortix',
+      workspaceDefaultAgent: 'kortix',
     });
   });
 });

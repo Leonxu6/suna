@@ -10,7 +10,7 @@ import {
   changeRequestToReviewItem,
   executorExecutionToReviewItem,
   isAdaptedId,
-} from '../projects/review-adapters';
+} from '../workspaces/review-adapters';
 
 type ChangeRequestRow = typeof changeRequests.$inferSelect;
 type ExecutorExecutionRow = typeof executorExecutions.$inferSelect;
@@ -18,7 +18,7 @@ type ExecutorExecutionRow = typeof executorExecutions.$inferSelect;
 const baseCr: ChangeRequestRow = {
   crId: 'cr-1',
   accountId: 'acc-1',
-  projectId: 'proj-1',
+  workspaceId: 'proj-1',
   number: 7,
   title: 'Refresh the pricing page',
   description: 'Updated copy',
@@ -53,7 +53,7 @@ describe('adapterSourceForId / isAdaptedId', () => {
 const baseExec: ExecutorExecutionRow = {
   executionId: 'ex-1',
   accountId: 'acc-1',
-  projectId: 'proj-1',
+  workspaceId: 'proj-1',
   connectorId: 'conn-1',
   profileId: null,
   actionPath: 'gmail.messages.send',

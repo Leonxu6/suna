@@ -26,10 +26,10 @@ describe('Telegram webhook sender binding', () => {
   });
 
   test('accepts only configured Telegram sender IDs', () => {
-    const project = { metadata: { telegram: { allowedUserIds: ['12345'] } } };
+    const workspace = { metadata: { telegram: { allowedUserIds: ['12345'] } } };
 
     expect(
-      isKnownTelegramSenderForTest(project, {
+      isKnownTelegramSenderForTest(workspace, {
         message_id: 1,
         chat: { id: 1, type: 'private' },
         from: { id: 12345 },
@@ -38,7 +38,7 @@ describe('Telegram webhook sender binding', () => {
     ).toBe(true);
 
     expect(
-      isKnownTelegramSenderForTest(project, {
+      isKnownTelegramSenderForTest(workspace, {
         message_id: 1,
         chat: { id: 1, type: 'private' },
         from: { id: 99999 },

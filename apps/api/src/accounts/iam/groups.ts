@@ -1,9 +1,9 @@
-// IAM V2 routes: account groups, group members, and group→project grants.
+// IAM V2 routes: account groups, group members, and group→workspace grants.
 
 import { createRoute, z } from '@hono/zod-openapi';
 import { json, errors, auth } from '../../openapi';
 import { and, asc, eq } from 'drizzle-orm';
-import { projectGroupGrants, projects } from '@kortix/db';
+import { workspaceGroupGrants, workspaces } from '@kortix/db';
 import { db } from '../../shared/db';
 import { ACCOUNT_ACTIONS, assertAuthorized } from '../../iam';
 import {
@@ -27,7 +27,7 @@ import {
   GroupParams,
   GroupSchema,
   GroupMemberSchema,
-  ProjectGrantSchema,
+  WorkspaceGrantSchema,
 } from './app';
 import { auditIam, isUniqueViolation, readBody, requireEntitlement } from './helpers';
 
@@ -88,8 +88,8 @@ iamRouter.openapi(
         description: g.description,
         source: g.source,
         member_count: g.memberCount,
-        // Number of project_group_grants for this group.
-        project_count: g.projectCount,
+        // Number of workspace_group_grants for this group.
+        workspace_count: g.workspaceCount,
         created_at: g.createdAt.toISOString(),
         updated_at: g.updatedAt.toISOString(),
       })),
@@ -408,7 +408,7 @@ iamRouter.openapi(
 
     const result = await addGroupMembers({ accountId, groupId, userIds, addedBy: userId });
 
-    // New members inherit the group's project grants immediately — bust their
+    // New members inherit the group's workspace grants immediately — bust their
     // cached decisions so the added access isn't delayed by the cache TTL.
     if (result.added > 0) invalidateIamCacheForUsers(userIds);
 
@@ -477,25 +477,25 @@ iamRouter.openapi(
   },
 );
 
-// ─── Group → project attachments (IAM V2) ──────────────────────────────────
+// ─── Group → workspace attachments (IAM V2) ──────────────────────────────────
 //
-// One read endpoint here so the group detail page can list every project
-// the group is attached to (with role). Per-project CRUD lives under
-// /v1/projects/:projectId/group-grants (already shipped) — those routes
-// gate on project.members.manage and are the right place to detach a
-// single grant. This endpoint just answers "which projects?" for the
+// One read endpoint here so the group detail page can list every workspace
+// the group is attached to (with role). Per-workspace CRUD lives under
+// /v1/workspaces/:workspaceId/group-grants (already shipped) — those routes
+// gate on workspace.members.manage and are the right place to detach a
+// single grant. This endpoint just answers "which workspaces?" for the
 // group view, gated by GROUP_READ.
 
 iamRouter.openapi(
   createRoute({
     method: 'get',
-    path: '/{accountId}/iam/groups/{groupId}/project-grants',
+    path: '/{accountId}/iam/groups/{groupId}/workspace-grants',
     tags: ['iam'],
-    summary: 'List project grants for a group',
+    summary: 'List workspace grants for a group',
     ...auth,
     request: { params: GroupParams },
     responses: {
-      200: json(z.object({ grants: z.array(ProjectGrantSchema) }), 'Project grants for the group'),
+      200: json(z.object({ grants: z.array(WorkspaceGrantSchema) }), 'Workspace grants for the group'),
       ...errors(401, 403, 404),
     },
   }),
@@ -510,28 +510,28 @@ iamRouter.openapi(
 
     const rows = await db
       .select({
-        projectId: projectGroupGrants.projectId,
-        projectName: projects.name,
-        role: projectGroupGrants.role,
-        grantedBy: projectGroupGrants.grantedBy,
-        createdAt: projectGroupGrants.createdAt,
-        expiresAt: projectGroupGrants.expiresAt,
+        workspaceId: workspaceGroupGrants.workspaceId,
+        workspaceName: workspaces.name,
+        role: workspaceGroupGrants.role,
+        grantedBy: workspaceGroupGrants.grantedBy,
+        createdAt: workspaceGroupGrants.createdAt,
+        expiresAt: workspaceGroupGrants.expiresAt,
       })
-      .from(projectGroupGrants)
-      .innerJoin(projects, eq(projects.projectId, projectGroupGrants.projectId))
+      .from(workspaceGroupGrants)
+      .innerJoin(workspaces, eq(workspaces.workspaceId, workspaceGroupGrants.workspaceId))
       .where(
-        and(eq(projectGroupGrants.groupId, groupId), eq(projectGroupGrants.accountId, accountId)),
+        and(eq(workspaceGroupGrants.groupId, groupId), eq(workspaceGroupGrants.accountId, accountId)),
       )
       // Deterministic order so the row position doesn't visibly shift after
       // a role change. Without ORDER BY, Postgres can return rows in heap
       // order, which moves UPDATEd rows around. See twin query in
-      // apps/api/src/projects/index.ts.
-      .orderBy(asc(projectGroupGrants.createdAt), asc(projectGroupGrants.projectId));
+      // apps/api/src/workspaces/index.ts.
+      .orderBy(asc(workspaceGroupGrants.createdAt), asc(workspaceGroupGrants.workspaceId));
 
     return c.json({
       grants: rows.map((r) => ({
-        project_id: r.projectId,
-        project_name: r.projectName,
+        workspace_id: r.workspaceId,
+        workspace_name: r.workspaceName,
         role: r.role,
         granted_by: r.grantedBy,
         created_at: r.createdAt.toISOString(),

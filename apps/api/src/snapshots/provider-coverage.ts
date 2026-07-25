@@ -51,8 +51,8 @@ async function withObservationTimeout<T>(promise: Promise<T>, timeoutMs: number)
 /**
  * A reusable sandbox template is provider-neutral infrastructure. Keep its
  * content identity synchronized on every enabled provider, regardless of where
- * an individual project is pinned. Provider pins apply only to session routing
- * and project-specific warm images.
+ * an individual workspace is pinned. Provider pins apply only to session routing
+ * and workspace-specific warm images.
  */
 export function enabledTemplateBuildProviders(opts: {
   allowed: readonly string[];
@@ -135,7 +135,7 @@ type RoutedCoverage = Pick<SandboxTemplateProviderCoverage, 'provider' | 'availa
 
 /**
  * Collapse per-provider truth into the legacy single-state field without lying:
- * a pinned project follows its selected provider; Automatic is `active` only
+ * a pinned workspace follows its selected provider; Automatic is `active` only
  * when every enabled provider it may route to is launch-ready.
  */
 export function resolveRoutedTemplateState(
@@ -159,16 +159,16 @@ export function resolveRoutedTemplateState(
 }
 
 /** Resolve the same usable explicit pin as session creation. null is Automatic. */
-export function resolveUsableProjectProviderPin(
+export function resolveUsableWorkspaceProviderPin(
   metadata: Record<string, unknown> | null | undefined,
   isProviderEnabled: (provider: SandboxProviderName) => boolean,
 ): SandboxTemplateProvider | null {
-  const provider = resolveConfiguredProjectProviderPin(metadata);
+  const provider = resolveConfiguredWorkspaceProviderPin(metadata);
   return provider && isProviderEnabled(provider) ? provider : null;
 }
 
-/** A valid project pin remains visible even while that provider is unavailable. */
-export function resolveConfiguredProjectProviderPin(
+/** A valid workspace pin remains visible even while that provider is unavailable. */
+export function resolveConfiguredWorkspaceProviderPin(
   metadata: Record<string, unknown> | null | undefined,
 ): SandboxTemplateProvider | null {
   const raw = metadata?.default_sandbox_provider;

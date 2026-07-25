@@ -5,16 +5,16 @@
  * value-only) token, so these routes deliberately require no login: a teammate
  * who taps the link from a Slack message on their phone must be able to fill it
  * in. Resolve returns NO secret values — only the requested field names. Submit
- * can only write the names sealed into the token, into the one project the token
+ * can only write the names sealed into the token, into the one workspace the token
  * is for. Same trust model as a magic link / a Pipedream connect URL.
  */
 import { createHash } from 'node:crypto';
 import { Hono, type Context, type Next } from 'hono';
 import { eq } from 'drizzle-orm';
-import { projects } from '@kortix/db';
+import { workspaces } from '@kortix/db';
 import { db } from '../shared/db';
-import { isValidSecretName, writeSharedProjectSecret } from '../projects/secrets';
-import { propagateProjectSecretsToActiveSandboxes } from '../projects/lib/sandbox-env-sync';
+import { isValidSecretName, writeSharedWorkspaceSecret } from '../workspaces/secrets';
+import { propagateWorkspaceSecretsToActiveSandboxes } from '../workspaces/lib/sandbox-env-sync';
 import { pipedreamConfigured, pipedreamConnectUrl } from '../executor/pipedream';
 import { resolveSetupLink } from './token';
 import { enforceRateLimit, TokenBucketRateLimiter } from '../shared/rate-limit';
@@ -62,13 +62,13 @@ function createSetupLinkRateLimitMiddleware() {
   };
 }
 
-async function projectName(projectId: string): Promise<string> {
+async function workspaceName(workspaceId: string): Promise<string> {
   const [row] = await db
-    .select({ name: projects.name })
-    .from(projects)
-    .where(eq(projects.projectId, projectId))
+    .select({ name: workspaces.name })
+    .from(workspaces)
+    .where(eq(workspaces.workspaceId, workspaceId))
     .limit(1);
-  return row?.name ?? 'this project';
+  return row?.name ?? 'this workspace';
 }
 
 setupLinksPublicApp.use('/secret/:token', createSetupLinkRateLimitMiddleware());
@@ -83,7 +83,7 @@ setupLinksPublicApp.get('/secret/:token', async (c) => {
 
   return c.json({
     kind: 'secret',
-    project_name: await projectName(resolved.projectId),
+    workspace_name: await workspaceName(resolved.workspaceId),
     fields: resolved.payload.fields.map((f) => ({
       name: f.name,
       label: f.label ?? null,
@@ -117,8 +117,8 @@ setupLinksPublicApp.post('/secret/:token', async (c) => {
     if (!allowed.has(name) || !isValidSecretName(name)) continue;
     const value = typeof rawValue === 'string' ? rawValue : '';
     if (!value) continue;
-    await writeSharedProjectSecret({
-      projectId: resolved.projectId,
+    await writeSharedWorkspaceSecret({
+      workspaceId: resolved.workspaceId,
       name,
       value,
       scope: resolved.payload.scope,
@@ -132,7 +132,7 @@ setupLinksPublicApp.post('/secret/:token', async (c) => {
   }
 
   // Live-propagate so an active session sees the new value without a restart.
-  void propagateProjectSecretsToActiveSandboxes(resolved.projectId);
+  void propagateWorkspaceSecretsToActiveSandboxes(resolved.workspaceId);
 
   return c.json({ ok: true, saved });
 });
@@ -145,7 +145,7 @@ setupLinksPublicApp.get('/connector/:token', async (c) => {
 
   return c.json({
     kind: 'connector',
-    project_name: await projectName(resolved.projectId),
+    workspace_name: await workspaceName(resolved.workspaceId),
     slug: resolved.payload.slug,
     app: resolved.payload.app,
     expires_at: new Date(resolved.payload.exp).toISOString(),
@@ -164,10 +164,10 @@ setupLinksPublicApp.post('/connector/:token/start', async (c) => {
   if (!resolved.payload.app) return c.json({ error: 'This connector has no Pipedream app bound' }, 400);
 
   try {
-    // Always the shared project account — `per_user` (each member's own) was
+    // Always the shared workspace account — `per_user` (each member's own) was
     // removed 2026-07-05.
     const { connectUrl } = await pipedreamConnectUrl(
-      resolved.projectId,
+      resolved.workspaceId,
       resolved.payload.slug,
       resolved.payload.app,
       null,

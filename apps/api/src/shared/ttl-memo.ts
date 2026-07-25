@@ -2,7 +2,7 @@
  * Tiny async TTL memoizer with in-flight de-duplication.
  *
  * Built for the request-path authorization lookups (actor resolve, account
- * membership, project roles): the frontend fires 10+ parallel requests per
+ * membership, workspace roles): the frontend fires 10+ parallel requests per
  * page that each repeat the exact same principal queries, and prod pays a
  * cross-region roundtrip (~150ms) for every one of them. Collapsing the
  * burst to one lookup per (key, TTL window) removes most of that cost.

@@ -19,8 +19,10 @@ mock.module('./budgets', () => ({ checkBudget: async () => ({ exceeded: false })
 mock.module('./hooks', () => ({
   authenticatePrincipal: async () => null,
   authorizeRequest: async () => ({ ok: true }),
+  assertLlmBillingActive: async () => undefined,
+  recordGatewayUsage: async () => undefined,
+  emitGatewayGenAiSpan: () => undefined,
   persistGatewayTrace: async () => {},
-  recordGatewayUsage: async () => {},
 }));
 mock.module('./models/catalog-models', () => ({
   gatewayModelCatalog: () => ({}),
@@ -80,7 +82,7 @@ describe('POST /internal/gateway/resolve-upstream — GatewayResolutionError con
       new GatewayResolutionError(
         'provider_not_connected',
         'Connect Codex to use this model.',
-        'Connect your ChatGPT/Codex account in project settings, then retry.',
+        'Connect your ChatGPT/Codex account in workspace settings, then retry.',
       ),
     );
     const res = await app().request(
@@ -95,7 +97,7 @@ describe('POST /internal/gateway/resolve-upstream — GatewayResolutionError con
     expect(json.resolutionError).toEqual({
       code: 'provider_not_connected',
       message: 'Connect Codex to use this model.',
-      suggestion: 'Connect your ChatGPT/Codex account in project settings, then retry.',
+      suggestion: 'Connect your ChatGPT/Codex account in workspace settings, then retry.',
     });
   });
 

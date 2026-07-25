@@ -2,10 +2,10 @@
  * session-sandbox.ts
  *
  * Provision a sandbox row in `kortix.session_sandboxes` keyed by the caller-
- * supplied UUID (== project session id). Decoupled from the legacy
+ * supplied UUID (== workspace session id). Decoupled from the legacy
  * `kortix.sandboxes` /instances table: no billing fields, no sandbox_members
- * roster, no team-membership coupling — project ACL is enforced via
- * `project_members`.
+ * roster, no team-membership coupling — workspace ACL is enforced via
+ * `workspace_members`.
  *
  * Fire-and-forget: returns once the row is inserted in `provisioning` state.
  * Real provider create() runs in a detached IIFE that mirrors the background
@@ -13,9 +13,9 @@
  */
 
 import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
-import { projectSessions, sessionSandboxes } from '@kortix/db';
+import { workspaceSessions, sessionSandboxes } from '@kortix/db';
 import { db } from '../../shared/db';
-import { PROVISIONING_SESSION_STATUSES } from '../../projects/lib/session-status';
+import { PROVISIONING_SESSION_STATUSES } from '../../workspaces/lib/session-status';
 import { notifySessionProvisioningFailed } from '../../shared/session-failure-notifier';
 import { createApiKey } from '../../repositories/api-keys';
 import { createAccountToken } from '../../repositories/account-tokens';
@@ -27,7 +27,7 @@ import {
   type ProvisionResult,
   type ProviderName,
 } from '../providers';
-import { readActiveRouting } from '../../projects/provider-transition/provider-transition-store';
+import { readActiveRouting } from '../../workspaces/provider-transition/provider-transition-store';
 import {
   buildSandboxInitAttemptMetadata,
   buildSandboxInitFailureMetadata,
@@ -47,14 +47,14 @@ import { providerFallbackSetting } from './runtime-settings';
 import { selectProvider } from './provider-balancer';
 import { ProvisionTimeline } from './provision-timeline';
 import { recordProviderEvent } from './provider-events';
-import type { GitBackedProject } from '../../projects/git';
+import type { GitBackedWorkspace } from '../../workspaces/git';
 import { startComputeSession } from '../../billing/services/compute-metering';
 import { accountEntitledToLlmGateway } from '../../shared/account-limits';
-import { readManifest } from '../../projects/triggers';
-import { resolveAgentGrant } from '../../projects/agents';
-import { projectLlmGatewayEnabled } from '../../llm-gateway/enablement';
+import { readManifest } from '../../workspaces/triggers';
+import { resolveAgentGrant } from '../../workspaces/agents';
+import { workspaceLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { resolveLlmGatewayBaseUrl } from '../../llm-gateway/sandbox-base-url';
-import { RuntimeIdentityConflictError } from '../../projects/runtime-identity-error';
+import { RuntimeIdentityConflictError } from '../../workspaces/runtime-identity-error';
 import { withTimeout, configuredTimeoutMs } from '../../shared/with-timeout';
 import { resolveProjectRuntimeTransport } from '../../experimental/features';
 
@@ -77,14 +77,14 @@ const DEFAULT_METERING_SPEC = { cpuCores: 2, memoryGb: 4, diskGb: 20, gpuCount: 
 async function openComputeSessionForSandbox(
   sandboxId: string,
   accountId: string,
-  project: GitBackedProject,
+  workspace: GitBackedWorkspace,
   userId: string | null | undefined,
   sandboxSlug: string | undefined,
   provider: ProviderName,
 ): Promise<void> {
   let spec = { ...DEFAULT_METERING_SPEC };
   try {
-    const tpl = await resolveTemplate(project, sandboxSlug);
+    const tpl = await resolveTemplate(workspace, sandboxSlug);
     if (tpl.cpu !== undefined) spec.cpuCores = tpl.cpu;
     if (tpl.memoryGb !== undefined) spec.memoryGb = tpl.memoryGb;
     if (tpl.diskGb !== undefined) spec.diskGb = tpl.diskGb;
@@ -129,10 +129,10 @@ function isSnapshotMissingOnProvider(error: unknown): boolean {
 async function mintExecutorToken(opts: {
   accountId: string;
   userId: string;
-  projectId: string;
+  workspaceId: string;
   sandboxId: string;
   agentName: string;
-  gitProject: GitBackedProject;
+  gitWorkspace: GitBackedWorkspace;
 }): Promise<string | null> {
   // Resolve the per-session grant AND the agent's standing-identity service
   // account in parallel. The SA resolution is FAIL-SAFE: on error we mint
@@ -140,16 +140,16 @@ async function mintExecutorToken(opts: {
   // user ∩ grant) — it never WIDENS, so a provisioning hiccup degrades to the
   // previous secure model rather than breaking session start.
   const [agentGrant, serviceAccountId] = await Promise.all([
-    resolveAgentGrant(opts.agentName, opts.gitProject).catch((err) => {
-      console.warn(`[session-sandbox] failed to resolve agent grant for ${opts.projectId}:`, err);
+    resolveAgentGrant(opts.agentName, opts.gitWorkspace).catch((err) => {
+      console.warn(`[session-sandbox] failed to resolve agent grant for ${opts.workspaceId}:`, err);
       return null;
     }),
     ensureAgentServiceAccount({
       accountId: opts.accountId,
-      projectId: opts.projectId,
+      workspaceId: opts.workspaceId,
       agentName: opts.agentName,
     }).catch((err) => {
-      console.warn(`[session-sandbox] failed to ensure agent service account for ${opts.projectId}:`, err);
+      console.warn(`[session-sandbox] failed to ensure agent service account for ${opts.workspaceId}:`, err);
       return null;
     }),
   ]);
@@ -157,7 +157,7 @@ async function mintExecutorToken(opts: {
     const tok = await createAccountToken({
       accountId: opts.accountId,
       userId: opts.userId,
-      projectId: opts.projectId,
+      workspaceId: opts.workspaceId,
       // session_id == sandbox_id by construction — lets the LLM gateway attribute
       // usage_events to this session (the reaper's reliable activity signal).
       sessionId: opts.sandboxId,
@@ -167,7 +167,7 @@ async function mintExecutorToken(opts: {
     });
     return tok.secretKey;
   } catch (err) {
-    console.warn(`[session-sandbox] failed to mint executor token for ${opts.projectId}:`, err);
+    console.warn(`[session-sandbox] failed to mint executor token for ${opts.workspaceId}:`, err);
     return null;
   }
 }
@@ -193,7 +193,7 @@ export function sessionBootByTemplateIdEnabled(): boolean {
  *   - a non-empty pinned id exists, AND
  *   - MANDATORY provider-match: the pin belongs to the provider it was activated
  *     for — `routing.activeProvider === providerName`. This is what makes a
- *     rollback safe: a project reverted to Daytona with a leftover Platinum id
+ *     rollback safe: a workspace reverted to Daytona with a leftover Platinum id
  *     pin (activeProvider='daytona') booting a Daytona session must use the NAME,
  *     never the stale Platinum id.
  * `disabledForSession` lets the caller drop to name-boot after a 404 fallback.
@@ -226,9 +226,9 @@ export function decideSessionBoot(input: {
 export async function provisionSessionSandbox(opts: {
   sandboxId: string;
   accountId: string;
-  projectId: string;
+  workspaceId: string;
   userId: string;
-  /** The selected agent's name (= projectSessions.agentName). Resolves the
+  /** The selected agent's name (= workspaceSessions.agentName). Resolves the
    *  per-agent grant stamped onto the session's account token. Defaults to
    *  'default' when omitted (legacy callers). */
   agentName?: string;
@@ -236,25 +236,25 @@ export async function provisionSessionSandbox(opts: {
   serverType?: string;
   location?: string;
   metadata?: Record<string, unknown>;
-  /** Project metadata, used for per-project experimental gates. */
-  projectMetadata?: unknown;
+  /** Workspace metadata, used for per-workspace experimental gates. */
+  workspaceMetadata?: unknown;
   /**
    * Extra env vars injected into the sandbox at provider create-time. These
    * land in the Daytona snapshot's environment so its boot script can read
-   * them (e.g. `KORTIX_PROJECT_REPO_URL`, `KORTIX_PROJECT_BRANCH`).
+   * them (e.g. `KORTIX_WORKSPACE_REPO_URL`, `KORTIX_WORKSPACE_BRANCH`).
    */
   extraEnvVars?: Record<string, string>;
   /**
-   * Project + ref the session boots against. The boot path resolves the
+   * Workspace + ref the session boots against. The boot path resolves the
    * commit SHA for `baseRef` and asks the snapshot builder for the matching
    * Daytona image — building inline if it doesn't exist yet. When `baseRef`
-   * is omitted, defaults to `gitProject.defaultBranch`.
+   * is omitted, defaults to `gitWorkspace.defaultBranch`.
    */
-  gitProject: GitBackedProject;
-  resolveGitProject?: () => Promise<GitBackedProject>;
+  gitWorkspace: GitBackedWorkspace;
+  resolveGitWorkspace?: () => Promise<GitBackedWorkspace>;
   baseRef?: string;
   /**
-   * Slug of the sandbox template to boot from. Resolves against the project's
+   * Slug of the sandbox template to boot from. Resolves against the workspace's
    * `[[sandbox.templates]]` entries. Empty/undefined → platform default.
    */
   sandboxSlug?: string;
@@ -267,7 +267,7 @@ export async function provisionSessionSandbox(opts: {
    */
   beforeActive?: (externalId: string) => Promise<void>;
 }): Promise<ProvisionSessionSandboxResult> {
-  const { sandboxId, accountId, projectId, userId, serverType, location } = opts;
+  const { sandboxId, accountId, workspaceId, userId, serverType, location } = opts;
   const providerWasExplicitlySelected = opts.provider !== undefined;
   const requireCurrentRuntime = resolveProjectRuntimeTransport(opts.projectMetadata) === 'acp';
   // Resolution order:
@@ -281,11 +281,11 @@ export async function provisionSessionSandbox(opts: {
   const tl = new ProvisionTimeline(sandboxId, 'provision');
 
   const slug = (opts.sandboxSlug ?? '').trim() || DEFAULT_SANDBOX_SLUG;
-  // Resolve the project + fresh provider-neutral git access (the snapshot
+  // Resolve the workspace + fresh provider-neutral git access (the snapshot
   // builder may need it to read the repo's Dockerfile).
-  const resolveGitProject = async (): Promise<GitBackedProject> => {
-    if (!opts.resolveGitProject) return opts.gitProject;
-    return opts.resolveGitProject();
+  const resolveGitWorkspace = async (): Promise<GitBackedWorkspace> => {
+    if (!opts.resolveGitWorkspace) return opts.gitWorkspace;
+    return opts.resolveGitWorkspace();
   };
 
   // Kick image resolution off NOW, in parallel with the token round-trip below.
@@ -294,21 +294,21 @@ export async function provisionSessionSandbox(opts: {
   // reason to wait for the tokens before asking the provider whether the image
   // already exists. On the warm path this overlaps the ~200ms token round-trip
   // with the ~100-300ms cache-check, taking the smaller off the critical path.
-  type FirstImage = EnsureSandboxImageResult & { gitProject: GitBackedProject };
+  type FirstImage = EnsureSandboxImageResult & { gitWorkspace: GitBackedWorkspace };
   // Cold-only: every session boots from its Dockerfile snapshot (the shared
-  // default or a per-project template), resolved by ensureSandboxImage. No warm
+  // default or a per-workspace template), resolved by ensureSandboxImage. No warm
   // / stateful-snapshot fast path — Platinum and Daytona take the identical cold
   // path.
   let firstImagePromise: Promise<FirstImage> | null = (async () => {
-    const gitProject = await resolveGitProject();
-    const image = await ensureSandboxImage(gitProject, {
+    const gitWorkspace = await resolveGitWorkspace();
+    const image = await ensureSandboxImage(gitWorkspace, {
       slug,
       accountId,
       source: 'session-start',
       provider: providerName,
       requireCurrentRuntime,
     });
-    return { ...image, gitProject };
+    return { ...image, gitWorkspace };
   })();
   // Swallow the unhandled-rejection warning; the IIFE's try/catch owns the error
   // when it awaits the promise.
@@ -319,7 +319,7 @@ export async function provisionSessionSandbox(opts: {
   // sandbox API key can be minted before the row lands. Previously serial
   // (~100ms each on a warm DB), now ~one round-trip total.
   const sandboxName = `session-${sandboxId.slice(0, 8)}`;
-  const llmGatewayEnabled = projectLlmGatewayEnabled(opts.projectMetadata);
+  const llmGatewayEnabled = workspaceLlmGatewayEnabled(opts.workspaceMetadata);
   const createOrClaimSandboxRow = async () => {
     const inserted = await db
       .insert(sessionSandboxes)
@@ -327,7 +327,7 @@ export async function provisionSessionSandbox(opts: {
         sandboxId,
         sessionId: sandboxId,
         accountId,
-        projectId,
+        workspaceId,
         provider: providerName,
         externalId: null,
         status: 'provisioning',
@@ -387,10 +387,10 @@ export async function provisionSessionSandbox(opts: {
     mintExecutorToken({
       accountId,
       userId,
-      projectId,
+      workspaceId,
       sandboxId,
       agentName: opts.agentName ?? 'default',
-      gitProject: opts.gitProject,
+      gitWorkspace: opts.gitWorkspace,
     }),
     llmGatewayEnabled
       ? accountEntitledToLlmGateway(accountId).catch((err) => {
@@ -424,7 +424,7 @@ export async function provisionSessionSandbox(opts: {
   // boots clobbered each other and left older sandboxes with a stale token the
   // gateway rejects (401). The PAT is per-session and stable.
   //
-  // Enablement is a three-part gate: operator availability, per-project
+  // Enablement is a three-part gate: operator availability, per-workspace
   // experimental opt-in, and account entitlement. If any part is off we inject
   // no KORTIX_LLM_* env, so OpenCode stays on its native provider behavior.
   // accountEntitledToLlmGateway gates on the resolved TIER, not billing_model,
@@ -446,7 +446,7 @@ export async function provisionSessionSandbox(opts: {
       //    the HMAC key the API signs `X-Kortix-User-Context` with (the daemon
       //    verifies it) AND the bearer for the 3 sandbox-identity routes
       //    (/git/clone-credential, /turn-stream, /turn-question). It carries NO
-      //    user identity, so project-scoped routes reject it. Injected under the
+      //    user identity, so workspace-scoped routes reject it. Injected under the
       //    self-documenting `KORTIX_SANDBOX_TOKEN`; `KORTIX_TOKEN` is kept as a
       //    back-compat alias for daemons baked before the rename.
       // 2) The SESSION credential (`kortix_pat_…`, `executorToken`): acts AS the
@@ -493,23 +493,23 @@ export async function provisionSessionSandbox(opts: {
     // second provider, so a session never bounces between providers forever.
     let fallbackAttempted = false;
     let imageInfo: { snapshotName: string; slug: string; contentHash: string; isDefault: boolean } | null = null;
-    // FIX-A: the project's ACTIVATED routing pin (provider + exact template id),
+    // FIX-A: the workspace's ACTIVATED routing pin (provider + exact template id),
     // read once, best-effort — a DB hiccup yields null → name-boot. Set
     // `idBootDisabled` once a definitive GC'd-pin 404 forces this session down to
     // a name-boot, so the retry never re-attempts the dead pin.
     let activeRouting: { activeProvider: string | null; activeExternalTemplateId: string | null } | null = null;
     try {
-      activeRouting = await readActiveRouting(db, projectId);
+      activeRouting = await readActiveRouting(db, workspaceId);
     } catch (routingErr) {
       console.warn(
-        `[session-sandbox] readActiveRouting failed for ${projectId} (falling back to name-boot):`,
+        `[session-sandbox] readActiveRouting failed for ${workspaceId} (falling back to name-boot):`,
         routingErr instanceof Error ? routingErr.message : String(routingErr),
       );
     }
     let idBootDisabled = false;
     provisioning: while (true) {
     try {
-      const branch = opts.baseRef || opts.gitProject.defaultBranch;
+      const branch = opts.baseRef || opts.gitWorkspace.defaultBranch;
 
       // Stateless image resolution: ask Daytona if it has the image; build if not.
       // No DB lookup, no degraded fallback — the snapshot is either there or we
@@ -522,8 +522,8 @@ export async function provisionSessionSandbox(opts: {
         image = await firstImagePromise;
         firstImagePromise = null;
       } else {
-        const gitProject = await resolveGitProject();
-        image = await ensureSandboxImage(gitProject, {
+        const gitWorkspace = await resolveGitWorkspace();
+        image = await ensureSandboxImage(gitWorkspace, {
           slug,
           accountId,
           source: 'session-start',
@@ -623,9 +623,9 @@ export async function provisionSessionSandbox(opts: {
       const timeline = tl.summary();
 
       const [currentSession] = await db
-        .select({ status: projectSessions.status, metadata: projectSessions.metadata })
-        .from(projectSessions)
-        .where(eq(projectSessions.sessionId, sandbox.sandboxId))
+        .select({ status: workspaceSessions.status, metadata: workspaceSessions.metadata })
+        .from(workspaceSessions)
+        .where(eq(workspaceSessions.sessionId, sandbox.sandboxId))
         .limit(1);
       const currentSessionMetadata =
         (currentSession?.metadata as Record<string, unknown> | null) ?? {};
@@ -814,7 +814,7 @@ export async function provisionSessionSandbox(opts: {
         return;
       }
 
-      // Mirror sandbox readiness onto the project_sessions row so the
+      // Mirror sandbox readiness onto the workspace_sessions row so the
       // sidebar's status dot stops spinning. session_id == sandbox_id by
       // construction, so the lookup is direct. Only flip sessions that are
       // still genuinely mid-provision (queued/branching/provisioning) —
@@ -822,7 +822,7 @@ export async function provisionSessionSandbox(opts: {
       // separate stopped→running resume path in routes/shared.ts) must not be
       // clobbered back to 'running' by a provisioning attempt finishing late.
       await db
-        .update(projectSessions)
+        .update(workspaceSessions)
         .set({
           status: 'running',
           sandboxUrl: result.baseUrl || null,
@@ -830,8 +830,8 @@ export async function provisionSessionSandbox(opts: {
         })
         .where(
           and(
-            eq(projectSessions.sessionId, sandbox.sandboxId),
-            inArray(projectSessions.status, [...PROVISIONING_SESSION_STATUSES]),
+            eq(workspaceSessions.sessionId, sandbox.sandboxId),
+            inArray(workspaceSessions.status, [...PROVISIONING_SESSION_STATUSES]),
           ),
         )
         .catch(() => {});
@@ -847,8 +847,8 @@ export async function provisionSessionSandbox(opts: {
       });
 
       // Billing v2 — open a compute metering row. No-op for legacy accounts.
-      // Spec is resolved from the project manifest with provider-default fallbacks.
-      void openComputeSessionForSandbox(sandbox.sandboxId, accountId, opts.gitProject, userId, imageInfo?.slug, providerName).catch(
+      // Spec is resolved from the workspace manifest with provider-default fallbacks.
+      void openComputeSessionForSandbox(sandbox.sandboxId, accountId, opts.gitWorkspace, userId, imageInfo?.slug, providerName).catch(
         (err) =>
           console.warn(
             `[session-sandbox] failed to open compute metering for ${sandbox.sandboxId}:`,
@@ -862,7 +862,7 @@ export async function provisionSessionSandbox(opts: {
       // and retry once. Capped at one heal per session start.
       if (isSnapshotMissingOnProvider(bgErr) && imageInfo && !healedStaleSnapshot) {
         healedStaleSnapshot = true;
-        await deleteSandboxImage(opts.gitProject, { slug: imageInfo.slug, provider: providerName }).catch((err) =>
+        await deleteSandboxImage(opts.gitWorkspace, { slug: imageInfo.slug, provider: providerName }).catch((err) =>
           console.warn(
             `[session-sandbox] force-rebuild failed for ${imageInfo!.snapshotName}:`,
             err,
@@ -930,7 +930,7 @@ export async function provisionSessionSandbox(opts: {
       // message to the user instead of the SDK stack trace.
       const isCapacity = /no available runner|no runners available|out of capacity|capacity exceeded|rate ?limit|too many requests/i.test(bgMessage);
       // Git auth / repo-access failures. These are NOT a provider fault — the
-      // sandbox provider is fine; we couldn't clone the project's repo. Reporting
+      // sandbox provider is fine; we couldn't clone the workspace's repo. Reporting
       // them as "Provisioning failed via daytona" actively misdirects debugging
       // (it reads as a Daytona outage), so categorize + surface them as a git
       // problem with an actionable message.
@@ -946,7 +946,7 @@ export async function provisionSessionSandbox(opts: {
       const userMessage = isCapacity
         ? 'The sandbox provider is at capacity right now. Try again in a minute.'
         : isGitAuth
-          ? "Couldn't access the project's Git repository (authentication failed). Check the project's Git credentials and try again."
+          ? "Couldn't access the workspace's Git repository (authentication failed). Check the workspace's Git credentials and try again."
           : `Provisioning failed via ${providerName}.`;
       if (isCapacity) {
         console.warn(
@@ -990,9 +990,9 @@ export async function provisionSessionSandbox(opts: {
           })
           .where(eq(sessionSandboxes.sandboxId, sandbox.sandboxId));
         await db
-          .update(projectSessions)
+          .update(workspaceSessions)
           .set({ status: 'failed', error: userMessage, updatedAt: new Date() })
-          .where(eq(projectSessions.sessionId, sandbox.sandboxId))
+          .where(eq(workspaceSessions.sessionId, sandbox.sandboxId))
           .catch(() => {});
       } catch (markErr) {
         console.error(`[session-sandbox] Failed to mark sandbox ${sandbox.sandboxId} as error:`, markErr);

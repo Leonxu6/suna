@@ -9,7 +9,7 @@
  * Every authz memo whose cache key begins with `${userId}|` registers itself
  * here; a mutation that changes what a user can do then calls
  * `invalidateIamCacheForUser(userId)` and every registered memo drops that
- * user's entries synchronously. (loadTokenProjectBinding is keyed by tokenId,
+ * user's entries synchronously. (loadTokenWorkspaceBinding is keyed by tokenId,
  * not userId — token bindings are immutable after mint, so it isn't registered.)
  *
  * Registration is push-based (memos call register at module load) to avoid an
@@ -33,23 +33,23 @@ export function registerPrincipalScopedMemo(memo: PrincipalScopedMemo): void {
   principalScopedMemos.push(memo);
 }
 
-// ── Project-scoped memos (keyed `${projectId}|…`) ──────────────────────────
-// The per-resource grant memo (resource-grants.ts) is keyed by project, not
-// principal: a resource-grant change affects every principal of the project at
-// once, so it busts the whole project entry rather than fanning out to members.
-const projectScopedMemos: PrincipalScopedMemo[] = [];
+// ── Workspace-scoped memos (keyed `${workspaceId}|…`) ──────────────────────────
+// The per-resource grant memo (resource-grants.ts) is keyed by workspace, not
+// principal: a resource-grant change affects every principal of the workspace at
+// once, so it busts the whole workspace entry rather than fanning out to members.
+const workspaceScopedMemos: PrincipalScopedMemo[] = [];
 
-/** A memo keyed `${projectId}|…` registers so it can be busted per project. */
-export function registerProjectScopedMemo(memo: PrincipalScopedMemo): void {
-  projectScopedMemos.push(memo);
+/** A memo keyed `${workspaceId}|…` registers so it can be busted per workspace. */
+export function registerWorkspaceScopedMemo(memo: PrincipalScopedMemo): void {
+  workspaceScopedMemos.push(memo);
 }
 
-/** Drop every cached entry for one project — e.g. after a resource-grant
+/** Drop every cached entry for one workspace — e.g. after a resource-grant
  *  mutation. Process-local (same contract as the principal-scoped busts). */
-export function invalidateIamCacheForProjectResources(projectId: string | null | undefined): void {
-  if (!projectId) return;
-  const prefix = `${projectId}|`;
-  for (const memo of projectScopedMemos) memo.invalidateByPrefix(prefix);
+export function invalidateIamCacheForWorkspaceResources(workspaceId: string | null | undefined): void {
+  if (!workspaceId) return;
+  const prefix = `${workspaceId}|`;
+  for (const memo of workspaceScopedMemos) memo.invalidateByPrefix(prefix);
 }
 
 /** Drop every cached authz entry for one user across all registered memos. */
@@ -65,8 +65,8 @@ export function invalidateIamCacheForUsers(userIds: Iterable<string | null | und
 }
 
 /**
- * A group's project grant changed — bust every member, since each member's
- * effective project role is derived from the group's grants. Best-effort:
+ * A group's workspace grant changed — bust every member, since each member's
+ * effective workspace role is derived from the group's grants. Best-effort:
  * a lookup failure leaves the ~15s TTL as the (pre-existing) fallback, so a
  * grant mutation never fails on cache housekeeping.
  */

@@ -11,8 +11,8 @@
  */
 import { describe, expect, test } from 'bun:test';
 import { computerCatalog, computerLabel } from '../executor/computers';
-import { extractConnectors } from '../projects/connectors';
-import { parseManifestString, KNOWN_SCHEMA_VERSION } from '../projects/triggers';
+import { extractConnectors } from '../workspaces/connectors';
+import { parseManifestString, KNOWN_SCHEMA_VERSION } from '../workspaces/triggers';
 import {
   handleCall,
   type CallInput,
@@ -75,7 +75,7 @@ describe('computerCatalog()', () => {
 /* ─── parse ───────────────────────────────────────────────────────────────── */
 
 function parse(body: string) {
-  const src = [`kortix_version: ${KNOWN_SCHEMA_VERSION}`, 'project:\n  name: t', body].join('\n');
+  const src = [`kortix_version: ${KNOWN_SCHEMA_VERSION}`, 'workspace:\n  name: t', body].join('\n');
   return extractConnectors(parseManifestString(src, 'yaml', 'kortix.yaml'));
 }
 
@@ -127,7 +127,7 @@ function makeDeps(outcome: ComputerCallOutcome, action: GatewayAction = FS_READ)
     loadAction: async () => action,
     resolveCredential: async () => null, // never called — hasAuth is false
     loadPolicies: async () => [],
-    loadProjectPolicies: async () => [],
+    loadWorkspacePolicies: async () => [],
     loadDefaultMode: async () => 'allow_all',
     recordExecution: async () => null,
     fetchImpl: async () => { throw new Error('fetch must not be used for a computer call'); },
@@ -138,7 +138,7 @@ function makeDeps(outcome: ComputerCallOutcome, action: GatewayAction = FS_READ)
 
 function input(args: Record<string, unknown>, actionPath = 'fs.read'): CallInput {
   return {
-    projectId: 'proj-1',
+    workspaceId: 'proj-1',
     accountId: 'acct-1',
     subject: { userId: 'u1', groupIds: [] },
     sessionId: 'sess-1',

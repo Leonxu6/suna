@@ -1,0 +1,796 @@
+import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { mockIamMembershipSyncNoop } from './helpers/iam-mocks';
+import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
+import {
+  baseDate,
+  createWorkspacesContractDbMock,
+  workspaceRow,
+  type WorkspaceRow,
+  type WorkspacesContractDbState,
+} from './helpers/workspaces-contract-db-mock';
+
+const OWNER_ID = '00000000-0000-4000-a000-000000000001';
+const MEMBER_ID = '00000000-0000-4000-a000-000000000002';
+const OUTSIDER_ID = '00000000-0000-4000-a000-000000000003';
+const ACCOUNT_ID = '00000000-0000-4000-a000-000000000101';
+const WORKSPACE_ID = '00000000-0000-4000-a000-000000000201';
+const OTHER_WORKSPACE_ID = '00000000-0000-4000-a000-000000000202';
+const NEW_WORKSPACE_ID = '00000000-0000-4000-a000-000000000203';
+const SECOND_NEW_WORKSPACE_ID = '00000000-0000-4000-a000-000000000205';
+const TEST_AUTH_KEY = '__KORTIX_E2E_AUTH__';
+
+const repoFiles = [
+  { path: 'README.md', type: 'file', size: 18 },
+  { path: 'kortix.yaml', type: 'file', size: 42 },
+  { path: '.kortix/opencode/opencode.jsonc', type: 'file', size: 90 },
+  { path: '.kortix/opencode/agents/default.md', type: 'file', size: 120 },
+];
+
+let currentUserId: string;
+let currentUserEmail: string;
+const dbState: WorkspacesContractDbState = {
+  accountMemberRows: [],
+  workspaceRows: [],
+  workspaceMemberRows: [],
+  installationRow: null,
+  gitConnectionRows: [],
+  nextWorkspaceIds: [],
+};
+let commitCalls: any[];
+let listRepoFileCalls: any[];
+let readRepoFileCalls: any[];
+let archiveCalls: any[];
+let deleteManagedRepoCalls: any[];
+let deleteManagedRepoError: Error | null;
+let deleteManagedRepoResult: boolean;
+let rejectedBranch: string | null;
+
+function setCurrentUser(userId: string, userEmail: string) {
+  currentUserId = userId;
+  currentUserEmail = userEmail;
+  (globalThis as any)[TEST_AUTH_KEY] = { userId, userEmail };
+}
+
+function getTestAuth() {
+  return (globalThis as any)[TEST_AUTH_KEY] ?? { userId: currentUserId, userEmail: currentUserEmail };
+}
+
+function resetState() {
+  setCurrentUser(OWNER_ID, 'owner@example.test');
+  dbState.accountMemberRows = [
+    { userId: OWNER_ID, accountId: ACCOUNT_ID, accountRole: 'owner', joinedAt: baseDate },
+    { userId: MEMBER_ID, accountId: ACCOUNT_ID, accountRole: 'member', joinedAt: baseDate },
+  ];
+  dbState.workspaceRows = [
+    workspaceRow(),
+    workspaceRow({
+      workspaceId: OTHER_WORKSPACE_ID,
+      name: 'Other Workspace',
+      repoUrl: 'https://github.com/kortix/other-workspace.git',
+    }),
+    workspaceRow({
+      workspaceId: '00000000-0000-4000-a000-000000000204',
+      name: 'Archived Workspace',
+      repoUrl: 'https://github.com/kortix/archived-workspace.git',
+      status: 'archived',
+    }),
+  ];
+  dbState.workspaceMemberRows = [];
+  dbState.installationRow = {
+    installationRowId: '00000000-0000-4000-a000-000000000041',
+    accountId: ACCOUNT_ID,
+    installationId: '42',
+    ownerLogin: 'kortix-org',
+    ownerType: 'Organization',
+    repositorySelection: 'all',
+    permissions: { contents: 'write' },
+    metadata: {},
+    createdAt: baseDate,
+    updatedAt: baseDate,
+  };
+  dbState.gitConnectionRows = [];
+  dbState.nextWorkspaceIds = [NEW_WORKSPACE_ID, SECOND_NEW_WORKSPACE_ID];
+  commitCalls = [];
+  listRepoFileCalls = [];
+  readRepoFileCalls = [];
+  archiveCalls = [];
+  deleteManagedRepoCalls = [];
+  deleteManagedRepoError = null;
+  deleteManagedRepoResult = false;
+  rejectedBranch = null;
+}
+
+// `authorize` / `assertAuthorized` / `listAccessibleResources` are re-exported
+// from `../iam` via `./dispatcher` (the V1 `./engine` was retired), so the role
+// gate must be mocked on the dispatcher. Mirror the legacy role gate against
+// the test's mocked membership rows so viewer/non-member denial is still
+// exercised after the IAM-engine switch.
+mock.module('../iam/dispatcher', () => {
+  const isManager = (userId: string): boolean => {
+    const am = dbState.accountMemberRows.find((r) => r.userId === userId && r.accountId === ACCOUNT_ID);
+    return am?.accountRole === 'owner' || am?.accountRole === 'admin';
+  };
+  const decide = (userId: string, action: string): boolean => {
+    const am = dbState.accountMemberRows.find((r) => r.userId === userId && r.accountId === ACCOUNT_ID);
+    if (!am) return false;
+    if (am.accountRole === 'owner' || am.accountRole === 'admin') return true;
+    const pm = dbState.workspaceMemberRows.find((r) => r.userId === userId && r.workspaceId === WORKSPACE_ID);
+    const pr = pm?.workspaceRole ?? null;
+    if (action === 'workspace.read') return pr === 'member' || pr === 'editor' || pr === 'manager';
+    // Session lifecycle: any workspace member (a plain `member` included) may run sessions.
+    if (action.startsWith('workspace.session.')) return pr === 'member' || pr === 'editor' || pr === 'manager';
+    if (action === 'workspace.write') return pr === 'editor' || pr === 'manager';
+    return pr === 'manager';
+  };
+  return {
+    authorize: async (userId: string, _a: unknown, action: string) => ({ allowed: decide(userId, action) }),
+    assertAuthorized: async (userId: string, _a: unknown, action: string) => {
+      if (!decide(userId, action)) throw new HTTPException(403, { message: 'Forbidden' });
+    },
+    // Account managers see every workspace ('all'); members see only the workspaces
+    // they hold an explicit grant on ('allow_only'); outsiders see none.
+    listAccessibleResources: async (userId: string) => {
+      const am = dbState.accountMemberRows.find((r) => r.userId === userId && r.accountId === ACCOUNT_ID);
+      if (!am) return { mode: 'none', allowed: new Set<string>() };
+      if (isManager(userId)) return { mode: 'all', allowed: new Set<string>() };
+      const allowed = new Set(
+        dbState.workspaceMemberRows.filter((r) => r.userId === userId).map((r) => r.workspaceId),
+      );
+      return allowed.size === 0
+        ? { mode: 'none', allowed }
+        : { mode: 'allow_only', allowed };
+    },
+    filterAccessibleWorkspaceResources: async (_u: string, _a: string, _p: string, _t: string, ids: readonly string[]) => [...ids],
+  };
+});
+
+mockIamMembershipSyncNoop();
+
+const realAuthMiddleware = await import('../middleware/auth');
+mock.module('../middleware/auth', () => ({
+  ...realAuthMiddleware,
+  supabaseAuth: async (c: any, next: any) => {
+    const auth = getTestAuth();
+    c.set('userId', auth.userId);
+    c.set('userEmail', auth.userEmail);
+    await next();
+  },
+}));
+
+mock.module('../workspaces/git', () => ({
+  grepRepoFiles: async () => [],
+  searchRepoFileNames: async () => [],
+  createRemoteSessionBranch: async () => undefined,
+  listRepoFiles: async (workspace: WorkspaceRow, ref: string, path?: string) => {
+    listRepoFileCalls.push({ workspaceId: workspace.workspaceId, ref, path: path ?? null });
+    return repoFiles;
+  },
+  loadWorkspaceConfig: async (_workspace: WorkspaceRow, files: typeof repoFiles) => ({
+    manifest: { workspace: { name: 'Existing Workspace' }, env: { required: ['DATABASE_URL'] } },
+    env: { required: ['DATABASE_URL'], optional: [] },
+    opencode: { agents: ['default'], skills: ['git-workflow'], files: files.map((file) => file.path) },
+  }),
+  readRepoFile: async (workspace: WorkspaceRow, path: string, ref: string) => {
+    readRepoFileCalls.push({ workspaceId: workspace.workspaceId, path, ref });
+    if (path === 'missing.txt') {
+      throw new Error("fatal: path 'missing.txt' does not exist in 'feature'");
+    }
+    return `content:${path}@${ref}`;
+  },
+  readManifestFromRepo: async () => null,
+  archiveRepoSubtree: async (workspace: WorkspaceRow, ref: string, path?: string | null) => {
+    archiveCalls.push({ workspaceId: workspace.workspaceId, ref, path: path ?? null });
+    // git archive --format=zip outputs binary; emit a tiny readable stream
+    // so the route can pipe a real Response back to the test.
+    const body = new TextEncoder().encode(`zip:${workspace.workspaceId}:${ref}:${path ?? ''}`);
+    return new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(body);
+        controller.close();
+      },
+    });
+  },
+  listBranches: async () => [],
+  listCommits: async () => ({ entries: [], nextCursor: null }),
+  getCommit: async () => null,
+  getCommitDiff: async () => null,
+  getFileHistory: async () => ({ entries: [], nextCursor: null }),
+  invalidateWorkspaceMirror: () => {},
+  resolveCommitSha: async () => 'a'.repeat(40),
+  resolveBranchTip: async () => 'a'.repeat(40),
+  getBranchDiff: async () => ({ files: [], diff: '' }),
+  getDiffBetweenShas: async () => ({ files: [], diff: '' }),
+  previewMerge: async () => ({ canMerge: true, conflicts: [] }),
+  mergeBranches: async () => ({ mergedSha: 'a'.repeat(40) }),
+  commitFileToBranch: async () => ({ commitSha: 'a'.repeat(40) }),
+  deleteRemoteSessionBranch: async () => undefined,
+  diffStat: async () => ({ files: [], additions: 0, deletions: 0 }),
+  getFileAtRef: async () => null,
+  getMergeBase: async () => 'a'.repeat(40),
+  resolveBranchAheadState: async () => ({ ahead: false, commitsAhead: 0 }),
+  resolveTreeOid: async () => 'b'.repeat(40),
+  materializeRepoContext: async () => '/tmp/fake-snapshot-context',
+}));
+
+mock.module('../workspaces/lib/workspace-deletion', () => ({
+  deleteManagedWorkspaceRepo: async (workspace: WorkspaceRow) => {
+    deleteManagedRepoCalls.push(workspace);
+    if (deleteManagedRepoError) throw deleteManagedRepoError;
+    return deleteManagedRepoResult;
+  },
+}));
+
+mock.module("../snapshots/builder", () => ({
+  ensureSandboxImage: async () => ({ snapshotName: "kortix-default-test", slug: "default", contentHash: "a".repeat(64), built: false, isDefault: true }),
+  deleteSandboxImage: async () => ({ deleted: false, snapshotName: "kortix-default-test", slug: "default" }),
+  listSnapshotBuilds: async () => [],
+  listSandboxTemplates: async () => [],
+  resolveTemplate: async () => ({ slug: "default", spec: {}, isDefault: true }),
+  reconcileStaleBuilds: async () => ({ checked: 0, updated: 0 }),
+  ensurePlatformDefaultImage: async () => ({ snapshotName: "kortix-default-test", slug: "default", contentHash: "a".repeat(64), built: false, isDefault: true }),
+  kickPreBuild: () => {},
+  kickRoutedPreBuild: () => {},
+  templateBuildProviders: () => ['daytona', 'platinum', 'e2b'],
+  kickStartupPreBuild: () => {},
+  reconcileWorkspaceTemplates: async () => ({ checked: 0, updated: 0 }),
+  kickWorkspaceTemplatePrebuilds: () => {},
+  resolveCommitSha: async () => "a".repeat(40),
+  ensurePerWorkspaceWarmImage: async () => ({
+    snapshotName: "kortix-ppwarm-test",
+    tip: "a".repeat(40),
+    built: false,
+    provider: "daytona",
+  }),
+  DEFAULT_SANDBOX_SLUG: "default",
+}));
+
+mock.module('../workspaces/github', () => ({
+  parseGitHubRepoUrl: () => null,
+  isOrgAccount: async () => false,
+  buildGitHubAppInstallUrl: () => 'https://github.com/apps/kortix-test/installations/new',
+  createGitHubAppJwt: () => 'jwt-test',
+  verifyGitHubAppInstallState: (state: string) => state,
+  verifyGitHubAppInstallStatePayload: (state: string) => ({
+    accountId: state,
+    nonce: 'test-nonce',
+    issuedAt: Math.floor(Date.now() / 1000),
+  }),
+  getGitHubPatAuthContext: () => ({ token: 'pat-token', source: 'pat', owner: 'kortix-org' }),
+  addCollaborator: async () => undefined,
+  deleteFile: async () => undefined,
+  deleteRepo: async () => undefined,
+  commitFile: async (input: any) => {
+    commitCalls.push(input);
+  },
+  getBranchCommitSha: async () => 'a'.repeat(40),
+  createBranchRef: async () => undefined,
+  createInstallationToken: async () => ({ token: 'installation-token' }),
+  createRepo: async () => {
+    throw new Error('create-repo route is covered separately');
+  },
+  getFileSha: async () => null,
+  getGitHubAppInstallation: async () => ({
+    account: { login: 'kortix-org', type: 'Organization' },
+    repository_selection: 'all',
+    permissions: {},
+  }),
+  listLinkableGitHubAppInstallations: async () => [],
+  verifyGitHubInstallationAdmin: async () => ({ login: 'github-admin' }),
+  getRepo: async () => ({
+    id: 7,
+    name: 'new-workspace',
+    full_name: 'kortix-org/new-workspace',
+    private: true,
+    html_url: 'https://github.com/kortix-org/new-workspace',
+    clone_url: 'https://github.com/kortix-org/new-workspace.git',
+    ssh_url: 'git@github.com:kortix-org/new-workspace.git',
+    default_branch: 'trunk',
+    description: null,
+  }),
+  getRepositoryBranch: async ({ branch }: { branch: string }) => {
+    if (branch === rejectedBranch) {
+      throw Object.assign(new Error(`GitHub branch ${branch} not found`), { status: 404 });
+    }
+    return { name: branch, protected: false };
+  },
+  listInstallationRepositories: async () => [],
+  listOwnerRepositories: async () => [],
+  listRepositoryBranches: async () => [],
+  isGithubAppConfigured: () => false,
+  isGithubPatConfigured: () => true,
+}));
+
+mock.module('../platform/services/session-sandbox', () => ({
+  provisionSessionSandbox: async () => undefined,
+}));
+
+mock.module('../shared/resolve-account', () => ({
+  resolveAccountId: async () => ACCOUNT_ID,
+}));
+
+mock.module('../shared/supabase', () => ({
+  getSupabase: () => ({
+    auth: {
+      admin: {
+        // A shadow principal (user_id == account_id) has no backing auth user:
+        // a completed lookup returns no user object. Real users resolve normally.
+        getUserById: async (uid: string) =>
+          uid === ACCOUNT_ID
+            ? { data: { user: null } }
+            : { data: { user: { email: 'workspace@example.test' } } },
+      },
+    },
+  }),
+}));
+
+mock.module('../billing/repositories/credit-accounts', () => ({
+  upsertCreditAccount: async () => undefined,
+  getSubscriptionInfo: async () => ({ tier: 'free' }),
+  getCreditAccount: async () => null,
+  getCreditBalance: async () => ({ balance: 0, granted: 0, used: 0 }),
+  updateCreditAccount: async () => {},
+}));
+
+const workspaceDbMock = createWorkspacesContractDbMock(dbState);
+
+mock.module('../shared/db', () => ({
+  hasDatabase: true,
+  db: workspaceDbMock,
+}));
+
+const { workspacesApp } = await import('../workspaces/index');
+
+function createApp() {
+  const app = new Hono();
+  app.route('/v1/workspaces', workspacesApp);
+  app.onError((err, c) => {
+    if (err instanceof HTTPException) {
+      return c.json({ error: true, message: err.message, status: err.status }, err.status);
+    }
+    return c.json({ error: true, message: (err as Error).message }, 500);
+  });
+  return app;
+}
+
+describe('workspaces API contract', () => {
+  beforeEach(() => resetState());
+
+  test('registers a repo on its GitHub default without starter commits and grants manager access', async () => {
+    const app = createApp();
+    const missing = await app.request('/v1/workspaces', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account_id: ACCOUNT_ID }),
+    });
+    expect(missing.status).toBe(400);
+    expect(await missing.json()).toEqual({ error: 'repo_url is required' });
+
+    const res = await app.request('/v1/workspaces', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        account_id: ACCOUNT_ID,
+        repo_url: 'https://github.com/kortix-org/new-workspace.git/',
+        name: 'New Workspace',
+        manifest_path: 'config/kortix.yaml',
+      }),
+    });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({
+      workspace_id: NEW_WORKSPACE_ID,
+      account_id: ACCOUNT_ID,
+      name: 'New Workspace',
+      repo_url: 'https://github.com/kortix-org/new-workspace.git',
+      default_branch: 'trunk',
+      manifest_path: 'config/kortix.yaml',
+      status: 'active',
+      workspace_role: 'manager',
+      effective_workspace_role: 'manager',
+    });
+    expect(commitCalls).toHaveLength(0);
+    expect(dbState.gitConnectionRows).toContainEqual(expect.objectContaining({
+      workspaceId: NEW_WORKSPACE_ID,
+      provider: 'github',
+      repoUrl: 'https://github.com/kortix-org/new-workspace.git',
+      repoOwner: 'kortix-org',
+      repoName: 'new-workspace',
+      externalRepoId: '7',
+      authMethod: 'github_app',
+      installationId: '42',
+      visibility: 'private',
+      status: 'connected',
+    }));
+    expect(dbState.workspaceMemberRows).toContainEqual(expect.objectContaining({
+      workspaceId: NEW_WORKSPACE_ID,
+      userId: OWNER_ID,
+      workspaceRole: 'manager',
+    }));
+  });
+
+  test('creates independent workspaces for different branches of one repository', async () => {
+    const app = createApp();
+    const payload = {
+      account_id: ACCOUNT_ID,
+      repo_url: 'https://github.com/kortix-org/new-workspace.git',
+    };
+    const request = (name: string, defaultBranch: string) => app.request('/v1/workspaces', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payload, name, default_branch: defaultBranch }),
+    });
+
+    const first = await request('Production', 'main');
+    const second = await request('Development', 'dev');
+    expect([first.status, second.status]).toEqual([201, 201]);
+    const [firstBody, secondBody] = await Promise.all([first.json(), second.json()]);
+    expect([firstBody.workspace_id, secondBody.workspace_id]).toEqual([
+      NEW_WORKSPACE_ID,
+      SECOND_NEW_WORKSPACE_ID,
+    ]);
+    expect(dbState.workspaceRows.filter((row) => row.repoUrl === payload.repo_url)).toEqual([
+      expect.objectContaining({
+        workspaceId: NEW_WORKSPACE_ID,
+        name: 'Production',
+        defaultBranch: 'main',
+      }),
+      expect.objectContaining({
+        workspaceId: SECOND_NEW_WORKSPACE_ID,
+        name: 'Development',
+        defaultBranch: 'dev',
+      }),
+    ]);
+    expect(dbState.gitConnectionRows.map((row) => [row.workspaceId, row.defaultBranch])).toEqual([
+      [NEW_WORKSPACE_ID, 'main'],
+      [SECOND_NEW_WORKSPACE_ID, 'dev'],
+    ]);
+  });
+
+  test('rejects a branch GitHub cannot resolve before inserting the workspace', async () => {
+    rejectedBranch = 'missing-branch';
+    const res = await createApp().request('/v1/workspaces', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        account_id: ACCOUNT_ID,
+        repo_url: 'https://github.com/kortix-org/new-workspace.git',
+        default_branch: rejectedBranch,
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: 'Selected branch "missing-branch" does not exist in kortix-org/new-workspace',
+    });
+    expect(dbState.workspaceRows.some((row) => row.defaultBranch === rejectedBranch)).toBe(false);
+  });
+
+  test('lists all active workspaces for account managers and only explicit grants for members', async () => {
+    const app = createApp();
+    let res = await app.request(`/v1/workspaces?account_id=${ACCOUNT_ID}`);
+    expect(res.status).toBe(200);
+    let body = await res.json();
+    expect(body.map((workspace: any) => workspace.workspace_id).sort()).toEqual([WORKSPACE_ID, OTHER_WORKSPACE_ID]);
+    expect(body.every((workspace: any) => workspace.effective_workspace_role === 'manager')).toBe(true);
+
+    dbState.workspaceMemberRows.push({
+      accountId: ACCOUNT_ID,
+      workspaceId: WORKSPACE_ID,
+      userId: MEMBER_ID,
+      workspaceRole: 'member',
+      grantedBy: OWNER_ID,
+      createdAt: baseDate,
+      updatedAt: baseDate,
+    });
+    setCurrentUser(MEMBER_ID, 'member@example.test');
+
+    res = await app.request(`/v1/workspaces?account_id=${ACCOUNT_ID}`);
+    expect(res.status).toBe(200);
+    body = await res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0]).toMatchObject({
+      workspace_id: WORKSPACE_ID,
+      workspace_role: 'member',
+      effective_workspace_role: 'member',
+    });
+  });
+
+  test('returns detail, file listings, file content, and updates last_opened_at', async () => {
+    const app = createApp();
+    const detail = await app.request(`/v1/workspaces/${WORKSPACE_ID}/detail`);
+    expect(detail.status).toBe(200);
+    expect(await detail.json()).toMatchObject({
+      workspace: { workspace_id: WORKSPACE_ID, effective_workspace_role: 'manager' },
+      config: {
+        manifest: { workspace: { name: 'Existing Workspace' } },
+        opencode: { agents: ['default'], skills: ['git-workflow'] },
+      },
+      file_count: repoFiles.length,
+    });
+    expect(listRepoFileCalls[0]).toEqual({ workspaceId: WORKSPACE_ID, ref: 'main', path: null });
+
+    const files = await app.request(`/v1/workspaces/${WORKSPACE_ID}/files?ref=dev&path=.opencode`);
+    expect(files.status).toBe(200);
+    expect(await files.json()).toEqual(repoFiles);
+    expect(listRepoFileCalls.at(-1)).toEqual({ workspaceId: WORKSPACE_ID, ref: 'dev', path: '.opencode' });
+
+    const missingPath = await app.request(`/v1/workspaces/${WORKSPACE_ID}/files/content`);
+    expect(missingPath.status).toBe(400);
+    expect(await missingPath.json()).toEqual({ error: 'path query param is required' });
+
+    const content = await app.request(`/v1/workspaces/${WORKSPACE_ID}/files/content?path=README.md&ref=feature`);
+    expect(content.status).toBe(200);
+    expect(await content.json()).toEqual({
+      path: 'README.md',
+      ref: 'feature',
+      content: 'content:README.md@feature',
+    });
+    expect(readRepoFileCalls.at(-1)).toEqual({ workspaceId: WORKSPACE_ID, path: 'README.md', ref: 'feature' });
+
+    const missingFile = await app.request(`/v1/workspaces/${WORKSPACE_ID}/files/content?path=missing.txt&ref=feature`);
+    expect(missingFile.status).toBe(404);
+    expect(await missingFile.json()).toEqual({ error: 'File not found' });
+    expect(readRepoFileCalls.at(-1)).toEqual({ workspaceId: WORKSPACE_ID, path: 'missing.txt', ref: 'feature' });
+
+    const read = await app.request(`/v1/workspaces/${WORKSPACE_ID}`);
+    expect(read.status).toBe(200);
+    expect(dbState.workspaceRows.find((workspace) => workspace.workspaceId === WORKSPACE_ID)?.lastOpenedAt).toBeInstanceOf(Date);
+  });
+
+  test('streams a zip archive of the repo / subtree', async () => {
+    const app = createApp();
+
+    // No path → archives the whole tree at the default branch.
+    const root = await app.request(`/v1/workspaces/${WORKSPACE_ID}/files/archive`);
+    expect(root.status).toBe(200);
+    expect(root.headers.get('content-type')).toBe('application/zip');
+    expect(root.headers.get('content-disposition')).toBe('attachment; filename="workspace.zip"');
+    expect(await root.text()).toBe(`zip:${WORKSPACE_ID}:main:`);
+    expect(archiveCalls.at(-1)).toEqual({ workspaceId: WORKSPACE_ID, ref: 'main', path: null });
+
+    // ref + subtree path → archives just that subtree, filename derived from path.
+    const subtree = await app.request(
+      `/v1/workspaces/${WORKSPACE_ID}/files/archive?ref=dev&path=.kortix/opencode/agents`,
+    );
+    expect(subtree.status).toBe(200);
+    expect(subtree.headers.get('content-type')).toBe('application/zip');
+    expect(subtree.headers.get('content-disposition')).toBe('attachment; filename="agents.zip"');
+    expect(await subtree.text()).toBe(`zip:${WORKSPACE_ID}:dev:.kortix/opencode/agents`);
+    expect(archiveCalls.at(-1)).toEqual({
+      workspaceId: WORKSPACE_ID,
+      ref: 'dev',
+      path: '.kortix/opencode/agents',
+    });
+
+    // Absolute / workspace-prefixed paths are rejected (the UI must strip them).
+    // archiveRepoSubtree throws via normalizeTreePath; route surfaces a 400.
+    mock.module('../workspaces/git', () => ({
+      createRemoteSessionBranch: async () => undefined,
+      listRepoFiles: async () => repoFiles,
+      loadWorkspaceConfig: async () => ({ manifest: {}, env: { required: [], optional: [] }, opencode: {} }),
+      readRepoFile: async () => '',
+      readManifestFromRepo: async () => null,
+      archiveRepoSubtree: async (_p: any, _r: string, path?: string | null) => {
+        if (path && path.startsWith('/')) throw new Error('Invalid path');
+        const body = new TextEncoder().encode('ok');
+        return new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(body);
+            controller.close();
+          },
+        });
+      },
+      listBranches: async () => [],
+      listCommits: async () => ({ entries: [], nextCursor: null }),
+      getCommit: async () => null,
+      getCommitDiff: async () => null,
+      getFileHistory: async () => ({ entries: [], nextCursor: null }),
+      invalidateWorkspaceMirror: () => {},
+    }));
+
+    const bad = await app.request(`/v1/workspaces/${WORKSPACE_ID}/files/archive?path=%2Fworkspace`);
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: 'Invalid path' });
+  });
+
+  test('archive endpoint denies users without read access', async () => {
+    const app = createApp();
+    setCurrentUser(OUTSIDER_ID, 'outsider@example.test');
+    const res = await app.request(`/v1/workspaces/${WORKSPACE_ID}/files/archive`);
+    expect(res.status).toBe(403);
+  });
+
+  test('patches only workspace config fields and archives workspaces', async () => {
+    const app = createApp();
+    const beforeRepoUrl = dbState.workspaceRows.find((workspace) => workspace.workspaceId === WORKSPACE_ID)!.repoUrl;
+    const patch = await app.request(`/v1/workspaces/${WORKSPACE_ID}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Renamed Workspace',
+        default_branch: 'release',
+        manifest_path: 'ops/kortix.yaml',
+        repo_url: 'https://github.com/kortix/should-not-change.git',
+      }),
+    });
+    expect(patch.status).toBe(200);
+    expect(await patch.json()).toMatchObject({
+      workspace_id: WORKSPACE_ID,
+      name: 'Renamed Workspace',
+      default_branch: 'release',
+      manifest_path: 'ops/kortix.yaml',
+      repo_url: beforeRepoUrl,
+    });
+
+    const del = await app.request(`/v1/workspaces/${WORKSPACE_ID}`, { method: 'DELETE' });
+    expect(del.status).toBe(200);
+    expect(await del.json()).toEqual({ ok: true, archived: true, repo_deleted: false });
+    expect(deleteManagedRepoCalls).toEqual([]);
+    expect(dbState.workspaceRows.find((workspace) => workspace.workspaceId === WORKSPACE_ID)?.status).toBe('archived');
+
+    const after = await app.request(`/v1/workspaces/${WORKSPACE_ID}`);
+    expect(after.status).toBe(404);
+  });
+
+  test('purges a managed repository only when explicitly requested', async () => {
+    const app = createApp();
+    deleteManagedRepoResult = true;
+
+    const del = await app.request(`/v1/workspaces/${WORKSPACE_ID}?purge=true`, {
+      method: 'DELETE',
+    });
+
+    expect(del.status).toBe(200);
+    expect(await del.json()).toEqual({ ok: true, archived: true, repo_deleted: true });
+    expect(deleteManagedRepoCalls.map((workspace) => workspace.workspaceId)).toEqual([WORKSPACE_ID]);
+    expect(dbState.workspaceRows.find((workspace) => workspace.workspaceId === WORKSPACE_ID)?.status).toBe(
+      'archived',
+    );
+  });
+
+  test('does not archive a workspace when managed repository deletion fails', async () => {
+    const app = createApp();
+    deleteManagedRepoError = new Error('provider unavailable');
+
+    const del = await app.request(`/v1/workspaces/${WORKSPACE_ID}?purge=true`, { method: 'DELETE' });
+
+    expect(del.status).toBe(502);
+    expect(await del.json()).toEqual({ error: 'Failed to delete managed workspace repository' });
+    expect(deleteManagedRepoCalls.map((workspace) => workspace.workspaceId)).toEqual([WORKSPACE_ID]);
+    expect(dbState.workspaceRows.find((workspace) => workspace.workspaceId === WORKSPACE_ID)?.status).toBe('active');
+  });
+
+  test('lists and manages explicit workspace access grants without overriding account managers', async () => {
+    const app = createApp();
+
+    let access = await app.request(`/v1/workspaces/${WORKSPACE_ID}/access`);
+    expect(access.status).toBe(200);
+    let body = await access.json();
+    expect(body).toMatchObject({
+      workspace_id: WORKSPACE_ID,
+      account_id: ACCOUNT_ID,
+      can_manage: true,
+      viewer_user_id: OWNER_ID,
+    });
+    expect(body.members.map((member: any) => ({
+      user_id: member.user_id,
+      account_role: member.account_role,
+      workspace_role: member.workspace_role,
+      effective_workspace_role: member.effective_workspace_role,
+      has_implicit_access: member.has_implicit_access,
+    }))).toEqual([
+      {
+        user_id: OWNER_ID,
+        account_role: 'owner',
+        workspace_role: null,
+        effective_workspace_role: 'manager',
+        has_implicit_access: true,
+      },
+      {
+        user_id: MEMBER_ID,
+        account_role: 'member',
+        workspace_role: null,
+        effective_workspace_role: null,
+        has_implicit_access: false,
+      },
+    ]);
+
+    const grant = await app.request(`/v1/workspaces/${WORKSPACE_ID}/access/${MEMBER_ID}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'editor' }),
+    });
+    expect(grant.status).toBe(200);
+    expect(await grant.json()).toMatchObject({
+      user_id: MEMBER_ID,
+      account_role: 'member',
+      workspace_role: 'editor',
+      effective_workspace_role: 'editor',
+      has_implicit_access: false,
+    });
+    expect(dbState.workspaceMemberRows).toContainEqual(expect.objectContaining({
+      workspaceId: WORKSPACE_ID,
+      userId: MEMBER_ID,
+      workspaceRole: 'editor',
+    }));
+
+    access = await app.request(`/v1/workspaces/${WORKSPACE_ID}/access`);
+    body = await access.json();
+    const memberRow = body.members.find((member: any) => member.user_id === MEMBER_ID);
+    expect(memberRow).toMatchObject({
+      workspace_role: 'editor',
+      effective_workspace_role: 'editor',
+      has_implicit_access: false,
+    });
+
+    const ownerGrant = await app.request(`/v1/workspaces/${WORKSPACE_ID}/access/${OWNER_ID}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'user' }),
+    });
+    expect(ownerGrant.status).toBe(200);
+    expect(await ownerGrant.json()).toMatchObject({
+      user_id: OWNER_ID,
+      account_role: 'owner',
+      workspace_role: null,
+      effective_workspace_role: 'manager',
+      has_implicit_access: true,
+    });
+
+    const removeOwner = await app.request(`/v1/workspaces/${WORKSPACE_ID}/access/${OWNER_ID}`, {
+      method: 'DELETE',
+    });
+    expect(removeOwner.status).toBe(409);
+
+    const removeMember = await app.request(`/v1/workspaces/${WORKSPACE_ID}/access/${MEMBER_ID}`, {
+      method: 'DELETE',
+    });
+    expect(removeMember.status).toBe(200);
+    expect(await removeMember.json()).toEqual({ ok: true });
+    expect(dbState.workspaceMemberRows.some((row) => row.userId === MEMBER_ID && row.workspaceId === WORKSPACE_ID)).toBe(false);
+  });
+
+  test('GET /access drops shadow members whose user_id is not a real auth user', async () => {
+    // Regression: a self-referential account_members row (user_id == account_id)
+    // with no backing auth user used to surface as a bare UUID in the access list
+    // (the email never resolves, so the UI fell back to the raw id).
+    dbState.accountMemberRows.push({
+      userId: ACCOUNT_ID,
+      accountId: ACCOUNT_ID,
+      accountRole: 'owner',
+      joinedAt: baseDate,
+    });
+    const app = createApp();
+    const access = await app.request(`/v1/workspaces/${WORKSPACE_ID}/access`);
+    expect(access.status).toBe(200);
+    const body = await access.json();
+    const ids = body.members.map((m: any) => m.user_id);
+    expect(ids).not.toContain(ACCOUNT_ID); // shadow principal filtered out
+    expect(ids).toContain(OWNER_ID); // real owner kept
+    expect(ids).toContain(MEMBER_ID); // real member kept
+  });
+
+  test('denies non-members and plain workspace users from manager-only operations', async () => {
+    const app = createApp();
+    setCurrentUser(OUTSIDER_ID, 'outsider@example.test');
+    const outsider = await app.request(`/v1/workspaces/${WORKSPACE_ID}/files`);
+    expect(outsider.status).toBe(403);
+
+    setCurrentUser(MEMBER_ID, 'member@example.test');
+    dbState.workspaceMemberRows.push({
+      accountId: ACCOUNT_ID,
+      workspaceId: WORKSPACE_ID,
+      userId: MEMBER_ID,
+      workspaceRole: 'member',
+      grantedBy: OWNER_ID,
+      createdAt: baseDate,
+      updatedAt: baseDate,
+    });
+    const userPatch = await app.request(`/v1/workspaces/${WORKSPACE_ID}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'User Rename' }),
+    });
+    expect(userPatch.status).toBe(403);
+  });
+});

@@ -1,6 +1,8 @@
 export interface AuthedPrincipal {
   userId: string;
   accountId: string;
+  workspaceId?: string;
+  /** @deprecated Use `workspaceId`. */
   projectId?: string;
   sessionId?: string;
   keyId?: string;

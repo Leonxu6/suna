@@ -88,7 +88,7 @@ export function isAccountToken(token: string): boolean {
 }
 
 /**
- * Generate a project-scoped LLM gateway key for external/programmatic access.
+ * Generate a workspace-scoped LLM gateway key for external/programmatic access.
  * Secret: kortix_gw_<32 chars>  (shown once, only the hash is stored).
  */
 export function generateGatewayKeyPair(): { secretKey: string } {

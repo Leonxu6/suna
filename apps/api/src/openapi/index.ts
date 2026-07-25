@@ -99,13 +99,78 @@ export function filterSpecPaths<T extends { paths?: Record<string, unknown> }>(
   return { ...doc, paths: kept };
 }
 
+const HTTP_OPERATION_KEYS = new Set([
+  'get',
+  'put',
+  'post',
+  'delete',
+  'options',
+  'head',
+  'patch',
+  'trace',
+]);
+
+function deprecateProjectPathItem(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(deprecateProjectPathItem);
+  if (!value || typeof value !== 'object') return value;
+
+  const source = value as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(source)) {
+    if (key === 'name' && nested === 'workspaceId' && source.in === 'path') {
+      result[key] = 'projectId';
+      continue;
+    }
+    result[key] = deprecateProjectPathItem(nested);
+  }
+  for (const key of HTTP_OPERATION_KEYS) {
+    const operation = result[key];
+    if (operation && typeof operation === 'object' && !Array.isArray(operation)) {
+      result[key] = {
+        ...(operation as Record<string, unknown>),
+        deprecated: true,
+        'x-kortix-successor': 'workspace',
+      };
+    }
+  }
+  return result;
+}
+
+/**
+ * Document the temporary Project compatibility routes.
+ * Runtime handlers remain canonical Workspace handlers.
+ */
+export function addDeprecatedProjectCompatibilityPaths<
+  T extends { paths?: Record<string, unknown> },
+>(doc: T): T {
+  if (!doc.paths) return doc;
+
+  const paths = { ...doc.paths };
+  for (const [path, item] of Object.entries(doc.paths)) {
+    if (path.startsWith('/v1/projects')) {
+      delete paths[path];
+      const deprecatedPath = path.replaceAll('{workspaceId}', '{projectId}');
+      paths[deprecatedPath] = deprecateProjectPathItem(item);
+      continue;
+    }
+
+    if (path.startsWith('/v1/executor/workspaces')) {
+      const deprecatedPath = path
+        .replace('/v1/executor/workspaces', '/v1/executor/projects')
+        .replaceAll('{workspaceId}', '{projectId}');
+      paths[deprecatedPath] = deprecateProjectPathItem(item);
+    }
+  }
+  return { ...doc, paths };
+}
+
 /** Register security + serve the spec (/v1/openapi.json) and Scalar UI (/v1/docs). */
 export function mountOpenApiDocs(app: OpenAPIHono<any, any, any>, version: string): void {
   app.openAPIRegistry.registerComponent('securitySchemes', 'bearerAuth', {
     type: 'http',
     scheme: 'bearer',
     description:
-      'Supabase user JWT, or a Kortix token: PAT (`kortix_pat_…`), API key (`kortix_…`), service account (`kortix_sa_…`), or (LLM Gateway inference routes only) a project gateway key (`kortix_gw_…`).',
+      'Supabase user JWT, or a Kortix token: PAT (`kortix_pat_…`), API key (`kortix_…`), service account (`kortix_sa_…`), or (LLM Gateway inference routes only) a workspace gateway key (`kortix_gw_…`).',
   });
 
   // Serve the same document `doc31` would (getOpenAPI31Document is exactly what
@@ -125,7 +190,9 @@ export function mountOpenApiDocs(app: OpenAPIHono<any, any, any>, version: strin
       },
       servers: [{ url: new URL(c.req.url).origin }],
     });
-    return c.json(filterSpecPaths(document));
+    return c.json(
+      filterSpecPaths(addDeprecatedProjectCompatibilityPaths(document)),
+    );
   });
 
   app.get('/v1/docs', Scalar({ url: '/v1/openapi.json', pageTitle: 'Kortix API' }));

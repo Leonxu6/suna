@@ -10,7 +10,7 @@ mock.module('../../../config', () => ({
   config: { FRONTEND_URL: 'https://app.test', SLACK_REQUIRE_USER_IDENTITY: false },
 }));
 
-// FIFO db mock — slashPanel reads one project row.
+// FIFO db mock — slashPanel reads one workspace row.
 let dbResults: Array<unknown[]> = [];
 function makeChain(): any {
   const chain: any = {};
@@ -20,17 +20,17 @@ function makeChain(): any {
 }
 mock.module('../../../shared/db', () => ({ db: { select: () => makeChain() }, hasDatabase: () => true }));
 
-let selection: any = { projectId: 'p1', agentName: null, opencodeModel: null, conversationPolicy: null };
+let selection: any = { workspaceId: 'p1', agentName: null, opencodeModel: null, conversationPolicy: null };
 mock.module('../selection', () => ({
   currentChannelSelection: async () => selection,
   isValidModelId: (s: string) => s.indexOf('/') > 0,
-  listProjectAgents: async () => [],
+  listWorkspaceAgents: async () => [],
   setChannelAgent: async () => true,
   setChannelConversationPolicy: async () => true,
   setChannelModel: mock(async () => true),
 }));
 
-let gate: any = { projectId: 'p1', accountId: 'a1', ownerUserId: 'u1', freeManagedOnly: false };
+let gate: any = { workspaceId: 'p1', accountId: 'a1', ownerUserId: 'u1', freeManagedOnly: false };
 mock.module('../model-gate', () => ({ channelModelContext: async () => gate }));
 
 mock.module('../../../llm-gateway/models/picker', () => ({
@@ -39,7 +39,7 @@ mock.module('../../../llm-gateway/models/picker', () => ({
       { id: 'kortix/glm-5.2', label: 'GLM 5.2', provider: 'kortix', managed: true, hint: 'Balanced, fast' },
       { id: 'kortix/claude-opus-4.8', label: 'Claude Opus 4.8', provider: 'kortix', managed: true, hint: 'Most capable' },
     ],
-    projectDefault: { model: 'glm-5.2', source: 'platform', label: 'GLM 5.2' },
+    workspaceDefault: { model: 'glm-5.2', source: 'platform', label: 'GLM 5.2' },
   }),
   labelForModelRef: (ref: string) => (ref.includes('glm') ? 'GLM 5.2' : ref),
 }));
@@ -47,7 +47,7 @@ mock.module('../../../llm-gateway/models/picker', () => ({
 let servable = true;
 mock.module('../../../llm-gateway/resolution/default-model', () => ({
   isModelServableForAccount: async () => servable,
-  resolveEffectiveModel: async () => ({ model: 'glm-5.2', source: 'project' }),
+  resolveEffectiveModel: async () => ({ model: 'glm-5.2', source: 'workspace' }),
 }));
 
 mock.module('../participants', () => ({
@@ -76,33 +76,33 @@ function actionIds(resp: any): string[] {
 
 beforeEach(() => {
   dbResults = [];
-  selection = { projectId: 'p1', agentName: null, opencodeModel: null, conversationPolicy: null };
-  gate = { projectId: 'p1', accountId: 'a1', ownerUserId: 'u1', freeManagedOnly: false };
+  selection = { workspaceId: 'p1', agentName: null, opencodeModel: null, conversationPolicy: null };
+  gate = { workspaceId: 'p1', accountId: 'a1', ownerUserId: 'u1', freeManagedOnly: false };
   servable = true;
   setChannelModel.mockClear();
 });
 
 describe('bare /kortix → channel panel', () => {
-  test('renders the project + inline change buttons (one command for everything)', async () => {
-    dbResults = [[{ projectId: 'p1', name: 'acme/api', repoUrl: 'https://github.com/acme/api', metadata: {} }]];
+  test('renders the workspace + inline change buttons (one command for everything)', async () => {
+    dbResults = [[{ workspaceId: 'p1', name: 'acme/api', repoUrl: 'https://github.com/acme/api', metadata: {} }]];
     const resp = await handleSlashCommand('', '', ctx);
     const ids = actionIds(resp);
     expect(ids).toContain('cfg_open_models');
     expect(ids).toContain('cfg_open_agents');
-    expect(ids).toContain('cfg_open_projects');
+    expect(ids).toContain('cfg_open_workspaces');
     // honest effective-model + source line
-    expect(JSON.stringify(resp.blocks)).toContain('project default');
+    expect(JSON.stringify(resp.blocks)).toContain('workspace default');
   });
 
   test('unconnected channel → a Connect button, not a "type switch" instruction', async () => {
     selection = null;
     const resp = await handleSlashCommand('config', '', ctx);
-    expect(actionIds(resp)).toContain('cfg_open_projects');
+    expect(actionIds(resp)).toContain('cfg_open_workspaces');
   });
 });
 
 describe('/kortix models → real served catalog', () => {
-  test('lists the picker models as set_model_<ref> buttons + a project-default reset', async () => {
+  test('lists the picker models as set_model_<ref> buttons + a workspace-default reset', async () => {
     const resp = await handleSlashCommand('models', '', ctx);
     const ids = actionIds(resp);
     expect(ids).toContain('set_model_default');
@@ -128,6 +128,6 @@ describe('/kortix model <id> → servability gate (never store a 404)', () => {
   test('`default` clears the override', async () => {
     const resp = await handleSlashCommand('model', 'default', ctx);
     expect(setChannelModel).toHaveBeenCalledWith(expect.anything(), null);
-    expect(resp.text).toContain('reset to the project default');
+    expect(resp.text).toContain('reset to the workspace default');
   });
 });

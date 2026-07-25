@@ -3,16 +3,16 @@
  * flow (mirrors triggers). The manifest holds the connector definition.
  * Credential MODE is always `shared` (`per_user` — each member brings their
  * own — was removed 2026-07-05, docs/specs/2026-07-05-agent-first-config-
- * unification.md §2.5). Connectors are project-wide visible — the only ACCESS
+ * unification.md §2.5). Connectors are workspace-wide visible — the only ACCESS
  * gate is the agent-side `agents.<name>.connectors` grant (declared in git, on
  * the agent, not the connector). Credentials live in the split store. See
  * docs/specs/executor.md §3, §5–6.
  */
 import { and, eq } from 'drizzle-orm';
-import { executorConnectors, projects } from '@kortix/db';
+import { executorConnectors, workspaces } from '@kortix/db';
 import type { UpdateConnectionProfileCredentialInput } from '@kortix/api-contract';
 import { db } from '../shared/db';
-import { commitManifest, loadManifestForEdit } from '../projects/index';
+import { commitManifest, loadManifestForEdit } from '../workspaces/index';
 import {
   extractConnectors,
   RESERVED_CONNECTOR_SLUGS,
@@ -20,16 +20,16 @@ import {
   type ConnectorPolicySpec,
   type ConnectorPolicyAction,
   type ConnectorSpec,
-} from '../projects/connectors';
+} from '../workspaces/connectors';
 import { isValidMatcher } from './policy';
 import {
-  extractProjectPolicies,
-  projectPoliciesToTomlEntries,
-  projectPolicySettingsToToml,
-  type ProjectPolicySpec,
+  extractWorkspacePolicies,
+  workspacePoliciesToTomlEntries,
+  workspacePolicySettingsToToml,
+  type WorkspacePolicySpec,
   type DefaultMode,
-} from '../projects/policies';
-import { syncProjectConnectors, type SyncResult } from './sync';
+} from '../workspaces/policies';
+import { syncWorkspaceConnectors, type SyncResult } from './sync';
 import { upsertCredential, upsertOAuth2Credential } from './credentials';
 import { resolveExperimentalFeature } from '../experimental/features';
 
@@ -115,23 +115,23 @@ function draftToEntry(d: ConnectorDraft): Record<string, unknown> {
   return entry;
 }
 
-async function loadRow(projectId: string) {
-  const [row] = await db.select().from(projects).where(eq(projects.projectId, projectId)).limit(1);
+async function loadRow(workspaceId: string) {
+  const [row] = await db.select().from(workspaces).where(eq(workspaces.workspaceId, workspaceId)).limit(1);
   return row ?? null;
 }
 
-async function connectorIdFor(projectId: string, slug: string): Promise<string | null> {
+async function connectorIdFor(workspaceId: string, slug: string): Promise<string | null> {
   const [row] = await db
     .select({ connectorId: executorConnectors.connectorId })
     .from(executorConnectors)
-    .where(and(eq(executorConnectors.projectId, projectId), eq(executorConnectors.slug, slug)))
+    .where(and(eq(executorConnectors.workspaceId, workspaceId), eq(executorConnectors.slug, slug)))
     .limit(1);
   return row?.connectorId ?? null;
 }
 
 /** Create/update a connector in kortix.yaml, then materialize it. */
 export async function upsertConnectorInManifest(
-  projectId: string,
+  workspaceId: string,
   accountId: string,
   draft: ConnectorDraft,
 ): Promise<CrudResult> {
@@ -142,7 +142,7 @@ export async function upsertConnectorInManifest(
   const reservedProvider = RESERVED_SLUG_PROVIDERS[draft.slug];
   if (
     RESERVED_CONNECTOR_SLUGS.has(draft.slug) &&
-    (await connectorIdFor(projectId, draft.slug)) === null &&
+    (await connectorIdFor(workspaceId, draft.slug)) === null &&
     reservedProvider !== draft.provider
   ) {
     return {
@@ -155,8 +155,8 @@ export async function upsertConnectorInManifest(
     };
   }
 
-  const row = await loadRow(projectId);
-  if (!row) return { ok: false, error: 'project not found', status: 404 };
+  const row = await loadRow(workspaceId);
+  if (!row) return { ok: false, error: 'workspace not found', status: 404 };
   if (
     draft.provider === 'channel' &&
     draft.platform === 'email' &&
@@ -164,7 +164,7 @@ export async function upsertConnectorInManifest(
   ) {
     return {
       ok: false,
-      error: 'AgentMail Email is experimental and must be enabled for this project',
+      error: 'AgentMail Email is experimental and must be enabled for this workspace',
       status: 403,
     };
   }
@@ -211,16 +211,16 @@ export async function upsertConnectorInManifest(
   );
   if ('error' in committed) return { ok: false, error: committed.error, status: committed.status };
 
-  const sync = await syncProjectConnectors(projectId, accountId);
+  const sync = await syncWorkspaceConnectors(workspaceId, accountId);
   return { ok: true, sync };
 }
 
 export async function deleteConnectorFromManifest(
-  projectId: string,
+  workspaceId: string,
   slug: string,
 ): Promise<CrudResult> {
-  const row = await loadRow(projectId);
-  if (!row) return { ok: false, error: 'project not found', status: 404 };
+  const row = await loadRow(workspaceId);
+  if (!row) return { ok: false, error: 'workspace not found', status: 404 };
 
   let manifest;
   try {
@@ -236,7 +236,7 @@ export async function deleteConnectorFromManifest(
   if (next.length === current.length) {
     await db
       .delete(executorConnectors)
-      .where(and(eq(executorConnectors.projectId, projectId), eq(executorConnectors.slug, slug)));
+      .where(and(eq(executorConnectors.workspaceId, workspaceId), eq(executorConnectors.slug, slug)));
     return { ok: true };
   }
   manifest.raw.connectors = next;
@@ -244,29 +244,29 @@ export async function deleteConnectorFromManifest(
   if ('error' in committed) return { ok: false, error: committed.error, status: committed.status };
   await db
     .delete(executorConnectors)
-    .where(and(eq(executorConnectors.projectId, projectId), eq(executorConnectors.slug, slug)));
+    .where(and(eq(executorConnectors.workspaceId, workspaceId), eq(executorConnectors.slug, slug)));
   return { ok: true };
 }
 
 /** Set the SHARED credential value (userId null) — the only credential a
  *  connector has since `per_user` was removed 2026-07-05. */
 export async function setConnectorCredentialShared(
-  projectId: string,
+  workspaceId: string,
   slug: string,
   input: UpdateConnectionProfileCredentialInput,
 ): Promise<CrudResult> {
-  const connectorId = await connectorIdFor(projectId, slug);
+  const connectorId = await connectorIdFor(workspaceId, slug);
   if (!connectorId) return { ok: false, error: 'connector not found', status: 404 };
   if ('oauth2' in input) {
     await upsertOAuth2Credential({
-      projectId,
+      workspaceId,
       connectorId,
       userId: null,
       oauth2: input.oauth2,
     });
   } else {
     await upsertCredential({
-      projectId,
+      workspaceId,
       connectorId,
       userId: null,
       value: input.value,
@@ -285,13 +285,13 @@ export async function setConnectorCredentialShared(
  * than `shared` are rejected by the router before this is called.
  */
 export async function setConnectorCredentialModeInManifest(
-  projectId: string,
+  workspaceId: string,
   accountId: string,
   slug: string,
   mode: 'shared',
 ): Promise<CrudResult> {
-  const row = await loadRow(projectId);
-  if (!row) return { ok: false, error: 'project not found', status: 404 };
+  const row = await loadRow(workspaceId);
+  if (!row) return { ok: false, error: 'workspace not found', status: 404 };
 
   let manifest;
   try {
@@ -319,7 +319,7 @@ export async function setConnectorCredentialModeInManifest(
   );
   if ('error' in committed) return { ok: false, error: committed.error, status: committed.status };
 
-  const sync = await syncProjectConnectors(projectId, accountId);
+  const sync = await syncWorkspaceConnectors(workspaceId, accountId);
   return { ok: true, sync };
 }
 
@@ -330,13 +330,13 @@ export async function setConnectorCredentialModeInManifest(
  * secrets-bearing integrations where reading is itself an exfiltration surface.
  */
 export async function setConnectorSensitiveInManifest(
-  projectId: string,
+  workspaceId: string,
   accountId: string,
   slug: string,
   sensitive: boolean,
 ): Promise<CrudResult> {
-  const row = await loadRow(projectId);
-  if (!row) return { ok: false, error: 'project not found', status: 404 };
+  const row = await loadRow(workspaceId);
+  if (!row) return { ok: false, error: 'workspace not found', status: 404 };
 
   let manifest;
   try {
@@ -366,13 +366,13 @@ export async function setConnectorSensitiveInManifest(
   );
   if ('error' in committed) return { ok: false, error: committed.error, status: committed.status };
 
-  const sync = await syncProjectConnectors(projectId, accountId);
+  const sync = await syncWorkspaceConnectors(workspaceId, accountId);
   return { ok: true, sync };
 }
 
 /** Rename a connector — patches the kortix.yaml entry's `name` (display label) + re-syncs. */
 export async function setConnectorNameInManifest(
-  projectId: string,
+  workspaceId: string,
   accountId: string,
   slug: string,
   name: string,
@@ -381,8 +381,8 @@ export async function setConnectorNameInManifest(
   if (!trimmed) return { ok: false, error: 'name is required', status: 400 };
   if (trimmed.length > 255) return { ok: false, error: 'name is too long (max 255)', status: 400 };
 
-  const row = await loadRow(projectId);
-  if (!row) return { ok: false, error: 'project not found', status: 404 };
+  const row = await loadRow(workspaceId);
+  if (!row) return { ok: false, error: 'workspace not found', status: 404 };
 
   let manifest;
   try {
@@ -410,7 +410,7 @@ export async function setConnectorNameInManifest(
   );
   if ('error' in committed) return { ok: false, error: committed.error, status: committed.status };
 
-  const sync = await syncProjectConnectors(projectId, accountId);
+  const sync = await syncWorkspaceConnectors(workspaceId, accountId);
   return { ok: true, sync };
 }
 
@@ -454,10 +454,10 @@ export interface ConnectorConfigView {
  * exactly with the upsert path. Returns null if the connector doesn't exist.
  */
 export async function getConnectorConfigFromManifest(
-  projectId: string,
+  workspaceId: string,
   slug: string,
 ): Promise<ConnectorConfigView | null> {
-  const row = await loadRow(projectId);
+  const row = await loadRow(workspaceId);
   if (!row) return null;
   const manifest = await loadManifestForEdit(row).catch(() => null);
   if (!manifest) return null;
@@ -495,10 +495,10 @@ const CONNECTOR_POLICY_ACTIONS: readonly ConnectorPolicyAction[] = [
 
 /** Read a single connector's `policies:` list from kortix.yaml (source of truth). */
 export async function getConnectorPoliciesFromManifest(
-  projectId: string,
+  workspaceId: string,
   slug: string,
 ): Promise<{ policies: ConnectorPolicySpec[] } | null> {
-  const row = await loadRow(projectId);
+  const row = await loadRow(workspaceId);
   if (!row) return null;
   const manifest = await loadManifestForEdit(row).catch(() => null);
   if (!manifest) return { policies: [] };
@@ -520,7 +520,7 @@ export async function getConnectorPoliciesFromManifest(
  * or `/regex/` — validated here so a bad regex can't be persisted.
  */
 export async function setConnectorPoliciesInManifest(
-  projectId: string,
+  workspaceId: string,
   accountId: string,
   slug: string,
   policies: ConnectorPolicySpec[],
@@ -539,8 +539,8 @@ export async function setConnectorPoliciesInManifest(
     }
   }
 
-  const row = await loadRow(projectId);
-  if (!row) return { ok: false, error: 'project not found', status: 404 };
+  const row = await loadRow(workspaceId);
+  if (!row) return { ok: false, error: 'workspace not found', status: 404 };
 
   let manifest;
   try {
@@ -567,27 +567,27 @@ export async function setConnectorPoliciesInManifest(
   const committed = await commitManifest(row, manifest, `chore: update ${slug} permissions`);
   if ('error' in committed) return { ok: false, error: committed.error, status: committed.status };
 
-  const sync = await syncProjectConnectors(projectId, accountId);
+  const sync = await syncWorkspaceConnectors(workspaceId, accountId);
   return { ok: true, sync };
 }
 
-// ─── Project-level policies (top-level `policies:` list + `policy:` block) ──
+// ─── Workspace-level policies (top-level `policies:` list + `policy:` block) ──
 
-export interface ProjectPoliciesView {
-  policies: ProjectPolicySpec[];
+export interface WorkspacePoliciesView {
+  policies: WorkspacePolicySpec[];
   defaultMode: DefaultMode;
   errors: Array<{ path: string; error: string }>;
 }
 
-/** Read the project's `policies:` list + `policy:` block (kortix.yaml = source of truth). */
-export async function getProjectPoliciesFromManifest(
-  projectId: string,
-): Promise<ProjectPoliciesView | null> {
-  const row = await loadRow(projectId);
+/** Read the workspace's `policies:` list + `policy:` block (kortix.yaml = source of truth). */
+export async function getWorkspacePoliciesFromManifest(
+  workspaceId: string,
+): Promise<WorkspacePoliciesView | null> {
+  const row = await loadRow(workspaceId);
   if (!row) return null;
   const manifest = await loadManifestForEdit(row).catch(() => null);
   if (!manifest) return { policies: [], defaultMode: 'allow_all', errors: [] };
-  const parsed = extractProjectPolicies(manifest);
+  const parsed = extractWorkspacePolicies(manifest);
   return {
     policies: parsed.policies,
     defaultMode: parsed.settings.defaultMode,
@@ -601,14 +601,14 @@ export async function getProjectPoliciesFromManifest(
  * an ordered list; "save" PUTs the whole list back. Per-rule add/edit/delete
  * remain client-side until commit.
  */
-export async function setProjectPoliciesInManifest(
-  projectId: string,
+export async function setWorkspacePoliciesInManifest(
+  workspaceId: string,
   accountId: string,
-  policies: ProjectPolicySpec[],
+  policies: WorkspacePolicySpec[],
   defaultMode: DefaultMode,
 ): Promise<CrudResult> {
-  const row = await loadRow(projectId);
-  if (!row) return { ok: false, error: 'project not found', status: 404 };
+  const row = await loadRow(workspaceId);
+  if (!row) return { ok: false, error: 'workspace not found', status: 404 };
 
   // Validate against the parser before writing — same rules the runtime enforces.
   for (const [i, p] of policies.entries()) {
@@ -635,13 +635,13 @@ export async function setProjectPoliciesInManifest(
   }
 
   // Rewrite both knobs. Omit empties so the manifest stays clean.
-  const entries = projectPoliciesToTomlEntries(policies);
+  const entries = workspacePoliciesToTomlEntries(policies);
   if (entries.length > 0) {
     manifest.raw.policies = entries;
   } else {
     delete manifest.raw.policies;
   }
-  const settingsBlock = projectPolicySettingsToToml({ defaultMode });
+  const settingsBlock = workspacePolicySettingsToToml({ defaultMode });
   if (settingsBlock) {
     manifest.raw.policy = settingsBlock;
   } else {
@@ -651,7 +651,7 @@ export async function setProjectPoliciesInManifest(
   const committed = await commitManifest(row, manifest, 'chore: update executor policies');
   if ('error' in committed) return { ok: false, error: committed.error, status: committed.status };
 
-  // Materialize: project policies are reconciled inside syncProjectConnectors.
-  const sync = await syncProjectConnectors(projectId, accountId);
+  // Materialize: workspace policies are reconciled inside syncWorkspaceConnectors.
+  const sync = await syncWorkspaceConnectors(workspaceId, accountId);
   return { ok: true, sync };
 }

@@ -14,7 +14,7 @@ mock.module('../../billing/services/webhook-concurrency', () => ({
     return true;
   },
 }));
-mock.module('../../projects/sandbox-reaper', () => ({
+mock.module('../../workspaces/sandbox-reaper', () => ({
   reconcileSandboxStoppedByExternalId: async (externalId: string) => {
     stoppedCalls.push(externalId);
     return true;

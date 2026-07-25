@@ -4,7 +4,7 @@
  * grant → relay attempt. Proves the real wiring (sync, db-deps, the shared tunnel
  * RPC core) against a real Postgres with a seeded tunnel, no WS agent needed.
  *
- * Runs against the local Postgres (DATABASE_URL). Seeds a project's account with
+ * Runs against the local Postgres (DATABASE_URL). Seeds a workspace's account with
  * a tunnel + the agent_tunnel flag in beforeAll, cleans up in afterAll. Applies
  * the additive enum value idempotently (mirrors ensureSchema's push locally).
  */
@@ -12,18 +12,18 @@ import { describe, expect, test, beforeAll, afterAll } from 'bun:test';
 import { sql, eq, and } from 'drizzle-orm';
 import { db } from '../shared/db';
 import {
-  projects,
+  workspaces,
   tunnelConnections,
   tunnelPermissions,
   executorConnectors,
   executorConnectorActions,
 } from '@kortix/db';
 import { synthesizeComputerConnectors } from '../executor/computer-materialize';
-import { syncProjectConnectors } from '../executor/sync';
+import { syncWorkspaceConnectors } from '../executor/sync';
 import { executeComputerCall, listAccountComputers } from '../tunnel/core/rpc-core';
 import { dbExecutorRouterDeps } from '../executor/db-deps';
 
-let projectId = '';
+let workspaceId = '';
 let accountId = '';
 let tunnelId = '';
 let originalMetadata: unknown = null;
@@ -40,23 +40,23 @@ beforeAll(async () => {
   `);
 
   const rows = (await db.execute(
-    sql`select project_id, account_id, metadata from kortix.projects limit 1`,
-  )) as unknown as Array<{ project_id: string; account_id: string; metadata: unknown }>;
+    sql`select workspace_id, account_id, metadata from kortix.workspaces limit 1`,
+  )) as unknown as Array<{ workspace_id: string; account_id: string; metadata: unknown }>;
   const proj = rows[0];
   if (!proj) {
-    console.warn('[integration] no project in local DB — skipping computer connector e2e');
+    console.warn('[integration] no workspace in local DB — skipping computer connector e2e');
     return;
   }
-  projectId = proj.project_id;
+  workspaceId = proj.workspace_id;
   accountId = proj.account_id;
   originalMetadata = proj.metadata ?? {};
 
-  // Opt the project into agent_tunnel (the synth gate).
+  // Opt the workspace into agent_tunnel (the synth gate).
   const meta = { ...(proj.metadata as Record<string, unknown> | null ?? {}) };
   const exp = { ...((meta.experimental as Record<string, unknown> | undefined) ?? {}) };
   exp.agent_tunnel = true;
   meta.experimental = exp;
-  await db.update(projects).set({ metadata: meta }).where(eq(projects.projectId, projectId));
+  await db.update(workspaces).set({ metadata: meta }).where(eq(workspaces.workspaceId, workspaceId));
 
   // Seed a connected machine (what device-auth approve would create).
   const [t] = await db
@@ -76,16 +76,16 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!seeded) return;
   // Drop the materialized connector + the seeded tunnel (cascades permissions /
-  // requests), then restore the project's metadata.
-  await db.delete(executorConnectors).where(and(eq(executorConnectors.projectId, projectId), eq(executorConnectors.slug, 'computer')));
+  // requests), then restore the workspace's metadata.
+  await db.delete(executorConnectors).where(and(eq(executorConnectors.workspaceId, workspaceId), eq(executorConnectors.slug, 'computer')));
   await db.delete(tunnelConnections).where(eq(tunnelConnections.tunnelId, tunnelId));
-  await db.update(projects).set({ metadata: originalMetadata as any }).where(eq(projects.projectId, projectId));
+  await db.update(workspaces).set({ metadata: originalMetadata as any }).where(eq(workspaces.workspaceId, workspaceId));
 });
 
 describe('computer connector — real DB e2e', () => {
   test('synth produces ONE computer spec when the account has a connected machine', async () => {
     if (!seeded) return;
-    const specs = await synthesizeComputerConnectors(projectId, []);
+    const specs = await synthesizeComputerConnectors(workspaceId, []);
     expect(specs).toHaveLength(1);
     expect(specs[0]!.slug).toBe('computer');
     expect(specs[0]!.provider).toBe('computer');
@@ -97,8 +97,8 @@ describe('computer connector — real DB e2e', () => {
     // Clear the experimental flag entirely: the connector no longer depends on
     // it (it's machine-driven like the Slack channel connector). Previously this
     // returned []; now the connected machine alone is enough.
-    await db.update(projects).set({ metadata: {} as any }).where(eq(projects.projectId, projectId));
-    const specs = await synthesizeComputerConnectors(projectId, []);
+    await db.update(workspaces).set({ metadata: {} as any }).where(eq(workspaces.workspaceId, workspaceId));
+    const specs = await synthesizeComputerConnectors(workspaceId, []);
     expect(specs).toHaveLength(1);
     expect(specs[0]!.slug).toBe('computer');
   });
@@ -106,19 +106,19 @@ describe('computer connector — real DB e2e', () => {
   test('full sync materializes the computer connector + the tunnel catalog', async () => {
     if (!seeded) return;
     try {
-      await syncProjectConnectors(projectId, accountId);
+      await syncWorkspaceConnectors(workspaceId, accountId);
     } catch (e) {
-      // Full sync reads the project's git manifest; if the managed git backend
+      // Full sync reads the workspace's git manifest; if the managed git backend
       // isn't reachable from this test env, the install-driven computer synth
       // still runs — but if the whole sync throws, fall back to asserting synth
       // directly (covered above) and skip the row check.
-      console.warn('[integration] syncProjectConnectors threw (git backend?):', (e as Error).message);
+      console.warn('[integration] syncWorkspaceConnectors threw (git backend?):', (e as Error).message);
       return;
     }
     const [conn] = await db
       .select()
       .from(executorConnectors)
-      .where(and(eq(executorConnectors.projectId, projectId), eq(executorConnectors.slug, 'computer')));
+      .where(and(eq(executorConnectors.workspaceId, workspaceId), eq(executorConnectors.slug, 'computer')));
     expect(conn).toBeTruthy();
     expect(conn!.providerType).toBe('computer');
 
@@ -141,20 +141,20 @@ describe('computer connector — real DB e2e', () => {
     const [conn] = await db
       .select()
       .from(executorConnectors)
-      .where(and(eq(executorConnectors.projectId, projectId), eq(executorConnectors.slug, 'computer')));
+      .where(and(eq(executorConnectors.workspaceId, workspaceId), eq(executorConnectors.slug, 'computer')));
     if (!conn) return; // sync skipped (git backend unreachable) — nothing materialized to read.
 
-    const policies = await dbExecutorRouterDeps.getConnectorPolicies!(projectId, 'computer');
+    const policies = await dbExecutorRouterDeps.getConnectorPolicies!(workspaceId, 'computer');
     expect(policies).not.toBeNull(); // would have been null → 404 before the fix
     expect(Array.isArray(policies!.policies)).toBe(true);
 
-    const config = await dbExecutorRouterDeps.getConnectorConfig!(projectId, 'computer');
+    const config = await dbExecutorRouterDeps.getConnectorConfig!(workspaceId, 'computer');
     expect(config).not.toBeNull();
     expect(config!.provider).toBe('computer');
     expect(config!.slug).toBe('computer');
 
     // A genuinely unknown slug must still be null → a true 404 (fallback doesn't mask it).
-    const missing = await dbExecutorRouterDeps.getConnectorPolicies!(projectId, 'no-such-connector-xyz');
+    const missing = await dbExecutorRouterDeps.getConnectorPolicies!(workspaceId, 'no-such-connector-xyz');
     expect(missing).toBeNull();
   });
 

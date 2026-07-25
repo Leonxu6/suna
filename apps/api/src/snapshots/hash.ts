@@ -19,12 +19,12 @@
  *      bytes copied into the image (kortix-agent, entrypoint, CLI files).
  *   4. Hardware spec — the `[sandbox]` cpu/memory/disk/gpu, baked into the
  *      snapshot at build time. Only mixed in when at least one field is set,
- *      so projects that don't declare a spec keep their existing hashes (no
+ *      so workspaces that don't declare a spec keep their existing hashes (no
  *      mass rebuild when this field rolls out).
  *
  * The output is a hex SHA-256 (64 chars). Snapshot names take the first
  * 12 chars to stay readable while keeping collision probability
- * negligible at any realistic project / commit count.
+ * negligible at any realistic workspace / commit count.
  */
 
 import { createHash } from 'node:crypto';
@@ -39,7 +39,7 @@ export interface SnapshotHashInputs {
   /**
    * Hardware spec from `[sandbox]`. Baked into the snapshot, so it's part
    * of the identity: change cpu/memory/disk/gpu, rebuild. Omitted from the
-   * digest entirely when empty so unspecced projects keep their hashes.
+   * digest entirely when empty so unspecced workspaces keep their hashes.
    */
   spec?: SandboxSpec;
   /**
@@ -80,7 +80,7 @@ export function computeSnapshotHash(inputs: SnapshotHashInputs): SnapshotHashRes
   ];
   // Only append the spec segment when something is actually set, so a
   // manifest without `[sandbox]` resources hashes identically to before
-  // this field existed — no surprise rebuild of every project's snapshot.
+  // this field existed — no surprise rebuild of every workspace's snapshot.
   const specSegment = serializeSpec(inputs.spec);
   if (specSegment) blob.push(`spec=${specSegment}`);
 

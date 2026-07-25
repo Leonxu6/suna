@@ -16,7 +16,7 @@ import type { ActionBinding, NormalizedAction, Risk } from './types';
 /**
  * Reserved, platform-owned connector slug for the built-in Slack channel.
  *
- * Do NOT use the public `slack` slug here: projects are allowed to add their
+ * Do NOT use the public `slack` slug here: workspaces are allowed to add their
  * own `[[connectors]] slug = "slack"` (for example a Pipedream Slack connector).
  * The in-sandbox `slack` CLI needs a deterministic namespace that cannot be
  * shadowed by those user-defined connectors, otherwise read commands such as
@@ -54,7 +54,7 @@ export function channelAuth(platform: string): ExecutorAuth {
   return { type: 'bearer', in: 'header', name: null, prefix: null };
 }
 
-// `ChannelPlatform` + the platform allow-list are owned by projects/connectors.ts
+// `ChannelPlatform` + the platform allow-list are owned by workspaces/connectors.ts
 // (the parser layer the executor builds on). This module just maps a platform
 // string → its catalog / API base, so it takes plain strings and returns []/''
 // for anything it doesn't know.

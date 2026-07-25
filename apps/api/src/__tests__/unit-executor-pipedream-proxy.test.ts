@@ -2,7 +2,7 @@
  * The Pipedream Connect-Proxy wire format — the new `request` tool's actual
  * HTTP shape. Mocks global fetch (both the OAuth token mint + the proxy call)
  * so we assert exactly what we send to Pipedream:
- *   {METHOD} /v1/connect/{project}/proxy/{base64url(target_url)}
+ *   {METHOD} /v1/connect/{workspace}/proxy/{base64url(target_url)}
  *            ?external_user_id=…&account_id=…
  * with the body passed straight through and the upstream status flowing back.
  * Docs: https://pipedream.com/docs/connect/api-proxy
@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { runPipedreamProxy } from '../executor/pipedream';
 
-const PD_PROJECT = process.env.PIPEDREAM_PROJECT_ID!;
+const PD_WORKSPACE = process.env.PIPEDREAM_PROJECT_ID!;
 
 interface Captured { url: string; method: string; headers: Record<string, string>; body?: string }
 
@@ -53,7 +53,7 @@ describe('Connect Proxy wire format', () => {
     const url = new URL(c.url);
     const b64 = url.pathname.split('/proxy/')[1]!;
     expect(Buffer.from(b64, 'base64url').toString('utf8')).toBe(TARGET); // round-trips the real target
-    expect(url.pathname.startsWith(`/v1/connect/${PD_PROJECT}/proxy/`)).toBe(true);
+    expect(url.pathname.startsWith(`/v1/connect/${PD_WORKSPACE}/proxy/`)).toBe(true);
     expect(url.searchParams.get('account_id')).toBe('apn_acct123');
     expect(url.searchParams.get('external_user_id')).toBe('proj-x:github:user-7');
 

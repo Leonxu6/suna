@@ -12,7 +12,7 @@
  *
  * Behavior (mode/model/temperature/permission/…) is NOT covered here — it
  * lives in the agent's `.md` frontmatter, exercised by
- * `../projects/lib/compile-agent-config.test.ts` and
+ * `../workspaces/lib/compile-agent-config.test.ts` and
  * `@kortix/manifest-schema`'s `validateAgentMdFrontmatter` tests instead.
  */
 import { describe, expect, test } from 'bun:test';
@@ -20,8 +20,8 @@ import {
   applyAgentBlockV2,
   applyDefaultAgentV2,
   readAgentBlockV2,
-} from '../projects/lib/agent-config-v2';
-import { parseManifestString, synthesizeBlankManifest } from '../projects/triggers';
+} from '../workspaces/lib/agent-config-v2';
+import { parseManifestString, synthesizeBlankManifest } from '../workspaces/triggers';
 
 const V2 = `
 kortix_version: 2
@@ -31,13 +31,13 @@ agents:
     connectors: [github]
     secrets: [STRIPE_KEY]
     skills: [pdf-export]
-    kortix_cli: [project.session.start]
+    kortix_cli: [workspace.session.start]
     workspace: runtime
 `;
 
 const V1 = `
 kortix_version = 1
-[project]
+[workspace]
 name = "acme"
 [[agents]]
 name = "kortix"
@@ -59,7 +59,7 @@ describe('readAgentBlockV2', () => {
       connectors: ['github'],
       secrets: ['STRIPE_KEY'],
       skills: ['pdf-export'],
-      kortix_cli: ['project.session.start'],
+      kortix_cli: ['workspace.session.start'],
       workspace: 'runtime',
     });
     expect(read.block).not.toHaveProperty('opencode');
@@ -108,7 +108,7 @@ describe('applyAgentBlockV2', () => {
     const manifest = v2Manifest();
     const applied = applyAgentBlockV2(manifest, 'pr-bot', {
       connectors: ['github'],
-      kortix_cli: ['project.cr.open'],
+      kortix_cli: ['workspace.cr.open'],
     });
     expect(applied.ok).toBe(true);
     if (!applied.ok) return;
@@ -209,7 +209,7 @@ agents:
 // never through `serializeManifest`/re-parse (which re-injects
 // `kortix_version` from `manifest.schemaVersion` on the way OUT — see that
 // function's doc comment). `loadManifestForEdit`'s synthesized "blank
-// project" manifest (no kortix.yaml/kortix.toml committed yet) is exactly
+// workspace" manifest (no kortix.yaml/kortix.toml committed yet) is exactly
 // this raw, never-serialized shape. #4974's own regression test proved the
 // synthesis valid only via serialize→reparse→validate — never the raw path
 // these two functions actually run — so it missed that the synthesized
@@ -217,15 +217,15 @@ agents:
 // rejects an object with no `kortix_version` key as unversioned before ever
 // reaching the v2 body validators. PUT /default-agent and PUT
 // /agents/:name/config both 400'd `kortix_version is required` on a blank
-// project even after #4974 merged. `synthesizeBlankManifest` (../projects/
+// workspace even after #4974 merged. `synthesizeBlankManifest` (../workspaces/
 // triggers.ts) now embeds it — these tests exercise the EXACT functions the
 // write routes call, on the EXACT object those routes hold (not a
 // hand-rolled fixture), so a future regression that drops the key again
 // fails here instead of shipping.
-describe('the raw path `loadManifestForEdit` actually produces for a blank project', () => {
+describe('the raw path `loadManifestForEdit` actually produces for a blank workspace', () => {
   test('applyDefaultAgentV2 validates against the synthesized manifest as-is (no serialize/reparse)', () => {
     const manifest = synthesizeBlankManifest({
-      name: 'blank-project',
+      name: 'blank-workspace',
       manifestPath: 'kortix.toml',
     });
     // Sanity: the bug this guards against — a raw object with no
@@ -240,13 +240,13 @@ describe('the raw path `loadManifestForEdit` actually produces for a blank proje
 
   test('applyAgentBlockV2 validates a new agent block against the synthesized manifest as-is', () => {
     const manifest = synthesizeBlankManifest({
-      name: 'blank-project',
+      name: 'blank-workspace',
       manifestPath: 'kortix.toml',
     });
 
     const applied = applyAgentBlockV2(manifest, 'release-bot', {
       connectors: ['github'],
-      kortix_cli: ['project.cr.open'],
+      kortix_cli: ['workspace.cr.open'],
     });
     expect(applied.ok).toBe(true);
     if (!applied.ok) return;
@@ -267,7 +267,7 @@ describe('the raw path `loadManifestForEdit` actually produces for a blank proje
     // validator with zero errors (a stricter check than the old test's
     // serialize→reparse indirection).
     const manifest = synthesizeBlankManifest({
-      name: 'blank-project',
+      name: 'blank-workspace',
       manifestPath: 'kortix.toml',
     });
     const applied = applyDefaultAgentV2(manifest, manifest.raw.default_agent as string);

@@ -4,10 +4,10 @@ import type { AuthedPrincipal } from '@kortix/llm-gateway';
 
 /**
  * BILLING-CORRECTNESS: checkBudget (the function gating every gateway
- * request's project/member spend cap) had zero unit tests, and its DB query
+ * request's workspace/member spend cap) had zero unit tests, and its DB query
  * hard-filtered to `action = 'block'` — a 'warn' budget (a real, persisted,
  * API-creatable option) was fetched nowhere and did nothing at all. This file
- * covers: block vs warn (warn never blocks but IS reported), project vs
+ * covers: block vs warn (warn never blocks but IS reported), workspace vs
  * member scope, and the multi-budget mix. Period rollover (date_trunc at the
  * SQL level) is deliberately NOT covered here — spend is a mocked constant per
  * test, not a live time-bucketed query, so day/week/month boundary behavior
@@ -15,13 +15,13 @@ import type { AuthedPrincipal } from '@kortix/llm-gateway';
  * faked here.
  */
 
-// One FIFO queue per (projectId, subjectUserId, period) key, in the exact
+// One FIFO queue per (workspaceId, subjectUserId, period) key, in the exact
 // call order spendForPeriod issues them in checkBudget's budget loop — avoids
 // needing to introspect drizzle's `where` condition object, since the mock
 // below never inspects it.
 let spendQueue: number[] = [];
 let budgetRows: Array<{
-  scope: 'project' | 'member';
+  scope: 'workspace' | 'member';
   subjectUserId: string | null;
   limitUsd: string;
   period: 'day' | 'week' | 'month';
@@ -51,7 +51,7 @@ function principal(overrides: Partial<AuthedPrincipal> = {}): AuthedPrincipal {
   return {
     userId: 'user-1',
     accountId: 'acct-1',
-    projectId: 'project-1',
+    workspaceId: 'workspace-1',
     ...overrides,
   };
 }
@@ -63,12 +63,12 @@ describe('checkBudget', () => {
     __resetBudgetReservationsForTests();
   });
 
-  test('no project on the principal → never queries, never exceeded', async () => {
-    const result = await checkBudget(principal({ projectId: undefined }));
+  test('no workspace on the principal → never queries, never exceeded', async () => {
+    const result = await checkBudget(principal({ workspaceId: undefined }));
     expect(result).toEqual({ exceeded: false });
   });
 
-  test('no budgets configured for the project → not exceeded', async () => {
+  test('no budgets configured for the workspace → not exceeded', async () => {
     budgetRows = [];
     const result = await checkBudget(principal());
     expect(result.exceeded).toBe(false);
@@ -78,7 +78,7 @@ describe('checkBudget', () => {
   describe('action = "block"', () => {
     test('spend under the limit → not exceeded', async () => {
       budgetRows = [
-        { scope: 'project', subjectUserId: null, limitUsd: '50', period: 'day', action: 'block' },
+        { scope: 'workspace', subjectUserId: null, limitUsd: '50', period: 'day', action: 'block' },
       ];
       spendQueue = [10];
       const result = await checkBudget(principal());
@@ -87,13 +87,13 @@ describe('checkBudget', () => {
 
     test('spend at or over the limit → exceeded, with a human message', async () => {
       budgetRows = [
-        { scope: 'project', subjectUserId: null, limitUsd: '50', period: 'day', action: 'block' },
+        { scope: 'workspace', subjectUserId: null, limitUsd: '50', period: 'day', action: 'block' },
       ];
       spendQueue = [50];
       const result = await checkBudget(principal());
       expect(result.exceeded).toBe(true);
       expect(result.message).toContain('$50/day');
-      expect(result.message).toContain("project's");
+      expect(result.message).toContain("workspace's");
     });
 
     test('member-scope budget only applies to the matching member', async () => {
@@ -120,8 +120,8 @@ describe('checkBudget', () => {
 
     test('the FIRST exceeded block budget short-circuits — later rows are not evaluated', async () => {
       budgetRows = [
-        { scope: 'project', subjectUserId: null, limitUsd: '10', period: 'day', action: 'block' },
-        { scope: 'project', subjectUserId: null, limitUsd: '100', period: 'month', action: 'block' },
+        { scope: 'workspace', subjectUserId: null, limitUsd: '10', period: 'day', action: 'block' },
+        { scope: 'workspace', subjectUserId: null, limitUsd: '100', period: 'month', action: 'block' },
       ];
       spendQueue = [10]; // only one value queued — a second call would throw "empty queue -> 0", not fail, but assert call count instead
       const result = await checkBudget(principal());
@@ -133,7 +133,7 @@ describe('checkBudget', () => {
   describe('action = "warn" — the fixed silent no-op', () => {
     test('a warn budget over its limit is reported in `warnings`, never blocks', async () => {
       budgetRows = [
-        { scope: 'project', subjectUserId: null, limitUsd: '50', period: 'day', action: 'warn' },
+        { scope: 'workspace', subjectUserId: null, limitUsd: '50', period: 'day', action: 'warn' },
       ];
       spendQueue = [75];
       const result = await checkBudget(principal());
@@ -145,7 +145,7 @@ describe('checkBudget', () => {
 
     test('a warn budget under its limit produces no warning', async () => {
       budgetRows = [
-        { scope: 'project', subjectUserId: null, limitUsd: '50', period: 'day', action: 'warn' },
+        { scope: 'workspace', subjectUserId: null, limitUsd: '50', period: 'day', action: 'warn' },
       ];
       spendQueue = [10];
       const result = await checkBudget(principal());
@@ -173,11 +173,11 @@ describe('checkBudget', () => {
     });
   });
 
-  describe('mixed block + warn budgets on the same project', () => {
+  describe('mixed block + warn budgets on the same workspace', () => {
     test('an exceeded warn budget evaluated before an exceeded block budget is carried on the block response', async () => {
       budgetRows = [
-        { scope: 'project', subjectUserId: null, limitUsd: '10', period: 'day', action: 'warn' },
-        { scope: 'project', subjectUserId: null, limitUsd: '20', period: 'month', action: 'block' },
+        { scope: 'workspace', subjectUserId: null, limitUsd: '10', period: 'day', action: 'warn' },
+        { scope: 'workspace', subjectUserId: null, limitUsd: '20', period: 'month', action: 'block' },
       ];
       spendQueue = [15, 25];
       const result = await checkBudget(principal());
@@ -187,8 +187,8 @@ describe('checkBudget', () => {
 
     test('a warn budget that is NOT exceeded alongside a block budget that IS exceeded reports only the block', async () => {
       budgetRows = [
-        { scope: 'project', subjectUserId: null, limitUsd: '100', period: 'day', action: 'warn' },
-        { scope: 'project', subjectUserId: null, limitUsd: '20', period: 'month', action: 'block' },
+        { scope: 'workspace', subjectUserId: null, limitUsd: '100', period: 'day', action: 'warn' },
+        { scope: 'workspace', subjectUserId: null, limitUsd: '20', period: 'month', action: 'block' },
       ];
       spendQueue = [5, 25];
       const result = await checkBudget(principal());
@@ -198,8 +198,8 @@ describe('checkBudget', () => {
 
     test('two separate warn budgets both exceeded are both reported', async () => {
       budgetRows = [
-        { scope: 'project', subjectUserId: null, limitUsd: '10', period: 'day', action: 'warn' },
-        { scope: 'project', subjectUserId: null, limitUsd: '50', period: 'month', action: 'warn' },
+        { scope: 'workspace', subjectUserId: null, limitUsd: '10', period: 'day', action: 'warn' },
+        { scope: 'workspace', subjectUserId: null, limitUsd: '50', period: 'month', action: 'warn' },
       ];
       spendQueue = [15, 60];
       const result = await checkBudget(principal());
@@ -215,7 +215,7 @@ describe('checkBudget', () => {
     // queue that constant value once per call.
     test('N concurrent admissions against a nearly-full block budget are bounded, not all admitted', async () => {
       budgetRows = [
-        { scope: 'project', subjectUserId: null, limitUsd: '5', period: 'day', action: 'block' },
+        { scope: 'workspace', subjectUserId: null, limitUsd: '5', period: 'day', action: 'block' },
       ];
       const STALE_SPEND = 4.9; // $0.10 of headroom under the $5 cap
       const CONCURRENCY = 20;
@@ -235,22 +235,22 @@ describe('checkBudget', () => {
       expect(admitted).toBeGreaterThan(0);
     });
 
-    test('a reservation only affects the SAME project/member key — a different project is unaffected', async () => {
+    test('a reservation only affects the SAME workspace/member key — a different workspace is unaffected', async () => {
       budgetRows = [
-        { scope: 'project', subjectUserId: null, limitUsd: '1', period: 'day', action: 'block' },
+        { scope: 'workspace', subjectUserId: null, limitUsd: '1', period: 'day', action: 'block' },
       ];
-      spendQueue = [0.9]; // admitted, reserves 0.5 for project-1
-      const first = await checkBudget(principal({ projectId: 'project-1' }));
+      spendQueue = [0.9]; // admitted, reserves 0.5 for workspace-1
+      const first = await checkBudget(principal({ workspaceId: 'workspace-1' }));
       expect(first.exceeded).toBe(false);
 
-      spendQueue = [0.9]; // a totally different project's spend — must not see project-1's reservation
-      const other = await checkBudget(principal({ projectId: 'project-2' }));
+      spendQueue = [0.9]; // a totally different workspace's spend — must not see workspace-1's reservation
+      const other = await checkBudget(principal({ workspaceId: 'workspace-2' }));
       expect(other.exceeded).toBe(false);
     });
 
     test('a warn-only budget never reserves — concurrent warn checks never affect each other', async () => {
       budgetRows = [
-        { scope: 'project', subjectUserId: null, limitUsd: '5', period: 'day', action: 'warn' },
+        { scope: 'workspace', subjectUserId: null, limitUsd: '5', period: 'day', action: 'warn' },
       ];
       spendQueue = [10, 10, 10];
       const results = await Promise.all([

@@ -1,7 +1,7 @@
 /**
  * Local Docker sandbox provider — EXPERIMENTAL.
  *
- * Runs project sandboxes as plain Docker containers on THIS machine — the
+ * Runs workspace sandboxes as plain Docker containers on THIS machine — the
  * same host running kortix-api — via the local Docker Engine socket. There is
  * no cloud account, no multi-node scheduling, no remote API: `create()` is a
  * `docker run`, `stop()`/`start()` are `docker stop`/`docker start` (the
@@ -196,7 +196,7 @@ export class LocalDockerProvider implements SandboxProvider {
   // Sandboxes are containers on the SAME machine, reached over the shared
   // Docker network — never over the public internet. A loopback KORTIX_URL is
   // exactly right here, so the generic reachability preflight in
-  // projects/lib/sessions.ts skips its "cloud sandbox can't call back to
+  // workspaces/lib/sessions.ts skips its "cloud sandbox can't call back to
   // localhost" check for this provider (see the interface doc on this field).
   readonly requiresPublicCallback = false;
 
@@ -223,7 +223,7 @@ export class LocalDockerProvider implements SandboxProvider {
   }
 
   async create(opts: CreateSandboxOpts): Promise<ProvisionResult> {
-    // Every sandbox boots from its project's own per-project snapshot — the
+    // Every sandbox boots from its workspace's own per-workspace snapshot — the
     // SAME per-provider Docker image the local-docker snapshot adapter built
     // (apps/api/src/snapshots/providers/local-docker.ts). No shared fallback,
     // matching Daytona's contract exactly (see daytona.ts's identical guard).
@@ -231,7 +231,7 @@ export class LocalDockerProvider implements SandboxProvider {
     if (!snapshot) {
       throw new Error(
         'local-docker create() called without opts.snapshot. Every sandbox must boot from a ' +
-        'per-project image built by apps/api/src/snapshots/builder.ts. There is no shared fallback.',
+        'per-workspace image built by apps/api/src/snapshots/builder.ts. There is no shared fallback.',
       );
     }
     if (!opts.envVars?.KORTIX_SANDBOX_TOKEN) {

@@ -10,7 +10,7 @@ interface RuntimeArtifact {
    * Directory entry names to skip when walking this artifact. Lets callers
    * exclude generated/install state like `node_modules` (pnpm symlink targets
    * can shift across installs even when the source hasn't changed, which would
-   * otherwise flip the fingerprint and force every project to rebuild).
+   * otherwise flip the fingerprint and force every workspace to rebuild).
    */
   excludeNames?: readonly string[];
 }
@@ -65,7 +65,7 @@ async function hashPath(
       // Test sources never ship into a sandbox image (nothing COPYs `__tests__`
       // or `*.test.ts`, and `bun build` doesn't compile them into the CLI/agent
       // binary), so they can't change what a session runs — yet hashing them made
-      // every test edit re-mint every project's runtime identity, forcing a mass
+      // every test edit re-mint every workspace's runtime identity, forcing a mass
       // cache miss. Skip them so the fingerprint moves only on real runtime code.
       if (isTestEntry(entry.name)) continue;
       await hashPath(hash, join(path, entry.name), `${logicalPath}/${entry.name}`, excludeNames);

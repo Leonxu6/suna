@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 
 // resolveSlackActor is the authoritative security gate: it must return a userId
-// ONLY when the Slack user is linked, in the project's account, and allowed to
-// start work in that project.
+// ONLY when the Slack user is linked, in the workspace's account, and allowed to
+// start work in that workspace.
 
 let dbResults: unknown[][] = [];
 let authorizeAllowed = true;
@@ -28,12 +28,12 @@ mock.module('../../slack-api', () => ({
   },
 }));
 mock.module('../../install-store', () => ({
-  loadSlackTokenForProject: async () => 'xoxb-test',
+  loadSlackTokenForWorkspace: async () => 'xoxb-test',
 }));
 mock.module('../../../iam', () => ({
   authorize: async () => ({ allowed: authorizeAllowed }),
   assertAuthorized: async () => {},
-  filterAccessibleProjectResources: async (_u: string, _a: string, _p: string, _t: string, ids: readonly string[]) => [...ids],
+  filterAccessibleWorkspaceResources: async (_u: string, _a: string, _p: string, _t: string, ids: readonly string[]) => [...ids],
   unscopedResourceIds: async (_p: string, _t: string, ids: readonly string[]) => [...ids],
 }));
 
@@ -63,14 +63,14 @@ describe('resolveSlackActor', () => {
     expect(r).toEqual({ reason: 'not_member' });
   });
 
-  test('linked and org member but missing project write → not_member', async () => {
+  test('linked and org member but missing workspace write → not_member', async () => {
     authorizeAllowed = false;
     dbResults = [[{ userId: 'u1' }], [{ userId: 'u1' }]]; // identity hit, membership hit
     const r = await resolveSlackActor('T1', 'U1', 'acct1', 'proj1');
     expect(r).toEqual({ reason: 'not_member' });
   });
 
-  test('linked and project-write-capable → returns the Kortix userId', async () => {
+  test('linked and workspace-write-capable → returns the Kortix userId', async () => {
     dbResults = [[{ userId: 'u1' }], [{ userId: 'u1' }]]; // identity hit, membership hit
     const r = await resolveSlackActor('T1', 'U1', 'acct1', 'proj1');
     expect(r).toEqual({ userId: 'u1' });
@@ -80,7 +80,7 @@ describe('resolveSlackActor', () => {
 describe('postIdentityPrompt', () => {
   test('top-level auth prompt is not hidden inside a new thread', async () => {
     await postIdentityPrompt({
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       teamId: 'T1',
       channel: 'C1',
       slackUserId: 'U1',
@@ -98,7 +98,7 @@ describe('postIdentityPrompt', () => {
 
   test('thread auth prompt stays in the existing thread', async () => {
     await postIdentityPrompt({
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       teamId: 'T1',
       channel: 'C1',
       threadTs: '90.0',

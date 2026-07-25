@@ -17,7 +17,7 @@ const ACTIVE_RECORD = {
   status: 'active',
   serviceKey: 'svc-key',
   sessionId: 'sess-1',
-  projectId: 'proj-1',
+  workspaceId: 'proj-1',
   accountId: 'acct-1',
   externalId: 'ext-1',
   agentName: 'default',
@@ -33,13 +33,13 @@ mock.module('../../shared/preview-ownership', () => ({
   canAccessPreviewSandbox: async () => true,
   canAccessSandboxSession: async () => true,
 }));
-mock.module('../../projects/lib/sandbox-env-sync', () => ({
+mock.module('../../workspaces/lib/sandbox-env-sync', () => ({
   syncSandboxEnvForPrompt: async () => {},
 }));
-mock.module('../../projects/opencode-title-capture', () => ({
+mock.module('../../workspaces/opencode-title-capture', () => ({
   scheduleTitleCaptureAfterPrompt: () => {},
 }));
-mock.module('../../projects/routes/shared', () => ({
+mock.module('../../workspaces/routes/shared', () => ({
   resumeStoppedSandboxByExternalId: async () => true,
 }));
 mock.module('../backend', () => ({

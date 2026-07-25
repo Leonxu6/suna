@@ -87,7 +87,7 @@ beforeEach(() => {
   continueCalls = [];
   createCalls = [];
   setEmailSessionLifecycleForTest({
-    resolveProjectAutomationActor: async () => 'user-1',
+    resolveWorkspaceAutomationActor: async () => 'user-1',
     continueSession: async (input) => {
       continueCalls.push({ sessionId: input.sessionId, text: input.text });
       return 'delivered';
@@ -177,12 +177,12 @@ describe('AgentMail webhook verification', () => {
 });
 
 describe('AgentMail credential resolution', () => {
-  test('supports both project BYO keys and server-managed fallback keys', () => {
+  test('supports both workspace BYO keys and server-managed fallback keys', () => {
     const original = config.AGENTMAIL_API_KEY;
     try {
       (config as { AGENTMAIL_API_KEY: string | undefined }).AGENTMAIL_API_KEY =
         'server-managed-key';
-      expect(resolveAgentMailApiKey('project-byo-key')).toBe('project-byo-key');
+      expect(resolveAgentMailApiKey('workspace-byo-key')).toBe('workspace-byo-key');
       expect(resolveAgentMailApiKey(null)).toBe('server-managed-key');
       expect(resolveAgentMailApiKey(undefined)).toBe('server-managed-key');
 
@@ -241,7 +241,7 @@ describe('AgentMail provider errors', () => {
           apiKey: 'am_test',
           username: 'support',
           displayName: 'Support',
-          clientId: 'kortix-project-proj-1',
+          clientId: 'kortix-workspace-proj-1',
         });
       } catch (err) {
         expect(err).toBeInstanceOf(AgentMailApiError);
@@ -257,16 +257,16 @@ describe('AgentMail provider errors', () => {
 });
 
 describe('dispatchAgentMailEvent', () => {
-  test('first message creates one project-visible session bound to the email thread', async () => {
+  test('first message creates one workspace-visible session bound to the email thread', async () => {
     dbResults = [
       [{ eventId: 'email:event:evt-1' }],
-      [{ projectId: 'proj-1' }],
+      [{ workspaceId: 'proj-1' }],
       [],
       [{ eventId: 'email:msg:inb-1:msg-1' }],
       [],
       [
         {
-          projectId: 'proj-1',
+          workspaceId: 'proj-1',
           accountId: 'acc-1',
           defaultBranch: 'main',
           name: 'Support',
@@ -291,7 +291,7 @@ describe('dispatchAgentMailEvent', () => {
       {
         type: 'bind_chat_thread',
         platform: 'email',
-        workspaceId: 'inb-1',
+        providerWorkspaceId: 'inb-1',
         threadId: 'thr-1',
       },
       expect.objectContaining({
@@ -322,13 +322,13 @@ describe('dispatchAgentMailEvent', () => {
     };
     dbResults = [
       [{ eventId: 'email:event:evt-unwrapped' }],
-      [{ projectId: 'proj-1' }],
+      [{ workspaceId: 'proj-1' }],
       [],
       [{ eventId: 'email:msg:inb-1:msg-unwrapped' }],
       [],
       [
         {
-          projectId: 'proj-1',
+          workspaceId: 'proj-1',
           accountId: 'acc-1',
           defaultBranch: 'main',
           name: 'Support',
@@ -360,7 +360,7 @@ describe('dispatchAgentMailEvent', () => {
     };
     dbResults = [
       [{ eventId: 'email:event:evt-unauth' }],
-      [{ projectId: 'proj-1' }],
+      [{ workspaceId: 'proj-1' }],
       [],
       [{ eventId: 'email:msg:inb-1:msg-unauth' }],
       [{ sessionId: 'sess-1' }],
@@ -387,7 +387,7 @@ describe('dispatchAgentMailEvent', () => {
   test('known thread routes a new email into the existing session', async () => {
     dbResults = [
       [{ eventId: 'email:event:evt-1' }],
-      [{ projectId: 'proj-1' }],
+      [{ workspaceId: 'proj-1' }],
       [],
       [{ eventId: 'email:msg:inb-1:msg-1' }],
       [{ sessionId: 'sess-1' }],

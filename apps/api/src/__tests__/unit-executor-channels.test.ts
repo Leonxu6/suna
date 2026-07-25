@@ -27,8 +27,8 @@ import {
   handleCall,
 } from '../executor/gateway';
 import type { NormalizedAction } from '../executor/types';
-import { connectorSpecToTomlEntry, extractConnectors } from '../projects/connectors';
-import { KNOWN_SCHEMA_VERSION, parseManifestString } from '../projects/triggers';
+import { connectorSpecToTomlEntry, extractConnectors } from '../workspaces/connectors';
+import { KNOWN_SCHEMA_VERSION, parseManifestString } from '../workspaces/triggers';
 
 function expectDefined<T>(value: T | null | undefined): T {
   expect(value).toBeDefined();
@@ -238,7 +238,7 @@ describe('channelCatalog(meet)', () => {
 /* ─── parse ───────────────────────────────────────────────────────────────── */
 
 function parse(body: string) {
-  const src = [`kortix_version = ${KNOWN_SCHEMA_VERSION}`, '\n[project]\nname = "t"\n', body].join(
+  const src = [`kortix_version = ${KNOWN_SCHEMA_VERSION}`, '\n[workspace]\nname = "t"\n', body].join(
     '\n',
   );
   return extractConnectors(parseManifestString(src));
@@ -394,7 +394,7 @@ function makeDeps(body: string, status = 200) {
     loadAction: async () => SEND,
     resolveCredential: async () => 'xoxb-install-token',
     loadPolicies: async () => [],
-    loadProjectPolicies: async () => [],
+    loadWorkspacePolicies: async () => [],
     loadDefaultMode: async () => 'allow_all',
     recordExecution: async () => null,
     fetchImpl: async (url, init) => {
@@ -406,7 +406,7 @@ function makeDeps(body: string, status = 200) {
 }
 
 const input: CallInput = {
-  projectId: 'proj-1',
+  workspaceId: 'proj-1',
   accountId: 'acct-1',
   subject: { userId: 'u1', groupIds: [] },
   sessionId: 'sess-1',
@@ -463,7 +463,7 @@ describe('handleCall — channel (slack)', () => {
       body?: string;
     }> = [];
     const deps: GatewayDeps = {
-      loadConnectorBySlug: async (_projectId, slug) => {
+      loadConnectorBySlug: async (_workspaceId, slug) => {
         if (slug === SLACK_CHANNEL_CONNECTOR_SLUG) return SLACK;
         if (slug === 'slack') return pipedreamSlack;
         return null;
@@ -473,7 +473,7 @@ describe('handleCall — channel (slack)', () => {
       resolveCredential: async (connector) =>
         connector.provider === 'channel' ? 'xoxb-install-token' : 'pipedream-account-id',
       loadPolicies: async () => [],
-      loadProjectPolicies: async () => [],
+      loadWorkspacePolicies: async () => [],
       loadDefaultMode: async () => 'allow_all',
       recordExecution: async () => null,
       fetchImpl: async (url, init) => {
@@ -506,13 +506,13 @@ describe('handleCall — channel (email)', () => {
       body?: string;
     }> = [];
     const deps: GatewayDeps = {
-      loadConnectorBySlug: async (_projectId, slug) =>
+      loadConnectorBySlug: async (_workspaceId, slug) =>
         slug === EMAIL_CHANNEL_CONNECTOR_SLUG ? EMAIL : null,
       loadAction: async (connectorId, relPath) =>
         connectorId === EMAIL.connectorId && relPath === 'reply_message' ? EMAIL_REPLY : null,
-      resolveCredential: async () => 'am_project_token',
+      resolveCredential: async () => 'am_workspace_token',
       loadPolicies: async () => [],
-      loadProjectPolicies: async () => [],
+      loadWorkspacePolicies: async () => [],
       loadDefaultMode: async () => 'allow_all',
       recordExecution: async () => null,
       fetchImpl: async (url, init) => {
@@ -533,7 +533,7 @@ describe('handleCall — channel (email)', () => {
     const call = expectDefined(fetchCalls[0]);
     expect(call.url).toBe('https://api.agentmail.to/v0/inboxes/inb_1/messages/msg_1/reply');
     expect(call.method).toBe('POST');
-    expect(call.headers.Authorization).toBe('Bearer am_project_token');
+    expect(call.headers.Authorization).toBe('Bearer am_workspace_token');
     expect(JSON.parse(expectDefined(call.body))).toEqual({ text: 'Thanks' });
   });
 
@@ -555,7 +555,7 @@ describe('handleCall — channel (email)', () => {
       body?: string;
     }> = [];
     const deps: GatewayDeps = {
-      loadConnectorBySlug: async (_projectId, slug) =>
+      loadConnectorBySlug: async (_workspaceId, slug) =>
         slug === 'email_old_profile' ? staleProfileConnector : null,
       loadAction: async (connectorId, relPath) =>
         connectorId === staleProfileConnector.connectorId && relPath === 'reply_message'
@@ -567,10 +567,10 @@ describe('handleCall — channel (email)', () => {
         threadId: 'thr_active',
         messageId: 'msg_active',
       }),
-      resolveEmailCredentialForInbox: async (_projectId, inboxId) =>
+      resolveEmailCredentialForInbox: async (_workspaceId, inboxId) =>
         inboxId === 'inb_active' ? 'am_active_inbox_token' : null,
       loadPolicies: async () => [],
-      loadProjectPolicies: async () => [],
+      loadWorkspacePolicies: async () => [],
       loadDefaultMode: async () => 'allow_all',
       recordExecution: async () => null,
       fetchImpl: async (url, init) => {
@@ -609,17 +609,17 @@ describe('handleCall — channel (email)', () => {
       body?: string;
     }> = [];
     const deps: GatewayDeps = {
-      loadConnectorBySlug: async (_projectId, slug) =>
+      loadConnectorBySlug: async (_workspaceId, slug) =>
         slug === 'email_fabian_u7vq' ? profileConnector : null,
       loadAction: async (connectorId, relPath) =>
         connectorId === profileConnector.connectorId && relPath === 'list_messages'
           ? EMAIL_LIST_MESSAGES
           : null,
       resolveCredential: async () => 'am_profile_token',
-      loadEmailConnectorContext: async (_projectId, connectorSlug) =>
+      loadEmailConnectorContext: async (_workspaceId, connectorSlug) =>
         connectorSlug === 'email_fabian_u7vq' ? { inboxId: 'email-inbox@agentmail.to' } : null,
       loadPolicies: async () => [],
-      loadProjectPolicies: async () => [],
+      loadWorkspacePolicies: async () => [],
       loadDefaultMode: async () => 'allow_all',
       recordExecution: async () => null,
       fetchImpl: async (url, init) => {
@@ -696,7 +696,7 @@ function meetDeps(action: GatewayAction, body: string, status = 200) {
     loadAction: async () => action,
     resolveCredential: async () => 'recall_test_key',
     loadPolicies: async () => [],
-    loadProjectPolicies: async () => [],
+    loadWorkspacePolicies: async () => [],
     loadDefaultMode: async () => 'allow_all',
     recordExecution: async () => null,
     fetchImpl: async (url, init) => {
@@ -728,9 +728,9 @@ describe('handleCall — channel (meet)', () => {
 
   test('join_meeting points the bot at the audio bridge and tags it with the session', async () => {
     const { deps, fetchCalls } = meetDeps(MEET_JOIN, '{"id":"bot_abc"}', 201);
-    deps.resolveVoiceJoinContext = async (projectId: string, sessionId: string | null) => ({
+    deps.resolveVoiceJoinContext = async (workspaceId: string, sessionId: string | null) => ({
       metadata: {
-        kortix_project_id: projectId,
+        kortix_workspace_id: workspaceId,
         kortix_session_id: sessionId,
         kortix_token: 'sig',
       },
@@ -762,7 +762,7 @@ describe('handleCall — channel (meet)', () => {
     expect(body.automatic_audio_output).toBeUndefined();
     // … the call is tagged with the session that spawned it …
     expect(body.metadata).toMatchObject({ kortix_session_id: 'sess-xyz', kortix_token: 'sig' });
-    // … and the project's configured bot name is used (caller passed none).
+    // … and the workspace's configured bot name is used (caller passed none).
     expect(body.bot_name).toBe('Acme');
   });
 

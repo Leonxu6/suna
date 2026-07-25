@@ -6,7 +6,7 @@ import {
 import { getCachedAccountTier } from '../../billing/services/entitlements';
 import { accountIsFreeTierForModels } from '../../billing/services/tiers';
 import { config } from '../../config';
-import { getProjectSecretValue } from '../../projects/secrets';
+import { getWorkspaceSecretValue } from '../../workspaces/secrets';
 import { CodexRefreshError, resolveCodexCredential } from '../credentials/codex';
 import { capabilitiesForModel } from '../models/catalog-models';
 import { getRuntimeManagedModel, isKnownManagedModelId } from '../models/managed-models';
@@ -24,7 +24,7 @@ const PLATFORM_FEE_MARKUP = 0.1;
 // Bedrock is the one native-transport BYOK provider whose credential is
 // multi-field (see apps/web/src/lib/llm-providers.ts's env-vars-per-provider
 // doc comment): AWS_BEARER_TOKEN_BEDROCK (fetched below via `byok.envVar`,
-// same as every other BYOK provider) PLUS the project's own AWS_REGION, which
+// same as every other BYOK provider) PLUS the workspace's own AWS_REGION, which
 // no other BYOK provider needs — every other provider publishes a static
 // baseUrl from resolveCatalogUpstream. AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY
 // are collected by the dashboard's connect form too, but unused until the
@@ -80,16 +80,16 @@ export async function resolveCandidates(
   const provider = effectiveModel.includes('/') ? effectiveModel.split('/')[0] : '';
 
   if (provider === 'codex') {
-    if (!principal.projectId) {
+    if (!principal.workspaceId) {
       throw new GatewayResolutionError(
         'provider_not_connected',
         'Connect Codex to use this model.',
-        'Connect your ChatGPT/Codex account in project settings, then retry.',
+        'Connect your ChatGPT/Codex account in workspace settings, then retry.',
       );
     }
     let credential: Awaited<ReturnType<typeof resolveCodexCredential>>;
     try {
-      credential = await resolveCodexCredential(principal.projectId, principal.userId);
+      credential = await resolveCodexCredential(principal.workspaceId, principal.userId);
     } catch (err) {
       if (err instanceof CodexRefreshError) {
         // Distinguishes "connected once, but the ChatGPT session expired or was
@@ -99,7 +99,7 @@ export async function resolveCandidates(
         throw new GatewayResolutionError(
           'provider_reauth_required',
           'Your Codex session has expired or was revoked.',
-          'Reconnect Codex in project settings, then retry.',
+          'Reconnect Codex in workspace settings, then retry.',
         );
       }
       throw err;
@@ -108,7 +108,7 @@ export async function resolveCandidates(
       throw new GatewayResolutionError(
         'provider_not_connected',
         'Connect Codex to use this model.',
-        'Connect your ChatGPT/Codex account in project settings, then retry.',
+        'Connect your ChatGPT/Codex account in workspace settings, then retry.',
       );
     }
     return [codexDescriptor(credential, effectiveModel)];
@@ -121,10 +121,10 @@ export async function resolveCandidates(
   // still wins over surfacing this as the final failure.
   let byokFailure: GatewayResolutionError | null = null;
 
-  if (byok && principal.projectId) {
-    // Provider keys are always project-wide (shared) — there is no
-    // per-user/private key concept. See getProjectSecretValue.
-    const key = await getProjectSecretValue(principal.projectId, byok.envVar);
+  if (byok && principal.workspaceId) {
+    // Provider keys are always workspace-wide (shared) — there is no
+    // per-user/private key concept. See getWorkspaceSecretValue.
+    const key = await getWorkspaceSecretValue(principal.workspaceId, byok.envVar);
     if (key) {
       const tier = config.KORTIX_BILLING_INTERNAL_ENABLED
         ? await resolveCachedAccountTier(principal.accountId)
@@ -137,15 +137,15 @@ export async function resolveCandidates(
       const capabilities = capabilitiesForModel(provider, resolvedModelId);
       // Bedrock has no static catalog baseUrl (see CatalogUpstream's doc
       // comment in provider-registry.ts) — its runtime endpoint is resolved
-      // HERE, per-project, from the project's own AWS_REGION secret (falling
+      // HERE, per-workspace, from the workspace's own AWS_REGION secret (falling
       // back to DEFAULT_BEDROCK_BYOK_REGION when unset), never from deployment
       // config. Every other BYOK provider already carries a static baseUrl on
       // `byok`, narrowed to `string` by the `byok.kind === 'bedrock'` check.
-      // Bedrock's project-scoped region also feeds the AI-SDK engine's Bedrock
+      // Bedrock's workspace-scoped region also feeds the AI-SDK engine's Bedrock
       // provider (descriptor.region); resolve it once for both baseUrl + region.
       const bedrockRegion =
         byok.kind === 'bedrock'
-          ? await getProjectSecretValue(principal.projectId, BEDROCK_REGION_ENV_VAR)
+          ? await getWorkspaceSecretValue(principal.workspaceId, BEDROCK_REGION_ENV_VAR)
           : undefined;
       const baseUrl = byok.kind === 'bedrock' ? bedrockByokBaseUrl(bedrockRegion) : byok.baseUrl;
       const byokDescriptor: UpstreamDescriptor = {
@@ -178,12 +178,12 @@ export async function resolveCandidates(
       // (billed as Kortix credits) so the turn doesn't die.
       return isFreeTier ? [byokDescriptor] : [byokDescriptor, ...byokFallbackCandidates()];
     }
-    // No shared key configured for this project — provider keys are always
-    // project-wide, so there's no other place to look.
+    // No shared key configured for this workspace — provider keys are always
+    // workspace-wide, so there's no other place to look.
     byokFailure = new GatewayResolutionError(
       'provider_not_connected',
-      `No ${provider} API key is connected for this project.`,
-      `Add a ${provider} API key in project settings, then retry.`,
+      `No ${provider} API key is connected for this workspace.`,
+      `Add a ${provider} API key in workspace settings, then retry.`,
     );
   }
 

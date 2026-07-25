@@ -57,14 +57,14 @@ describe('managed structured logger', () => {
   test('ships request context fields to Better Stack log payloads', () => {
     runWithContext(
       'POST',
-      '/v1/projects/project-1/sessions/session-1',
+      '/v1/workspaces/workspace-1/sessions/session-1',
       () => {
         setContextField('userId', 'user-1');
         setContextField('accountId', 'account-1');
-        setContextField('projectId', 'project-1');
+        setContextField('workspaceId', 'workspace-1');
         setContextField('sessionId', 'session-1');
 
-        logger.info('Request completed: POST /v1/projects/project-1/sessions/session-1 201 42ms', {
+        logger.info('Request completed: POST /v1/workspaces/workspace-1/sessions/session-1 201 42ms', {
           status: 201,
           duration: 42,
         });
@@ -80,10 +80,10 @@ describe('managed structured logger', () => {
       env: 'dev',
       version: 'test-version',
       method: 'POST',
-      path: '/v1/projects/project-1/sessions/session-1',
+      path: '/v1/workspaces/workspace-1/sessions/session-1',
       user_id: 'user-1',
       account_id: 'account-1',
-      project_id: 'project-1',
+      workspace_id: 'workspace-1',
       session_id: 'session-1',
       status: 201,
       duration: 42,

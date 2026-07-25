@@ -201,7 +201,7 @@ const envSchema = z.object({
   CODE_STORAGE_ORG: optStr,
   // PKCS8 PEM private key (EC or RSA — algorithm auto-detected) code.storage
   // issued you; signs every management-API and git-push/pull JWT server-side
-  // (projects/git-backends/code-storage.ts's `mintCodeStorageJwt`). Never
+  // (workspaces/git-backends/code-storage.ts's `mintCodeStorageJwt`). Never
   // logged, returned to a caller, or embedded verbatim — only its signatures
   // leave this process. \n-escaped or quote-wrapped values are normalized.
   CODE_STORAGE_PRIVATE_KEY: optStr,
@@ -223,15 +223,15 @@ const envSchema = z.object({
   // (consumed by daytonaLifecycle()). Main's 3-day auto-archive default already
   // keeps a hibernated box in the fast-resume "stopped" tier far longer than the
   // earlier 120m, so the pause/resume win is subsumed there.
-  // Pre-resume: on a user returning to a project, proactively provider.start
+  // Pre-resume: on a user returning to a workspace, proactively provider.start
   // their most-recently-stopped session(s) so the ~8s resume overlaps the
   // user's navigation and the session is ready by the time they open it. Reuses
   // resumeStoppedSandbox (idempotent with the on-open resume). GATED OFF by
   // default (speculative compute — starts a box the user might not open). Enable
-  // after validating; tune how many recent sessions to pre-resume per project.
+  // after validating; tune how many recent sessions to pre-resume per workspace.
   KORTIX_PRERESUME_ENABLED: optBoolFalse,
-  KORTIX_PRERESUME_MAX_PER_PROJECT: optInt(1),
-  // OpenCode client transport. REST remains the default until the project
+  KORTIX_PRERESUME_MAX_PER_WORKSPACE: optInt(1),
+  // OpenCode client transport. REST remains the default until the workspace
   // experimental flag enables ACP after parity verification.
   KORTIX_OPENCODE_TRANSPORT: z.enum(['acp', 'rest']).default('rest'),
 
@@ -246,14 +246,14 @@ const envSchema = z.object({
 
   // Mandatory declared agents (docs/specs/2026-07-05-agent-first-config-unification.md
   // §2.1/§3 Phase 2). GATED OFF platform-wide by default — flipping it on would
-  // immediately reject every session/trigger on a pre-existing, agent-less project.
-  // The intent is ON for NEW projects: since there's no per-project flag store yet,
-  // a project is "subject" to enforcement when EITHER this is true OR its own
-  // `project.metadata.require_declared_agents === true` (stamped at creation —
-  // see POST /projects/provision). When subject: an agent name not declared in
+  // immediately reject every session/trigger on a pre-existing, agent-less workspace.
+  // The intent is ON for NEW workspaces: since there's no per-workspace flag store yet,
+  // a workspace is "subject" to enforcement when EITHER this is true OR its own
+  // `workspace.metadata.require_declared_agents === true` (stamped at creation —
+  // see POST /workspaces/provision). When subject: an agent name not declared in
   // `[[agents]]`/`agents:` is rejected outright (never silently resolved to the
   // permissive null grant), and the `default` sentinel must resolve to a
-  // *declared* default_agent. Non-subject projects keep the v1 adopt-to-govern
+  // *declared* default_agent. Non-subject workspaces keep the v1 adopt-to-govern
   // behavior (absence of `[[agents]]` → unrestricted) untouched.
   KORTIX_REQUIRE_DECLARED_AGENTS: optBoolFalse,
 
@@ -279,7 +279,7 @@ const envSchema = z.object({
   // Per-Slack-user identity. Default-on: each sender must link their own Kortix
   // account via `/kortix login` and the agent runs AS them; unlinked senders
   // are blocked. Set explicitly to "false" only for legacy fallback where
-  // Slack messages should run as the bound project owner.
+  // Slack messages should run as the bound workspace owner.
   SLACK_REQUIRE_USER_IDENTITY: optBoolTrue,
 
   // ── Channels — AgentMail email adapter (optional) ────────────────────────
@@ -289,7 +289,7 @@ const envSchema = z.object({
 
   // ── Channels — Recall.ai meeting bot (optional) ──────────────────────────
   // No operator on/off switch here: voice is gated the same way every other
-  // experimental feature is — per project, in Settings. An env var would be a
+  // experimental feature is — per workspace, in Settings. An env var would be a
   // second, hidden gate that only an operator could clear, which is exactly the
   // friction the experimental-features system exists to avoid.
   // RECALL_BASE_URL is the regional gateway (us-west-2 = pay-as-you-go default;
@@ -345,9 +345,9 @@ const envSchema = z.object({
   // (descriptors.ts) — both are gated on this and read no managed credentials
   // when off.
   KORTIX_MANAGED_PROVIDER_ENABLED: optBoolUnset,
-  // Fleet default for projects with no explicit per-project override. Defaults
+  // Fleet default for workspaces with no explicit per-workspace override. Defaults
   // ON: wherever the gateway is available (master switch above), the managed
-  // gateway is the default routing mechanism and every project inherits it
+  // gateway is the default routing mechanism and every workspace inherits it
   // unless it explicitly opts out. The master switch still wins —
   // LLM_GATEWAY_ENABLED=false forces native OpenCode for everyone regardless of
   // this value — and an operator can set LLM_GATEWAY_DEFAULT_ENABLED=false to
@@ -397,7 +397,7 @@ const envSchema = z.object({
   GROQ_API_URL: optUrl('https://api.groq.com/openai/v1'),
   // ── LiveKit — the voice channel's transport (see channels/voice/livekit.ts) ──
   // A room per call, an agents-js worker doing STT->LLM->TTS, Recall's rendered
-  // page as a plain LiveKit client. Defaults match the project's local dev
+  // page as a plain LiveKit client. Defaults match the workspace's local dev
   // server (ws://localhost:7880, devkey/secret are LiveKit's own published
   // dev-mode credentials, not a real secret) — every real deployment overrides
   // all three.
@@ -413,9 +413,9 @@ const envSchema = z.object({
 
   // ── Daytona — Sandbox provisioning (conditional: required if daytona provider enabled) ──
   // Note: there is intentionally no DAYTONA_SNAPSHOT here. Every sandbox
-  // boots from a per-project snapshot built by the snapshot builder
+  // boots from a per-workspace snapshot built by the snapshot builder
   // (apps/api/src/snapshots/builder.ts). A shared/global fallback image
-  // would silently bypass per-project Dockerfiles and is explicitly
+  // would silently bypass per-workspace Dockerfiles and is explicitly
   // disallowed.
   DAYTONA_API_KEY: optStr,
   DAYTONA_SERVER_URL: optStr,
@@ -434,7 +434,7 @@ const envSchema = z.object({
   // template row still references. On by default; boot auto-heal covers the rare
   // cross-env race where another env's row pointed at the reaped (identical) name.
   KORTIX_SNAPSHOT_REAP_PREDECESSOR: optBoolTrue,
-  // Optional per-project accelerator. When enabled, Kortix bakes the project's
+  // Optional per-workspace accelerator. When enabled, Kortix bakes the workspace's
   // default-branch repository into a derivative of the shared platform image.
   // A disabled or failed accelerator never blocks a session. Sessions boot from
   // the shared image and clone the repository into /workspace instead.
@@ -443,9 +443,9 @@ const envSchema = z.object({
   // bakes. Provider transitions still prepare their target image explicitly.
   // Default OFF keeps the session path on one shared image per provider.
   KORTIX_WARM_SNAPSHOT_ENABLED: optBoolFalse,
-  // Per-provider allowlist for per-project warm images of CUSTOM (non-default-
-  // slug) templates — see `perProjectWarmEligible` in builder.ts. Defaults to
-  // 'platinum' only: Platinum's per-project templates warm-miss 100% of the
+  // Per-provider allowlist for per-workspace warm images of CUSTOM (non-default-
+  // slug) templates — see `perWorkspaceWarmEligible` in builder.ts. Defaults to
+  // 'platinum' only: Platinum's per-workspace templates warm-miss 100% of the
   // time today (`template.isShared` used to gate this off entirely), while
   // Daytona's shared-default warm path already hits 66% and its quota-gc
   // cache-floor math (quota-gc-select.ts) has not been re-measured for real
@@ -459,7 +459,7 @@ const envSchema = z.object({
   // pt_live_… key; PLATINUM_API_URL is the control-plane base
   // (https://api.platinum.dev). PLATINUM_TEMPLATE is a ready Platinum template
   // id to boot sessions from (e.g. kortix-computer) — used as the fallback when
-  // a session hasn't built its own per-project Platinum template.
+  // a session hasn't built its own per-workspace Platinum template.
   PLATINUM_API_KEY: optStr,
   PLATINUM_API_URL: optStr,
   PLATINUM_TEMPLATE: optStr,
@@ -468,7 +468,7 @@ const envSchema = z.object({
   PLATINUM_WEBHOOK_SECRET: optStr,
 
   // ── E2B Cloud — sandbox provisioning (conditional: required if enabled) ──
-  // E2B_TEMPLATE is an optional ready fallback template. Project-specific
+  // E2B_TEMPLATE is an optional ready fallback template. Workspace-specific
   // templates built by the shared snapshot system take precedence.
   E2B_API_KEY: optStr,
   E2B_TEMPLATE: optStr,
@@ -482,7 +482,7 @@ const envSchema = z.object({
   //   LOCAL_DOCKER_NETWORK     — Docker network every kortix-sb-* container
   //     joins, so kortix-api can reach it by container DNS name
   //     (http://kortix-sb-<id>:<port>). The self-host CLI points this at the
-  //     Compose project's own default network when local-docker is selected
+  //     Compose workspace's own default network when local-docker is selected
   //     (see kortix-compose.yml). Auto-created (idempotent) if missing, so a
   //     bare `pnpm dev` / standalone use still works.
   //   LOCAL_DOCKER_SOCKET_PATH — override for the Docker Engine unix socket.
@@ -563,7 +563,7 @@ const envSchema = z.object({
   KORTIX_LLM_ROUTER_REQS_PER_MIN_FREE: optInt(60),
   KORTIX_LLM_ROUTER_REQS_PER_MIN_PAID: optInt(600),
   KORTIX_PROXY_REQS_PER_MIN: optInt(600),
-  KORTIX_TRIGGER_MAX_PROVISIONING_SESSIONS_PER_PROJECT: optInt(3),
+  KORTIX_TRIGGER_MAX_PROVISIONING_SESSIONS_PER_WORKSPACE: optInt(3),
   KORTIX_TRIGGER_SCHEDULER_ENABLED: optBoolTrue,
   KORTIX_TRIGGER_SCHEDULER_INTERVAL_MS: optInt(60_000),
 
@@ -914,7 +914,7 @@ export const config = {
   CODE_STORAGE_GIT_HOST: env.CODE_STORAGE_GIT_HOST,
   KORTIX_GIT_PROXY: env.KORTIX_GIT_PROXY,
   KORTIX_PRERESUME_ENABLED: env.KORTIX_PRERESUME_ENABLED,
-  KORTIX_PRERESUME_MAX_PER_PROJECT: env.KORTIX_PRERESUME_MAX_PER_PROJECT,
+  KORTIX_PRERESUME_MAX_PER_WORKSPACE: env.KORTIX_PRERESUME_MAX_PER_WORKSPACE,
   KORTIX_OPENCODE_TRANSPORT: env.KORTIX_OPENCODE_TRANSPORT,
   KORTIX_ENFORCE_SESSION_AGENT_LOCK: env.KORTIX_ENFORCE_SESSION_AGENT_LOCK,
   KORTIX_REQUIRE_DECLARED_AGENTS: env.KORTIX_REQUIRE_DECLARED_AGENTS,
@@ -992,7 +992,7 @@ export const config = {
 
   // ─── Daytona (Sandbox provisioning + preview proxy) ───────────────────────
   // No DAYTONA_SNAPSHOT here — see comment in the env schema above. Every
-  // sandbox boots from its project-specific snapshot resolved at session
+  // sandbox boots from its workspace-specific snapshot resolved at session
   // start time by apps/api/src/snapshots/builder.ts.
   DAYTONA_API_KEY: env.DAYTONA_API_KEY,
   DAYTONA_SERVER_URL: env.DAYTONA_SERVER_URL,
@@ -1097,8 +1097,8 @@ export const config = {
   KORTIX_LLM_ROUTER_REQS_PER_MIN_FREE: env.KORTIX_LLM_ROUTER_REQS_PER_MIN_FREE,
   KORTIX_LLM_ROUTER_REQS_PER_MIN_PAID: env.KORTIX_LLM_ROUTER_REQS_PER_MIN_PAID,
   KORTIX_PROXY_REQS_PER_MIN: env.KORTIX_PROXY_REQS_PER_MIN,
-  KORTIX_TRIGGER_MAX_PROVISIONING_SESSIONS_PER_PROJECT:
-    env.KORTIX_TRIGGER_MAX_PROVISIONING_SESSIONS_PER_PROJECT,
+  KORTIX_TRIGGER_MAX_PROVISIONING_SESSIONS_PER_WORKSPACE:
+    env.KORTIX_TRIGGER_MAX_PROVISIONING_SESSIONS_PER_WORKSPACE,
   KORTIX_TRIGGER_SCHEDULER_ENABLED: env.KORTIX_TRIGGER_SCHEDULER_ENABLED,
   KORTIX_TRIGGER_SCHEDULER_INTERVAL_MS: env.KORTIX_TRIGGER_SCHEDULER_INTERVAL_MS,
 
@@ -1176,8 +1176,8 @@ export const config = {
   },
 
   /**
-   * True iff `provider` is allowlisted to warm-bake per-project images for
-   * CUSTOM (non-default-slug) templates — see `perProjectWarmEligible` in
+   * True iff `provider` is allowlisted to warm-bake per-workspace images for
+   * CUSTOM (non-default-slug) templates — see `perWorkspaceWarmEligible` in
    * builder.ts. Already intersected with ALLOWED_SANDBOX_PROVIDERS at parse
    * time, so this alone is the full gate.
    */

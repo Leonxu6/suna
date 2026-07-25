@@ -43,7 +43,7 @@ beforeAll(async () => {
     '../shared/daytona-rate-limit'
   ));
   ({ isPlatinumSandboxNotRunningError } = await import('../shared/platinum'));
-  ({ isGitOperationError } = await import('../projects/git/mirror'));
+  ({ isGitOperationError } = await import('../workspaces/git/mirror'));
   await primeDaytonaTransientClassifier();
   await primeDaytonaRateLimitClassifier();
 });
@@ -52,7 +52,7 @@ beforeAll(async () => {
 // `DaytonaError` with message `<html>…<h1>502 Bad Gateway</h1>…</html>`
 // (Kortix API prod, application_id 2346961). The Daytona API gateway 502-ed
 // with an HTML error page on an unguarded provider call inside
-// `POST /v1/projects/:projectId/turn-stream` (kind: execution_lease_discover
+// `POST /v1/workspaces/:workspaceId/turn-stream` (kind: execution_lease_discover
 // → discoverExecutionKeepAliveEndpoint → provider.resolveEndpoint → Daytona
 // getPreviewLink). The SDK's axios response interceptor threw a generic
 // `DaytonaError` (statusCode 502, message = HTML body) that propagated to

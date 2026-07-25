@@ -4,7 +4,7 @@
  * allow/deny semantics so the SQL/route layers can trust it.
  *
  * Semantics under test (resource-id-level activation):
- *  - a resource with NO grants is OPEN to everyone (unscoped = project-wide);
+ *  - a resource with NO grants is OPEN to everyone (unscoped = workspace-wide);
  *  - a resource WITH grants is closed to all but the granted member/groups;
  *  - group grants match if the user is in ANY of their groups.
  */
@@ -20,7 +20,7 @@ import {
 const USER = 'user-1';
 const OTHER = 'user-2';
 
-describe('isResourceAccessible — unscoped resources stay project-wide', () => {
+describe('isResourceAccessible — unscoped resources stay workspace-wide', () => {
   test('undefined grants (resource never scoped) → accessible', () => {
     expect(isResourceAccessible(undefined, USER, [])).toBe(true);
   });

@@ -1,7 +1,7 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { and, count, eq, sql } from "drizzle-orm";
 import { json, errors, auth } from "../../openapi";
-import { accountMembers, accounts, projects } from "@kortix/db";
+import { accountMembers, accounts, workspaces } from "@kortix/db";
 import { config } from "../../config";
 import { db } from "../../shared/db";
 import { ACCOUNT_ACTIONS, assertAuthorized } from "../../iam";
@@ -225,10 +225,10 @@ export function registerAccountRoutes(): void {
           .where(eq(accountMembers.accountId, accountId));
         memberCount = Number(memberCountRow?.n ?? 0);
       }
-      const [projectCountRow] = await db
+      const [workspaceCountRow] = await db
         .select({ n: count() })
-        .from(projects)
-        .where(and(eq(projects.accountId, accountId), eq(projects.status, 'active')));
+        .from(workspaces)
+        .where(and(eq(workspaces.accountId, accountId), eq(workspaces.status, 'active')));
 
       const displayNames = await resolveAccountDisplayNames(
         [{ accountId: row.accountId, name: row.name }],
@@ -239,7 +239,7 @@ export function registerAccountRoutes(): void {
         account_id: row.accountId,
         name: displayNames.get(row.accountId) ?? row.name,
         member_count: memberCount,
-        project_count: Number(projectCountRow?.n ?? 0),
+        workspace_count: Number(workspaceCountRow?.n ?? 0),
         role: membership.accountRole,
         mfa_required: row.mfaRequired ?? false,
         created_at: row.createdAt.toISOString(),

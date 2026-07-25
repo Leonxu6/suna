@@ -174,7 +174,7 @@ export async function pauseComputeSession(sandboxId: string): Promise<void> {
 
 /**
  * Sandbox is being woken from a stopped state. Open a new row.
- * Caller passes the current spec — spec may have changed if the project
+ * Caller passes the current spec — spec may have changed if the workspace
  * manifest was edited between the stop and the wake.
  */
 export async function resumeComputeSession(opts: StartComputeOpts): Promise<string | null> {
@@ -185,7 +185,7 @@ export async function resumeComputeSession(opts: StartComputeOpts): Promise<stri
  * Reopen metering for a hibernated sandbox being resumed in place (the
  * stopped→active wake path). Reuses the spec from the sandbox's most recent
  * window so the resumed compute bills exactly like the original run, without
- * re-resolving the project manifest on the hot reopen path. No-op when billing
+ * re-resolving the workspace manifest on the hot reopen path. No-op when billing
  * is disabled / the account isn't per-seat / a row is already open
  * (startComputeSession is idempotent on an open row).
  */

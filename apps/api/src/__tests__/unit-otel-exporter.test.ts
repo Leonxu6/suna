@@ -32,13 +32,13 @@ describe('OTLP trace exporter', () => {
 
     await runWithContext(
       'GET',
-      '/v1/projects/project-1/sessions/session-1',
+      '/v1/workspaces/workspace-1/sessions/session-1',
       async () => {
         setContextField('accountId', 'account-1');
-        setContextField('projectId', 'project-1');
+        setContextField('workspaceId', 'workspace-1');
         setContextField('sessionId', 'session-1');
         const ok = await emitOtelSpan({
-          name: 'GET /v1/projects/project-1/sessions/session-1',
+          name: 'GET /v1/workspaces/workspace-1/sessions/session-1',
           kind: 'SERVER',
           startTimeMs: 1_000,
           endTimeMs: 1_050,
@@ -59,12 +59,12 @@ describe('OTLP trace exporter', () => {
     const span = fetchCalls[0].body.resourceSpans[0].scopeSpans[0].spans[0];
     expect(span.traceId).toBe('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     expect(span.parentSpanId).toBe('bbbbbbbbbbbbbbbb');
-    expect(span.name).toBe('GET /v1/projects/project-1/sessions/session-1');
+    expect(span.name).toBe('GET /v1/workspaces/workspace-1/sessions/session-1');
     expect(span.kind).toBe(2);
     expect(span.startTimeUnixNano).toBe('1000000000');
     expect(span.endTimeUnixNano).toBe('1050000000');
     expect(span.attributes).toContainEqual({ key: 'account_id', value: { stringValue: 'account-1' } });
-    expect(span.attributes).toContainEqual({ key: 'project_id', value: { stringValue: 'project-1' } });
+    expect(span.attributes).toContainEqual({ key: 'workspace_id', value: { stringValue: 'workspace-1' } });
     expect(span.attributes).toContainEqual({ key: 'session_id', value: { stringValue: 'session-1' } });
     expect(span.attributes).toContainEqual({ key: 'http.status_code', value: { intValue: '200' } });
   });

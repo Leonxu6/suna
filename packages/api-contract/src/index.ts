@@ -95,7 +95,7 @@ export type SandboxProvider = z.infer<typeof SandboxProviderSchema>;
  * (`visibilityToIntent`) and secrets (`scopeToIntent`).
  */
 export const SharingIntentSchema = z.discriminatedUnion('mode', [
-  z.object({ mode: z.literal('project') }),
+  z.object({ mode: z.enum(['workspace', 'project']) }),
   z.object({ mode: z.literal('private'), ownerId: z.string() }),
   z.object({
     mode: z.literal('members'),
@@ -105,9 +105,7 @@ export const SharingIntentSchema = z.discriminatedUnion('mode', [
 ]);
 export type SharingIntent = z.infer<typeof SharingIntentSchema>;
 
-/** A project as serialized by `serializeProject`. */
-export const ProjectSchema = z.object({
-  project_id: z.string(),
+const WorkspaceFieldsSchema = z.object({
   account_id: z.string(),
   name: z.string(),
   repo_url: z.string(),
@@ -120,16 +118,35 @@ export const ProjectSchema = z.object({
   last_opened_at: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
-  /** Explicit project_members role, or null when access is inherited. */
-  project_role: ProjectRoleSchema.nullable(),
+  /** Explicit workspace membership role, or null when access is inherited. */
+  workspace_role: ProjectRoleSchema.nullable(),
   /** UI label for the caller's effective role (not an auth decision). */
-  effective_project_role: ProjectRoleSchema.nullable(),
+  effective_workspace_role: ProjectRoleSchema.nullable(),
   dashboard_url: z.string(),
   experimental: ExperimentalFeatureMapSchema,
   experimental_features: z.array(ExperimentalFeatureViewSchema),
-  /** Per-project provider pin, surfaced only while still usable. */
+  /** Per-workspace provider pin, surfaced only while still usable. */
   default_sandbox_provider: SandboxProviderSchema.nullable(),
   available_sandbox_providers: z.array(SandboxProviderSchema),
+});
+
+/** A workspace as serialized by `serializeWorkspace`. */
+export const WorkspaceSchema = WorkspaceFieldsSchema.extend({
+  workspace_id: z.string(),
+});
+export type Workspace = z.infer<typeof WorkspaceSchema>;
+
+/**
+ * @deprecated Use `WorkspaceSchema`.
+ * This schema remains available for clients that consume `/v1/projects`.
+ */
+export const ProjectSchema = WorkspaceFieldsSchema.omit({
+  workspace_role: true,
+  effective_workspace_role: true,
+}).extend({
+  project_id: z.string(),
+  project_role: ProjectRoleSchema.nullable(),
+  effective_project_role: ProjectRoleSchema.nullable(),
 });
 export type Project = z.infer<typeof ProjectSchema>;
 
@@ -145,7 +162,7 @@ export const SESSION_STATUSES = [
 export const SessionStatusSchema = z.enum(SESSION_STATUSES);
 export type SessionStatus = z.infer<typeof SessionStatusSchema>;
 
-export const SESSION_VISIBILITIES = ['private', 'project', 'restricted'] as const;
+export const SESSION_VISIBILITIES = ['private', 'workspace', 'restricted', 'project'] as const;
 export const SessionVisibilitySchema = z.enum(SESSION_VISIBILITIES);
 export type SessionVisibility = z.infer<typeof SessionVisibilitySchema>;
 
@@ -565,11 +582,9 @@ export const SessionCreateInputSchema = z
   .strict();
 export type SessionCreateInput = z.infer<typeof SessionCreateInputSchema>;
 
-/** A project session as serialized by `serializeSession`. */
-export const ProjectSessionSchema = z.object({
+const SessionFieldsSchema = z.object({
   session_id: z.string(),
   account_id: z.string(),
-  project_id: z.string(),
   branch_name: z.string(),
   base_ref: z.string(),
   sandbox_provider: SandboxProviderSchema,
@@ -609,14 +624,57 @@ export const ProjectSessionSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
 });
+
+/** A workspace session as serialized by `serializeSession`. */
+export const WorkspaceSessionSchema = SessionFieldsSchema.extend({
+  workspace_id: z.string(),
+});
+export type WorkspaceSession = z.infer<typeof WorkspaceSessionSchema>;
+
+/** @deprecated Use `WorkspaceSessionSchema`. */
+export const ProjectSessionSchema = SessionFieldsSchema.extend({
+  project_id: z.string(),
+});
 export type ProjectSession = z.infer<typeof ProjectSessionSchema>;
 
-export const WarmProjectSessionWorkspaceRefreshSchema = z.object({
+export const WarmWorkspaceSessionWorkspaceRefreshSchema = z.object({
   status: z.enum(['skipped', 'unchanged', 'updated', 'failed']),
   before_sha: z.string().nullable().optional(),
   after_sha: z.string().nullable().optional(),
   error: z.string().optional(),
 });
+export type WarmWorkspaceSessionWorkspaceRefresh = z.infer<
+  typeof WarmWorkspaceSessionWorkspaceRefreshSchema
+>;
+
+export const WarmWorkspaceSessionResultSchema = z.object({
+  session: WorkspaceSessionSchema,
+  reused: z.boolean(),
+  workspace_refresh: WarmWorkspaceSessionWorkspaceRefreshSchema,
+});
+export type WarmWorkspaceSessionResult = z.infer<
+  typeof WarmWorkspaceSessionResultSchema
+>;
+
+export const ClaimWarmWorkspaceSessionInputSchema = z
+  .object({
+    session_id: z
+      .string()
+      .regex(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+        'session_id must be an RFC 4122 v4 UUID',
+      ),
+    agent_name: z.string().min(1).optional(),
+    sandbox_slug: z.string().min(1).optional(),
+  })
+  .strict();
+export type ClaimWarmWorkspaceSessionInput = z.infer<
+  typeof ClaimWarmWorkspaceSessionInputSchema
+>;
+
+/** @deprecated Use `WarmWorkspaceSessionWorkspaceRefreshSchema`. */
+export const WarmProjectSessionWorkspaceRefreshSchema =
+  WarmWorkspaceSessionWorkspaceRefreshSchema;
 export type WarmProjectSessionWorkspaceRefresh = z.infer<
   typeof WarmProjectSessionWorkspaceRefreshSchema
 >;
@@ -630,18 +688,8 @@ export type WarmProjectSessionResult = z.infer<
   typeof WarmProjectSessionResultSchema
 >;
 
-export const ClaimWarmProjectSessionInputSchema = z
-  .object({
-    session_id: z
-      .string()
-      .regex(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-        'session_id must be an RFC 4122 v4 UUID',
-      ),
-    agent_name: z.string().min(1).optional(),
-    sandbox_slug: z.string().min(1).optional(),
-  })
-  .strict();
+/** @deprecated Use `ClaimWarmWorkspaceSessionInputSchema`. */
+export const ClaimWarmProjectSessionInputSchema = ClaimWarmWorkspaceSessionInputSchema;
 export type ClaimWarmProjectSessionInput = z.infer<
   typeof ClaimWarmProjectSessionInputSchema
 >;
@@ -656,11 +704,9 @@ export const SESSION_SANDBOX_STATUSES = [
 export const SessionSandboxStatusSchema = z.enum(SESSION_SANDBOX_STATUSES);
 export type SessionSandboxStatus = z.infer<typeof SessionSandboxStatusSchema>;
 
-/** A session_sandboxes row as serialized onto `SessionStartResult.sandbox`. */
-export const ProjectSessionSandboxSchema = z.object({
+const SessionSandboxFieldsSchema = z.object({
   sandbox_id: z.string(),
   session_id: z.string(),
-  project_id: z.string(),
   account_id: z.string(),
   provider: SandboxProviderSchema,
   external_id: z.string().nullable(),
@@ -671,6 +717,17 @@ export const ProjectSessionSandboxSchema = z.object({
   last_used_at: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
+});
+
+/** A session_sandboxes row as serialized onto `SessionStartResult.sandbox`. */
+export const WorkspaceSessionSandboxSchema = SessionSandboxFieldsSchema.extend({
+  workspace_id: z.string(),
+});
+export type WorkspaceSessionSandbox = z.infer<typeof WorkspaceSessionSandboxSchema>;
+
+/** @deprecated Use `WorkspaceSessionSandboxSchema`. */
+export const ProjectSessionSandboxSchema = SessionSandboxFieldsSchema.extend({
+  project_id: z.string(),
 });
 export type ProjectSessionSandbox = z.infer<typeof ProjectSessionSandboxSchema>;
 
@@ -685,7 +742,7 @@ export const SessionStartStageSchema = z.enum(SESSION_START_STAGES);
 export type SessionStartStage = z.infer<typeof SessionStartStageSchema>;
 
 /**
- * The readiness payload of POST /v1/projects/:id/sessions/:id/start — the one
+ * The readiness payload of POST /v1/workspaces/:id/sessions/:id/start.
  * object clients poll until `stage === 'ready'`.
  */
 export const SessionStartResultSchema = z.object({
@@ -696,7 +753,7 @@ export const SessionStartResultSchema = z.object({
   /** Whether polling /start again can make progress (false = terminal). */
   retriable: z.boolean(),
   /** Serialized session_sandboxes row, or null while none is usable. */
-  sandbox: ProjectSessionSandboxSchema.nullable(),
+  sandbox: z.union([WorkspaceSessionSandboxSchema, ProjectSessionSandboxSchema]).nullable(),
   /** Canonical OpenCode root pin, resolved server-side once the box is up. */
   opencode_session_id: z.string().nullable(),
   /**
@@ -782,12 +839,11 @@ export type TriggerList = z.infer<typeof TriggerListSchema>;
  * no per-secret member/group sharing and no resource-side agent allow-list
  * (both retired); every project member with read access sees every secret.
  */
-export const SecretSchema = z.object({
-  /** Unique per project. The handle an agent's `secrets` grant references. */
+const SecretFieldsSchema = z.object({
+  /** Unique per workspace. The handle an agent's `secrets` grant references. */
   identifier: z.string(),
   /** The env var KEY injected into the sandbox. Not unique. */
   name: z.string(),
-  project_id: z.string(),
   secret_id: z.string().nullable(),
   created_by: z.string().nullable(),
   created_at: z.string().nullable(),
@@ -796,8 +852,7 @@ export const SecretSchema = z.object({
   readonly: z.boolean(),
   purpose: z.literal('git_auth').nullable(),
   can_rotate: z.boolean(),
-  managed_by: z.literal('project_secret').nullable(),
-  /** Is a shared project value set at all. */
+  /** Is a shared workspace value set at all. */
   configured: z.boolean(),
   /** The caller's private override (value omitted), or null. Used today only by
    *  the CODEX_AUTH_JSON per-user provider login. */
@@ -805,5 +860,17 @@ export const SecretSchema = z.object({
   /** Which value actually gets injected into the caller's sessions. */
   effective_source: z.enum(['mine', 'shared', 'none']),
   can_manage_shared: z.boolean(),
+});
+
+export const WorkspaceSecretSchema = SecretFieldsSchema.extend({
+  workspace_id: z.string(),
+  managed_by: z.literal('workspace_secret').nullable(),
+});
+export type WorkspaceSecret = z.infer<typeof WorkspaceSecretSchema>;
+
+/** @deprecated Use `WorkspaceSecretSchema`. */
+export const SecretSchema = SecretFieldsSchema.extend({
+  project_id: z.string(),
+  managed_by: z.literal('project_secret').nullable(),
 });
 export type Secret = z.infer<typeof SecretSchema>;

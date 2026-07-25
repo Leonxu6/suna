@@ -133,10 +133,10 @@ export function buildConnectAccountCard(loginUrl: string): Record<string, unknow
   );
 }
 
-export function buildRequestAccessCard(projectId: string): Record<string, unknown> {
+export function buildRequestAccessCard(workspaceId: string): Record<string, unknown> {
   return card(
-    headerBlock('🔒', 'Request access', "You're connected, but your account can't run this project yet."),
-    [executeAction('Request access', 'teams_request_access', { projectId })],
+    headerBlock('🔒', 'Request access', "You're connected, but your account can't run this workspace yet."),
+    [executeAction('Request access', 'teams_request_access', { workspaceId })],
   );
 }
 
@@ -257,13 +257,13 @@ export function buildReviewCard(opts: {
   return card(body, actions);
 }
 
-export function buildWelcomeCard(opts: { projectUrl?: string }): Record<string, unknown> {
+export function buildWelcomeCard(opts: { workspaceUrl?: string }): Record<string, unknown> {
   const body = headerBlock(
     '👋',
     'Kortix is connected here',
     '@-mention me with a task and an agent gets on it — replying right here with live progress. Type `/help` to see what I can do.',
   );
-  const actions = opts.projectUrl ? [openUrlAction('Open in Kortix', opts.projectUrl)] : undefined;
+  const actions = opts.workspaceUrl ? [openUrlAction('Open in Kortix', opts.workspaceUrl)] : undefined;
   return card(body, actions);
 }
 

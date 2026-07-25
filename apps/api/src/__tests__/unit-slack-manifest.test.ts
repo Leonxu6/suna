@@ -14,7 +14,7 @@ import {
 //   1. the committed canonical JSON files are exactly what the builder emits
 //      (so they can never drift — regenerate with scripts/gen-slack-manifest.ts);
 //   2. canonical and BYO manifests are identical except URLs/names/command;
-//   3. the BYO (per-project) manifest is at full feature parity.
+//   3. the BYO (per-workspace) manifest is at full feature parity.
 
 const channelsDir = join(import.meta.dir, '..', 'channels');
 function committed(file: string) {
@@ -31,7 +31,7 @@ describe('committed canonical manifests are generated from the builder (drift gu
 });
 describe('canonical and BYO share ONE implementation (only URLs/names/command differ)', () => {
   const canonical = buildSlackManifest(CANONICAL_PROD);
-  const byo = generateSlackManifest({ baseUrl: 'https://api.example.com', projectId: 'proj-123' });
+  const byo = generateSlackManifest({ baseUrl: 'https://api.example.com', workspaceId: 'proj-123' });
 
   test('identical bot scopes', () => {
     expect(byo.oauth_config.scopes.bot).toEqual(canonical.oauth_config.scopes.bot);
@@ -50,17 +50,17 @@ describe('canonical and BYO share ONE implementation (only URLs/names/command di
   });
 });
 
-describe('BYO per-project manifest endpoints', () => {
+describe('BYO per-workspace manifest endpoints', () => {
   const base = 'https://api.example.com/v1/webhooks/slack/proj-123';
-  const m = generateSlackManifest({ baseUrl: 'https://api.example.com/', projectId: 'proj-123' });
+  const m = generateSlackManifest({ baseUrl: 'https://api.example.com/', workspaceId: 'proj-123' });
 
-  test('slash command at the per-project endpoint', () => {
+  test('slash command at the per-workspace endpoint', () => {
     expect(m.features.slash_commands[0]!.url).toBe(`${base}/commands`);
     expect(m.features.slash_commands[0]!.usage_hint).toContain('agents');
     expect(m.features.slash_commands[0]!.usage_hint).toContain('models');
     expect(m.features.slash_commands[0]!.usage_hint).toContain('session');
   });
-  test('interactivity + events + shortcut at the per-project endpoint', () => {
+  test('interactivity + events + shortcut at the per-workspace endpoint', () => {
     expect(m.settings.interactivity.request_url).toBe(`${base}/interactivity`);
     expect(m.settings.event_subscriptions.request_url).toBe(base);
     expect(m.features.shortcuts[0]!.callback_id).toBe('open_session');
@@ -80,7 +80,7 @@ describe('BYO slash command naming', () => {
   test('keeps a normal Kortix BYO app on /kortix', () => {
     const manifest = generateSlackManifest({
       baseUrl: 'https://api.example.com',
-      projectId: 'proj-123',
+      workspaceId: 'proj-123',
       appName: 'Kortix',
       botName: 'kortix',
     });
@@ -91,7 +91,7 @@ describe('BYO slash command naming', () => {
   test('derives non-conflicting dev commands from the BYO app name', () => {
     const manifest = generateSlackManifest({
       baseUrl: 'https://api.example.com',
-      projectId: 'proj-123',
+      workspaceId: 'proj-123',
       appName: 'kortix-no-access',
       botName: 'kortix-no-access',
     });
@@ -103,7 +103,7 @@ describe('BYO slash command naming', () => {
   test('allows an explicit command override', () => {
     const manifest = generateSlackManifest({
       baseUrl: 'https://api.example.com',
-      projectId: 'proj-123',
+      workspaceId: 'proj-123',
       appName: 'kortix-no-access',
       botName: 'kortix-no-access',
       command: 'kna',

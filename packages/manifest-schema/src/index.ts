@@ -20,11 +20,13 @@ import { type ManifestFormat, parseManifestText } from './format';
 import { parseConnectorHeaders } from './connector-headers';
 import {
   CHANNEL_PLATFORMS,
+  canonicalizeKortixCliAction,
   CONNECTOR_AUTH_TYPES,
   CONNECTOR_POLICY_ACTIONS,
   CONNECTOR_PROVIDERS,
   ENV_NAME_RE,
   GRANTABLE_KORTIX_CLI_ACTIONS,
+  LEGACY_PROJECT_KORTIX_CLI_ACTIONS,
   LEGACY_SANDBOX_KEYS,
   LEGACY_TOLERATED_KORTIX_CLI_ACTIONS,
   RESERVED_SANDBOX_SLUG,
@@ -81,6 +83,7 @@ export {
   AGENT_MODES_V2,
   AGENT_THEME_COLORS_V2,
   CHANNEL_PLATFORMS,
+  canonicalizeKortixCliAction,
   CONNECTOR_AUTH_TYPES,
   CONNECTOR_POLICY_ACTIONS,
   CONNECTOR_PROVIDERS,
@@ -88,6 +91,7 @@ export {
   GRANTABLE_KORTIX_CLI_ACTIONS,
   HEX_COLOR_RE_V2,
   LEGACY_SANDBOX_KEYS,
+  LEGACY_PROJECT_KORTIX_CLI_ACTIONS,
   LEGACY_TOLERATED_KORTIX_CLI_ACTIONS,
   PERMISSION_ACTION_ONLY_KEYS_V2,
   PERMISSION_ACTIONS_V2,
@@ -365,7 +369,13 @@ export function validateGrantList(
     }
     const s = item.trim();
     if (checkAction && s !== '*' && !GRANTABLE_KORTIX_CLI_ACTIONS.includes(s)) {
-      if (LEGACY_TOLERATED_KORTIX_CLI_ACTIONS.includes(s)) {
+      if (LEGACY_PROJECT_KORTIX_CLI_ACTIONS.includes(s)) {
+        issues.push({
+          path: `${where}[${k}]`,
+          message: `"${s}" is deprecated. Use "${s.replace(/^project\./, 'workspace.')}".`,
+          severity: 'warning',
+        });
+      } else if (LEGACY_TOLERATED_KORTIX_CLI_ACTIONS.includes(s)) {
         issues.push({
           path: `${where}[${k}]`,
           message:
@@ -377,7 +387,7 @@ export function validateGrantList(
       } else {
         issues.push({
           path: `${where}[${k}]`,
-          message: `"${s}" is not a grantable kortix_cli action (allowed: project.*; account-scoped actions can never be granted to an agent).`,
+          message: `"${s}" is not a grantable kortix_cli action (allowed: workspace.*; account-scoped actions can never be granted to an agent).`,
           severity: 'error',
         });
       }

@@ -1,15 +1,15 @@
 import { createHash } from 'node:crypto';
 
 /**
- * Naming + reap-selection for per-project COLD warm images (`kortix-ppwarm-…`),
+ * Naming + reap-selection for per-workspace COLD warm images (`kortix-ppwarm-…`),
  * the cold, provider-agnostic analogue of prod's stateful `kortix-wproj-`
  * snapshots. Pure — NO config/env/provider imports — so the selection logic is
  * unit-testable without booting the server.
  *
- * Names are scoped to (project, template): `kortix-ppwarm-<proj8>-<tpl8>-<hash12>`.
- * See the FORMAT MIGRATION note below {@link perProjectWarmImageName} for why —
- * in short, a name scoped only to the project (the pre-existing shape) is safe
- * ONLY while a project can have at most one live warm image; the moment a second
+ * Names are scoped to (workspace, template): `kortix-ppwarm-<proj8>-<tpl8>-<hash12>`.
+ * See the FORMAT MIGRATION note below {@link perWorkspaceWarmImageName} for why —
+ * in short, a name scoped only to the workspace (the pre-existing shape) is safe
+ * ONLY while a workspace can have at most one live warm image; the moment a second
  * template gets one, one bake's reap deletes the other's tip and vice versa —
  * an infinite mutual-rebuild loop.
  */
@@ -24,14 +24,14 @@ export const PPWARM_PREFIX = 'kortix-ppwarm-';
  * image "superseded" and deletes it on every bake — an infinite full-rebuild
  * loop (observed live 2026-07-22). A freshly-built image is by definition some
  * live runtime's current tip; leave it alone and reap it once it has actually
- * gone stale. Kept short so a hot project's genuinely superseded tips still
+ * gone stale. Kept short so a hot workspace's genuinely superseded tips still
  * reclaim fast enough for the Daytona org snapshot quota.
  */
 export const PPWARM_REAP_PROTECT_MS = 45 * 60 * 1000;
 
 /**
  * Suffix that distinguishes the warm bake's BUILD-LOG row from the template it
- * layers on top of. `project_snapshot_builds.metadata.slug` records
+ * layers on top of. `workspace_snapshot_builds.metadata.slug` records
  * `<template>-warm` for a warm bake, but no such template exists in
  * `sandbox_templates` — the warm image is derived, never declared. Anything that
  * feeds a build slug back into template resolution (rebuild, fix-with-agent)
@@ -50,7 +50,7 @@ export function isWarmBuildSlug(slug: string): boolean {
 
 /**
  * Map a build-log slug back to the template slug it was baked from. Note this is
- * ambiguous by construction: a project MAY declare a real template literally named
+ * ambiguous by construction: a workspace MAY declare a real template literally named
  * `foo-warm`. Callers must therefore try the slug verbatim FIRST and only fall
  * back to this — see `resolveTemplateForBuildSlug`.
  */
@@ -61,11 +61,11 @@ export function templateSlugFromBuildSlug(buildSlug: string): string {
 }
 
 /**
- * First 8 hex chars of the projectId with dashes stripped — the per-project scope
- * key in a ppwarm name. Matches warm-project.ts's `proj8` so the prefixes line up.
+ * First 8 hex chars of the workspaceId with dashes stripped — the per-workspace scope
+ * key in a ppwarm name. Matches warm-workspace.ts's `proj8` so the prefixes line up.
  */
-export function proj8(projectId: string): string {
-  return projectId.replace(/-/g, '').slice(0, 8);
+export function proj8(workspaceId: string): string {
+  return workspaceId.replace(/-/g, '').slice(0, 8);
 }
 
 /**
@@ -74,10 +74,10 @@ export function proj8(projectId: string): string {
  * imports — so importing the real constant (which drags in the whole Dockerfile-
  * layer renderer) is off the table; we mirror the value instead, same as
  * quota-gc-select.ts mirrors {@link PPWARM_REAP_PROTECT_MS}. It is ONLY the
- * default for {@link perProjectWarmImageName}'s `templateSlug` param, so a caller
+ * default for {@link perWorkspaceWarmImageName}'s `templateSlug` param, so a caller
  * that has not (yet) been updated to pass it explicitly — e.g.
  * provider-transition-service.ts's `resolvePrepIdentity`, which always targets
- * the shared default template — still lands on the SAME (project, tpl8) scope as
+ * the shared default template — still lands on the SAME (workspace, tpl8) scope as
  * every other caller, never a silent name mismatch. If DEFAULT_SANDBOX_SLUG ever
  * changes, this must change with it.
  */
@@ -95,14 +95,14 @@ const MIRRORED_DEFAULT_TEMPLATE_SLUG = 'default';
  * same budget proj8 accepts — but a proj8 collision is caught downstream by
  * {@link excludePinnedTargets}, which cross-checks reap targets against live pins
  * by name. There is no equivalent guard for tpl8, so two distinct template slugs
- * in ONE project that collided would silently reintroduce the mutual-deletion
+ * in ONE workspace that collided would silently reintroduce the mutual-deletion
  * hazard this scoping exists to close.
  *
- * This is now a LIVE residual, not a hypothetical: `perProjectWarmEligible`
+ * This is now a LIVE residual, not a hypothetical: `perWorkspaceWarmEligible`
  * (builder.ts) mints per-template warm images for real on the providers in
  * `KORTIX_WARM_SNAPSHOT_CUSTOM_TEMPLATE_PROVIDERS` (Platinum by default). It is
  * accepted deliberately — a 32-bit space against a realistic 1-3 templates per
- * project — and widening it now would force a SECOND warm-image-invalidating
+ * workspace — and widening it now would force a SECOND warm-image-invalidating
  * format migration (see the FORMAT MIGRATION note below) for a negligible risk.
  * The cheaper fix, if this ever needs closing, is to extend the pinned-target
  * guard to cover tpl8 rather than to widen the key.
@@ -112,10 +112,10 @@ export function tpl8(templateSlug: string): string {
 }
 
 /**
- * Content-addressed name for a project's COLD warm image, keyed on
- * (project, template, tip, base runtime identity). A new tip OR a runtime-
+ * Content-addressed name for a workspace's COLD warm image, keyed on
+ * (workspace, template, tip, base runtime identity). A new tip OR a runtime-
  * fingerprint bump moves the name → a fresh bake; a stale name is never served
- * for a moved tip. Mirrors warm-project.ts's `kortix-wproj-<proj8>-<hash12>`
+ * for a moved tip. Mirrors warm-workspace.ts's `kortix-wproj-<proj8>-<hash12>`
  * naming, with an added `<tpl8>` scope segment — see the module header's FORMAT
  * MIGRATION note for why this is a hard format change, not an in-place tweak.
  *
@@ -124,29 +124,29 @@ export function tpl8(templateSlug: string): string {
  * expects for the default template (see {@link MIRRORED_DEFAULT_TEMPLATE_SLUG}).
  * Every NEW caller should pass it explicitly.
  */
-export function perProjectWarmImageName(
-  projectId: string,
+export function perWorkspaceWarmImageName(
+  workspaceId: string,
   tip: string,
   baseSnapshotName: string,
   templateSlug: string = MIRRORED_DEFAULT_TEMPLATE_SLUG,
 ): string {
   const hash = createHash('sha256')
-    .update(`${projectId}|${templateSlug}|${tip}|${baseSnapshotName}`)
+    .update(`${workspaceId}|${templateSlug}|${tip}|${baseSnapshotName}`)
     .digest('hex')
     .slice(0, 12);
-  return `${PPWARM_PREFIX}${proj8(projectId)}-${tpl8(templateSlug)}-${hash}`;
+  return `${PPWARM_PREFIX}${proj8(workspaceId)}-${tpl8(templateSlug)}-${hash}`;
 }
 
 /**
- * The PRE-MIGRATION name for a project's default-template warm image:
- * `kortix-ppwarm-<proj8>-<hash12>` over `projectId|tip|baseSnapshotName` (no
+ * The PRE-MIGRATION name for a workspace's default-template warm image:
+ * `kortix-ppwarm-<proj8>-<hash12>` over `workspaceId|tip|baseSnapshotName` (no
  * template segment, no slug in the hash).
  *
  * Exists so the warm-HIT lookup can serve an image that is already built and
  * already correct instead of re-baking the entire fleet. Without this, shipping
- * the (project, template) scoping would invalidate EVERY warm image at once —
+ * the (workspace, template) scoping would invalidate EVERY warm image at once —
  * ~65% of Daytona sessions currently hit one, so the release would make the first
- * session per project miss, clone cold, and kick a bake, all inside one deploy
+ * session per workspace miss, clone cold, and kick a bake, all inside one deploy
  * window, against a hard 100-snapshot org cap. With it, a legacy image keeps
  * serving until its tip moves for real, and the fleet migrates gradually at the
  * natural rate of default-branch pushes.
@@ -159,16 +159,16 @@ export function perProjectWarmImageName(
  * Delete this once no legacy name can still be active anywhere (they age out via
  * quota-gc's idle/LRU rules, which match both formats).
  */
-export function legacyPerProjectWarmImageName(
-  projectId: string,
+export function legacyPerWorkspaceWarmImageName(
+  workspaceId: string,
   tip: string,
   baseSnapshotName: string,
 ): string {
   const hash = createHash('sha256')
-    .update(`${projectId}|${tip}|${baseSnapshotName}`)
+    .update(`${workspaceId}|${tip}|${baseSnapshotName}`)
     .digest('hex')
     .slice(0, 12);
-  return `${PPWARM_PREFIX}${proj8(projectId)}-${hash}`;
+  return `${PPWARM_PREFIX}${proj8(workspaceId)}-${hash}`;
 }
 
 /**
@@ -176,9 +176,9 @@ export function legacyPerProjectWarmImageName(
  * Every ppwarm name baked before this change has the OLD shape
  * `kortix-ppwarm-<proj8>-<hash12>` (2 dash-delimited segments after the
  * prefix) — proj8 was the ONLY scope key, correct only because every caller of
- * `perProjectWarmImageName` hardcoded the shared default template, i.e. at most
- * one live tip per PROJECT. The NEW shape is
- * `kortix-ppwarm-<proj8>-<tpl8>-<hash12>` (3 segments), scoped to (project,
+ * `perWorkspaceWarmImageName` hardcoded the shared default template, i.e. at most
+ * one live tip per WORKSPACE. The NEW shape is
+ * `kortix-ppwarm-<proj8>-<tpl8>-<hash12>` (3 segments), scoped to (workspace,
  * template) so a second template's warm image can never reap — or be reaped
  * by — the default's.
  *
@@ -198,11 +198,11 @@ export function legacyPerProjectWarmImageName(
  * the default template too — a tpl8 segment is added AND templateSlug is folded
  * into the hash — so no pre-migration name can ever be recomputed. Concretely:
  * ~66% of Daytona sessions currently boot warm; on the release that carries this,
- * the first session per project MISSES, pays a cold clone, and kicks a background
+ * the first session per workspace MISSES, pays a cold clone, and kicks a background
  * re-bake. That is a fleet-wide bake burst against the Daytona org's hard
  * 100-snapshot cap, plus the old tips lingering until quota-gc ages them out
  * (they are no longer swept on-bake, see above) — i.e. transiently ~2x the ppwarm
- * tips per project. This is the same shape as the 2026-07-22 rebuild storm, so
+ * tips per workspace. This is the same shape as the 2026-07-22 rebuild storm, so
  * it MUST be released behind the warm-bake pacing (WARM_BAKE_COOLDOWN_MS /
  * warmBakeRecentlyStartedCluster) and watched, not shipped blind. It is a
  * one-time cost: steady state is unchanged.
@@ -231,7 +231,7 @@ function parsePpwarmName(name: string): ParsedPpwarmName | null {
 
 /**
  * Pure selector for the on-bake reap: given every snapshot/template name the
- * provider knows, return this project's SUPERSEDED per-project warm names for
+ * provider knows, return this workspace's SUPERSEDED per-workspace warm names for
  * the SAME TEMPLATE as `currentName` — never another template's tip (the
  * mutual-deletion hazard this migration closes) and never an old-format name
  * (see the FORMAT MIGRATION note; those are left to quota-gc-select.ts). The
@@ -244,12 +244,12 @@ function parsePpwarmName(name: string): ParsedPpwarmName | null {
  * is nothing to reap.
  *
  * `currentName` is expected to be NEW-format (every real caller now mints one
- * via {@link perProjectWarmImageName}). If it is somehow OLD-format instead,
+ * via {@link perWorkspaceWarmImageName}). If it is somehow OLD-format instead,
  * this degrades to the pre-migration proj8-only scope, byte-identical to the
  * original behavior — a defensive fallback, not a path any current caller takes.
  */
-export function ppwarmReapTargets(projectId: string, currentName: string, allNames: string[]): string[] {
-  const proj = proj8(projectId);
+export function ppwarmReapTargets(workspaceId: string, currentName: string, allNames: string[]): string[] {
+  const proj = proj8(workspaceId);
   const current = parsePpwarmName(currentName);
 
   if (current && current.tpl8 !== null) {
@@ -268,8 +268,8 @@ export function ppwarmReapTargets(projectId: string, currentName: string, allNam
 
 /**
  * FIX-K-lite guard: drop any reap target that is the ACTIVE pinned image (by name)
- * of SOME project. proj8 is only the first 8 hex of the projectId, so the
- * prefix-scoped {@link ppwarmReapTargets} can collide with another project whose id
+ * of SOME workspace. proj8 is only the first 8 hex of the workspaceId, so the
+ * prefix-scoped {@link ppwarmReapTargets} can collide with another workspace whose id
  * shares those 8 hex; cross-checking against the live pins makes such a collision
  * harmless (worst case, a superseded tip is kept one extra cycle).
  */

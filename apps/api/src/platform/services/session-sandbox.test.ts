@@ -3,16 +3,16 @@
 // Background: provisioning runs in a detached (fire-and-forget) IIFE. Before
 // this fix, the finish-of-provisioning writes were unconditional: if a user
 // deleted the session while the box was still being created, deleteSession()
-// would flip session_sandboxes to 'archived' and project_sessions to
+// would flip session_sandboxes to 'archived' and workspace_sessions to
 // 'stopped' — but the still-running provisioning IIFE would later land its
-// "success" writes anyway, flipping project_sessions BACK to 'running' and
+// "success" writes anyway, flipping workspace_sessions BACK to 'running' and
 // opening a compute-metering row for a session the user just deleted.
 //
 // The fix makes both finish-of-provisioning writes conditional:
 //   1. session_sandboxes finish update: WHERE status != 'archived' RETURNING.
 //      No row back → the session was deleted mid-provision: remove the
 //      just-created provider box and stop (no flip, no metering).
-//   2. project_sessions status flip: WHERE status IN (queued, branching,
+//   2. workspace_sessions status flip: WHERE status IN (queued, branching,
 //      provisioning) — never clobbers a 'stopped' (deleted, or explicitly
 //      stopped) or already-'running' (won by the separate stopped→running
 //      resume path in routes/shared.ts) session.
@@ -32,17 +32,17 @@
 // `bun:test`'s `mock.module` + ES module cache are process-global rather than
 // file-scoped — batching many files into one `bun test a b c...` invocation
 // can leak mocks/cached module instances across files. See the same caveat
-// documented in ../../projects/sandbox-reaper.test.ts.
+// documented in ../../workspaces/sandbox-reaper.test.ts.
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
-import { projectSessions, sessionSandboxes } from '@kortix/db';
+import { workspaceSessions, sessionSandboxes } from '@kortix/db';
 import { PgDialect } from 'drizzle-orm/pg-core';
-import { PROVISIONING_SESSION_STATUSES } from '../../projects/lib/session-status';
+import { PROVISIONING_SESSION_STATUSES } from '../../workspaces/lib/session-status';
 
 const dialect = new PgDialect();
 
 const SANDBOX_ID = '00000000-0000-4000-a000-00000000a001';
 const ACCOUNT_ID = '00000000-0000-4000-a000-00000000a002';
-const PROJECT_ID = '00000000-0000-4000-a000-00000000a003';
+const WORKSPACE_ID = '00000000-0000-4000-a000-00000000a003';
 const USER_ID = '00000000-0000-4000-a000-00000000a004';
 const EXTERNAL_ID = 'ext-daytona-1';
 
@@ -55,12 +55,12 @@ let updateCalls: Array<{
 }> = [];
 let scenario: {
   archiveBeforeFinish: boolean;
-  projectSessionStatusAtCheck: string;
-  projectSessionMetadataAtCheck: Record<string, unknown>;
+  workspaceSessionStatusAtCheck: string;
+  workspaceSessionMetadataAtCheck: Record<string, unknown>;
 } = {
   archiveBeforeFinish: false,
-  projectSessionStatusAtCheck: 'provisioning',
-  projectSessionMetadataAtCheck: {},
+  workspaceSessionStatusAtCheck: 'provisioning',
+  workspaceSessionMetadataAtCheck: {},
 };
 let removedIds: string[] = [];
 let stoppedIds: string[] = [];
@@ -120,10 +120,10 @@ mock.module('../../shared/db', () => ({
       from: (table: unknown) => ({
         where: (_cond: unknown) => ({
           limit: async (_n: number) => {
-            if (table === projectSessions) {
+            if (table === workspaceSessions) {
               return [{
-                status: scenario.projectSessionStatusAtCheck,
-                metadata: scenario.projectSessionMetadataAtCheck,
+                status: scenario.workspaceSessionStatusAtCheck,
+                metadata: scenario.workspaceSessionMetadataAtCheck,
               }];
             }
             return [];
@@ -155,7 +155,7 @@ mock.module('../../shared/db', () => ({
                     sandboxId: SANDBOX_ID,
                     sessionId: SANDBOX_ID,
                     accountId: ACCOUNT_ID,
-                    projectId: PROJECT_ID,
+                    workspaceId: WORKSPACE_ID,
                     provider: 'daytona',
                     externalId: null,
                     status: 'provisioning',
@@ -214,7 +214,7 @@ mock.module('./provider-balancer', () => ({
 
 mock.module('../../snapshots/builder', () => ({
   DEFAULT_SANDBOX_SLUG: 'default',
-  ensureSandboxImage: async (_gitProject: unknown, opts: Record<string, unknown>) => {
+  ensureSandboxImage: async (_gitWorkspace: unknown, opts: Record<string, unknown>) => {
     imageRequests.push(opts);
     return {
       snapshotName: 'snap-test-1',
@@ -225,7 +225,7 @@ mock.module('../../snapshots/builder', () => ({
     };
   },
   deleteSandboxImage: async () => {},
-  resolveTemplate: async (_project: unknown, _slug: unknown) => ({}),
+  resolveTemplate: async (_workspace: unknown, _slug: unknown) => ({}),
 }));
 
 let onProviderEvent: (() => void) | null = null;
@@ -259,16 +259,16 @@ mock.module('../../shared/account-limits', () => ({
   accountEntitledToLlmGateway: async (_accountId: string) => false,
 }));
 
-mock.module('../../projects/triggers', () => ({
+mock.module('../../workspaces/triggers', () => ({
   readManifest: async () => null,
 }));
 
-mock.module('../../projects/agents', () => ({
-  resolveAgentGrant: async (_agentName: string, _gitProject: unknown) => null,
+mock.module('../../workspaces/agents', () => ({
+  resolveAgentGrant: async (_agentName: string, _gitWorkspace: unknown) => null,
 }));
 
 mock.module('../../llm-gateway/enablement', () => ({
-  projectLlmGatewayEnabled: (_metadata: unknown) => false,
+  workspaceLlmGatewayEnabled: (_metadata: unknown) => false,
 }));
 
 mock.module('../../shared/session-failure-notifier', () => ({
@@ -291,8 +291,8 @@ beforeEach(() => {
   updateCalls = [];
   scenario = {
     archiveBeforeFinish: false,
-    projectSessionStatusAtCheck: 'provisioning',
-    projectSessionMetadataAtCheck: {},
+    workspaceSessionStatusAtCheck: 'provisioning',
+    workspaceSessionMetadataAtCheck: {},
   };
   removedIds = [];
   stoppedIds = [];
@@ -314,12 +314,12 @@ function baseOpts() {
   return {
     sandboxId: SANDBOX_ID,
     accountId: ACCOUNT_ID,
-    projectId: PROJECT_ID,
+    workspaceId: WORKSPACE_ID,
     userId: USER_ID,
     provider: 'daytona' as const,
-    gitProject: { defaultBranch: 'main' } as unknown as Parameters<
+    gitWorkspace: { defaultBranch: 'main' } as unknown as Parameters<
       typeof provisionSessionSandbox
-    >[0]['gitProject'],
+    >[0]['gitWorkspace'],
     metadata: {},
   };
 }
@@ -332,7 +332,7 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
 
     await provisionSessionSandbox({
       ...baseOpts(),
-      projectMetadata: { experimental: { acp_runtime: true } },
+      workspaceMetadata: { experimental: { acp_runtime: true } },
     });
     await opened;
 
@@ -349,7 +349,7 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
 
     await provisionSessionSandbox({
       ...baseOpts(),
-      projectMetadata: { experimental: { acp_runtime: false } },
+      workspaceMetadata: { experimental: { acp_runtime: false } },
     });
     await opened;
 
@@ -483,9 +483,9 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     expect(finishCall?.sql).toContain('<>');
     expect(finishCall?.params).toContain('archived');
 
-    // The project_sessions running-flip is guarded by `status IN (queued, branching, provisioning)`.
+    // The workspace_sessions running-flip is guarded by `status IN (queued, branching, provisioning)`.
     const flipCall = updateCalls.find(
-      (c) => c.table === projectSessions && c.updates.status === 'running',
+      (c) => c.table === workspaceSessions && c.updates.status === 'running',
     );
     expect(flipCall).toBeTruthy();
     expect(flipCall?.sql).toContain('in (');
@@ -497,7 +497,7 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     // Still 'provisioning' at the early stopped-check (line ~463): the delete
     // happens in the gap AFTER that check and BEFORE the finish write — the
     // exact race window this fix closes.
-    scenario.projectSessionStatusAtCheck = 'provisioning';
+    scenario.workspaceSessionStatusAtCheck = 'provisioning';
 
     const eventRecorded = waitFor((resolve) => {
       onProviderEvent = resolve;
@@ -509,14 +509,14 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
     expect(computeSessionsOpened).toEqual([]);
 
     // The guarded finish update was attempted (and, per the mock, returned no
-    // rows because the row was already 'archived') — but no project_sessions
+    // rows because the row was already 'archived') — but no workspace_sessions
     // running-flip was ever attempted off the back of it.
     const finishCall = updateCalls.find(
       (c) => c.table === sessionSandboxes && 'externalId' in c.updates && 'config' in c.updates,
     );
     expect(finishCall).toBeTruthy();
     const flipCall = updateCalls.find(
-      (c) => c.table === projectSessions && c.updates.status === 'running',
+      (c) => c.table === workspaceSessions && c.updates.status === 'running',
     );
     expect(flipCall).toBeUndefined();
 
@@ -524,7 +524,7 @@ describe('provisionSessionSandbox — mid-provision delete race', () => {
   });
 
   test('manual stop racing provider create stops and preserves the sandbox instead of removing it', async () => {
-    scenario.projectSessionStatusAtCheck = 'stopped';
+    scenario.workspaceSessionStatusAtCheck = 'stopped';
     const eventRecorded = waitFor((resolve) => { onProviderEvent = resolve; });
     await provisionSessionSandbox(baseOpts());
     await eventRecorded;

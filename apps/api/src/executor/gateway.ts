@@ -15,12 +15,12 @@ import {
  * Executor gateway — the chokepoint every tool call goes through. Resolves the
  * connector + action, resolves the credential SERVER-SIDE, runs the call,
  * audits it. The sandbox never holds an app secret. Connectors are
- * project-wide visible (no per-connector member/agent scoping) — the only
+ * workspace-wide visible (no per-connector member/agent scoping) — the only
  * access gate is the agent-side `[[agents]].connectors` grant, enforced at the
  * router before this is ever reached.
  *
  * Policy enforcement is layered (docs/specs/executor.md §8):
- *   1. project-level [[policies]] (fully-qualified patterns) — admin guardrails
+ *   1. workspace-level [[policies]] (fully-qualified patterns) — admin guardrails
  *   2. connector-level [[connectors.policies]] (relative patterns) — connector-author rules
  *   3. risk-derived default (when `default_mode = risk`) or always_run (`allow_all`)
  *
@@ -60,7 +60,7 @@ export interface GatewayConnector {
   headers?: Record<string, string> | null;
   /** Whether this connector needs a credential at all (false = public/no-auth). */
   hasAuth: boolean;
-  /** Always `shared` (one project credential) — `per_user` (each member's
+  /** Always `shared` (one workspace credential) — `per_user` (each member's
    *  own) was removed 2026-07-05. Kept as a field for shape stability. */
   credentialMode: 'shared';
   enabled: boolean;
@@ -82,7 +82,7 @@ export interface GatewayAction {
 
 export interface ExecutionRecord {
   accountId: string;
-  projectId: string;
+  workspaceId: string;
   connectorId: string | null;
   profileId: string | null;
   actionPath: string;
@@ -104,7 +104,7 @@ export interface EmailConnectorContext {
 }
 
 export interface GatewayDeps {
-  loadConnectorBySlug(projectId: string, slug: string): Promise<GatewayConnector | null>;
+  loadConnectorBySlug(workspaceId: string, slug: string): Promise<GatewayConnector | null>;
   loadAction(connectorId: string, relPath: string): Promise<GatewayAction | null>;
   /**
    * Resolve the credential value/binding for a connector. `userId=null` = shared;
@@ -115,16 +115,16 @@ export interface GatewayDeps {
   resolveCredential(connector: GatewayConnector, userId: string | null): Promise<string | null>;
   /** Email-originated sessions pin native Email channel calls to the inbound inbox/thread. */
   loadEmailSessionContext?(
-    projectId: string,
+    workspaceId: string,
     sessionId: string,
   ): Promise<EmailSessionContext | null>;
   /** Email connector profiles represent one installed AgentMail inbox. */
   loadEmailConnectorContext?(
-    projectId: string,
+    workspaceId: string,
     connectorSlug: string,
   ): Promise<EmailConnectorContext | null>;
   /** Resolve the AgentMail credential for the install that owns this inbox. */
-  resolveEmailCredentialForInbox?(projectId: string, inboxId: string): Promise<string | null>;
+  resolveEmailCredentialForInbox?(workspaceId: string, inboxId: string): Promise<string | null>;
   /**
    * Meet (Recall.ai) join augmentation — the realtime webhook endpoint + bot
    * `metadata` (owning session + an HMAC token) injected server-side so Recall
@@ -132,7 +132,7 @@ export interface GatewayDeps {
    * the call isn't session-scoped. The sandbox never builds this callback.
    */
   resolveVoiceJoinContext?(
-    projectId: string,
+    workspaceId: string,
     sessionId: string | null,
   ): Promise<{
     metadata: Record<string, unknown>;
@@ -141,10 +141,10 @@ export interface GatewayDeps {
   } | null>;
   /** Connector-scoped policies (relative patterns over the connector's tool paths). */
   loadPolicies(connectorId: string): Promise<Policy[]>;
-  /** Project-scoped policies (fully-qualified patterns over <slug>.<path>). */
-  loadProjectPolicies?(projectId: string): Promise<Policy[]>;
-  /** Project's policy.default_mode setting (risk | allow_all). Defaults to allow_all. */
-  loadDefaultMode?(projectId: string): Promise<DefaultMode>;
+  /** Workspace-scoped policies (fully-qualified patterns over <slug>.<path>). */
+  loadWorkspacePolicies?(workspaceId: string): Promise<Policy[]>;
+  /** Workspace's policy.default_mode setting (risk | allow_all). Defaults to allow_all. */
+  loadDefaultMode?(workspaceId: string): Promise<DefaultMode>;
   /** Records the audit row; returns the new execution id (or null on failure)
    *  so the caller can wait on a human decision for a gated call. */
   recordExecution(rec: ExecutionRecord): Promise<string | null>;
@@ -182,7 +182,7 @@ export interface GatewayDeps {
   fetchImpl: FetchImpl;
   /** Pipedream execution (Connect actions/run) — required for pipedream connectors. */
   executePipedream?(input: {
-    projectId: string;
+    workspaceId: string;
     connectorSlug: string;
     app: string;
     actionKey: string;
@@ -193,7 +193,7 @@ export interface GatewayDeps {
   }): Promise<ExecResult>;
   /** Pipedream Connect-Proxy execution (the generic `request` tool). */
   executePipedreamProxy?(input: {
-    projectId: string;
+    workspaceId: string;
     connectorSlug: string;
     app: string;
     /** { method, url, body?, headers? }. */
@@ -225,7 +225,7 @@ export type ComputerCallOutcome =
   | { ok: false; kind: 'error'; message: string };
 
 export interface CallInput {
-  projectId: string;
+  workspaceId: string;
   accountId: string;
   subject: ShareSubject;
   sessionId?: string | null;
@@ -268,12 +268,12 @@ async function resolveConnectorForCall(
 ): Promise<{ slug: string; connector: GatewayConnector | null }> {
   // Back-compat for sandboxes baked before the reserved channel slug existed:
   // old `slack` CLI shims call connector="slack" with the fixed channel action
-  // names. A project may also have a user-defined Pipedream connector named
+  // names. A workspace may also have a user-defined Pipedream connector named
   // `slack`; prefer the platform-owned channel connector for those native Slack
   // CLI actions so the user connector cannot shadow thread/history/search reads.
   if (input.connectorSlug === 'slack' && SLACK_CHANNEL_ACTIONS.has(input.actionPath)) {
     const channelConnector = await deps.loadConnectorBySlug(
-      input.projectId,
+      input.workspaceId,
       SLACK_CHANNEL_CONNECTOR_SLUG,
     );
     if (channelConnector?.enabled && channelConnector.provider === 'channel') {
@@ -283,7 +283,7 @@ async function resolveConnectorForCall(
 
   if (input.connectorSlug === 'email' && EMAIL_CHANNEL_ACTIONS.has(input.actionPath)) {
     const channelConnector = await deps.loadConnectorBySlug(
-      input.projectId,
+      input.workspaceId,
       EMAIL_CHANNEL_CONNECTOR_SLUG,
     );
     if (channelConnector?.enabled && channelConnector.provider === 'channel') {
@@ -293,13 +293,13 @@ async function resolveConnectorForCall(
 
   return {
     slug: input.connectorSlug,
-    connector: await deps.loadConnectorBySlug(input.projectId, input.connectorSlug),
+    connector: await deps.loadConnectorBySlug(input.workspaceId, input.connectorSlug),
   };
 }
 
 /**
  * Is this connector usable for this call? Access is public-by-default —
- * connectors are project-wide visible; the ONLY gate is the agent-side
+ * connectors are workspace-wide visible; the ONLY gate is the agent-side
  * `[[agents]].connectors` grant (enforced earlier, at the router, via
  * `agentMayUseConnector`). This function is left with just the credential
  * check (by mode).
@@ -310,7 +310,7 @@ async function connectorUsable(
   _input: CallInput,
   credentialOverride?: string | null,
 ): Promise<{ ok: true; secret: string | null } | { ok: false; reason: string }> {
-  // Credential — none needed (public), or the one shared project credential.
+  // Credential — none needed (public), or the one shared workspace credential.
   // (`per_user` — each member's own — was removed 2026-07-05; every connector
   // now resolves the shared, userId-null credential.)
   if (!connector.hasAuth) return { ok: true, secret: null };
@@ -344,7 +344,7 @@ async function resolveEmailExecutionContext(
       : null;
   const metadataContext =
     input.sessionId && deps.loadEmailSessionContext
-      ? await deps.loadEmailSessionContext(input.projectId, input.sessionId)
+      ? await deps.loadEmailSessionContext(input.workspaceId, input.sessionId)
       : null;
   const sessionContext = profileInboxId
     ? {
@@ -355,7 +355,7 @@ async function resolveEmailExecutionContext(
     : null;
   const connectorContext =
     !sessionContext?.inboxId && deps.loadEmailConnectorContext
-      ? await deps.loadEmailConnectorContext(input.projectId, connectorSlug)
+      ? await deps.loadEmailConnectorContext(input.workspaceId, connectorSlug)
       : null;
   const authorizedInboxContext = sessionContext?.inboxId ? sessionContext : connectorContext;
   const context = authorizedInboxContext
@@ -383,7 +383,7 @@ async function resolveEmailExecutionContext(
 
   const secretOverride =
     sessionContext?.inboxId && deps.resolveEmailCredentialForInbox
-      ? await deps.resolveEmailCredentialForInbox(input.projectId, context.inboxId)
+      ? await deps.resolveEmailCredentialForInbox(input.workspaceId, context.inboxId)
       : null;
   return { args, secretOverride };
 }
@@ -438,7 +438,7 @@ export async function handleCall(deps: GatewayDeps, input: CallInput): Promise<C
     input.actionPath === 'join_meeting' &&
     deps.resolveVoiceJoinContext
   ) {
-    const ctx = await deps.resolveVoiceJoinContext(input.projectId, input.sessionId ?? null);
+    const ctx = await deps.resolveVoiceJoinContext(input.workspaceId, input.sessionId ?? null);
     if (ctx) {
       const { automatic_audio_output: _dropped, ...rest } = executionArgs;
       executionArgs = {
@@ -448,23 +448,23 @@ export async function handleCall(deps: GatewayDeps, input: CallInput): Promise<C
           ...((executionArgs.metadata as Record<string, unknown>) ?? {}),
           ...ctx.metadata,
         },
-        // The project's configured bot display name, unless the caller passed one.
+        // The workspace's configured bot display name, unless the caller passed one.
         bot_name: executionArgs.bot_name ?? ctx.botName,
       };
     }
   }
 
-  // Layered policy enforcement: project policies first → connector → risk default.
+  // Layered policy enforcement: workspace policies first → connector → risk default.
   if (deps.enforcePolicies !== false) {
-    const [connectorPolicies, projectPolicies, defaultMode] = await Promise.all([
+    const [connectorPolicies, workspacePolicies, defaultMode] = await Promise.all([
       deps.loadPolicies(connector.connectorId),
-      deps.loadProjectPolicies?.(input.projectId) ?? Promise.resolve([] as Policy[]),
-      deps.loadDefaultMode?.(input.projectId) ?? Promise.resolve('allow_all' as DefaultMode),
+      deps.loadWorkspacePolicies?.(input.workspaceId) ?? Promise.resolve([] as Policy[]),
+      deps.loadDefaultMode?.(input.workspaceId) ?? Promise.resolve('allow_all' as DefaultMode),
     ]);
     const decision = resolveEffectiveAction({
       fullPath,
       relPath: input.actionPath,
-      projectPolicies,
+      workspacePolicies,
       connectorPolicies,
       risk: action.risk,
       defaultMode,
@@ -641,13 +641,13 @@ export async function handleCall(deps: GatewayDeps, input: CallInput): Promise<C
       }
       // A session-selected profile gets its own stable Pipedream external-user
       // identity. The legacy/default profile preserves the existing shared
-      // `${projectId}:${slug}` identity for backwards compatibility.
+      // `${workspaceId}:${slug}` identity for backwards compatibility.
       const userId =
         connector.profileId && !connector.profileIsDefault ? connector.profileId : null;
       if (b.kind === 'pipedream') {
         if (!deps.executePipedream) throw new Error('pipedream action runner not wired');
         result = await deps.executePipedream({
-          projectId: input.projectId,
+          workspaceId: input.workspaceId,
           connectorSlug: input.connectorSlug,
           app: b.app,
           actionKey: b.actionKey,
@@ -658,7 +658,7 @@ export async function handleCall(deps: GatewayDeps, input: CallInput): Promise<C
       } else if (b.kind === 'pipedream_proxy') {
         if (!deps.executePipedreamProxy) throw new Error('pipedream proxy runner not wired');
         result = await deps.executePipedreamProxy({
-          projectId: input.projectId,
+          workspaceId: input.workspaceId,
           connectorSlug: input.connectorSlug,
           app: b.app,
           args: executionArgs,
@@ -765,7 +765,7 @@ async function audit(
   try {
     return await deps.recordExecution({
       accountId: input.accountId,
-      projectId: input.projectId,
+      workspaceId: input.workspaceId,
       connectorId: connector?.connectorId ?? null,
       profileId: connector?.profileId ?? null,
       actionPath: `${input.connectorSlug}.${input.actionPath}`,

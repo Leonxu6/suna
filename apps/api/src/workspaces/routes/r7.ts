@@ -1,0 +1,1847 @@
+import { recordSessionToolApproval } from '../../executor/db-deps';
+import { loadSessionGrants, parseSharingIntent, resolveShareSubject, setSessionSharing } from '../../executor/share';
+import {
+  WORKSPACE_ACTIONS,
+  deleteResourceGrant,
+  isCreatableResourceType,
+  listResourceGrants,
+  upsertResourceGrant,
+} from '../../iam';
+import { assertAgentScope, getAgentGrant } from '../../iam/agent-scope';
+import { invalidateIamCacheForGroup } from '../../iam/cache-invalidation';
+import { normalizeWorkspaceRole } from '../../iam/role-perms';
+import { workspaceHasResource, workspaceResourcesFromConfig, loadConfigWithFiles } from '../lib/workspace-resources';
+import { auth, errors, json } from '../../openapi';
+import { DEFAULT_SANDBOX_SLUG } from '../../snapshots/builder';
+import { db } from '../../shared/db';
+import { roleAllows } from '../access';
+import { createRoute, z } from '@hono/zod-openapi';
+import { accountGroupMembers, accountGroups, accountMembers, executorConnectors, executorExecutions, workspaceGroupGrants, workspaceSessions, sessionSandboxes } from '@kortix/db';
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { loadWorkspaceForUser, loadVisibleSession, lookupEmailsByUserIds, parseExpiresAtBody, assertWorkspaceCapability, isUuid, workspaceCapabilityAllowed, resolveSessionOwnerIdentities } from '../lib/access';
+import { AnyObject, ClaimWarmWorkspaceSessionInputSchema, GroupGrantSchema, OkSchema, SessionCreateAcceptedSchema, SessionCreateInputSchema, SessionSchema, WarmWorkspaceSessionResultSchema, workspacesApp } from '../lib/app';
+import { UUID_V4_REGEX, hasOwn, normalizeString, readBody, requestAuditContext, serializeSession } from '../lib/serializers';
+import { createWorkspaceSession, sendSessionCreateError, type SessionCreateError } from '../lib/sessions';
+import { sessionHasMemberConnectorBinding } from '../lib/session-connector-bindings';
+import { buildSessionTranscriptDigest } from '../lib/session-transcript';
+import {
+  claimAvailableWarmWorkspaceSession,
+  discardAvailableWarmWorkspaceSession,
+  findAvailableWarmWorkspaceSession,
+} from '../lib/warm-session-store';
+import { refreshWarmSessionWorkspace } from '../lib/warm-session-workspace';
+import {
+  createWarmWorkspaceSessionCoordinator,
+  WarmWorkspaceSessionError,
+} from '../lib/warm-sessions';
+import {
+  createSession,
+  deleteSession,
+  drainSessionLifecycleQueue,
+  enqueueContinueSessionCommand,
+} from '../session-lifecycle';
+import { requireEntitlement } from '../../accounts/iam/helpers';
+import { accountHasEntitlement } from '../../billing/services/entitlements';
+import { selectSessionRowsForViewer, type WorkspaceSessionListScope } from '../lib/session-inventory';
+
+function parseBoundedPositiveInt(
+  raw: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+  label: string,
+): { ok: true; value: number } | { ok: false; error: string } {
+  if (raw === undefined || raw === '') return { ok: true, value: fallback };
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    return { ok: false, error: `${label} must be an integer between ${min} and ${max}` };
+  }
+  return { ok: true, value };
+}
+
+workspacesApp.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{workspaceId}/group-grants',
+    tags: ['access'],
+    summary: 'GET /:workspaceId/group-grants',
+    ...auth,
+      request: {
+        params: z.object({ workspaceId: z.string() }),
+      },
+    responses: {
+        200: json(z.array(GroupGrantSchema), 'Group grants'),
+        ...errors(404),
+    },
+  }),
+  async (c: any) => {
+  const workspaceId = c.req.param('workspaceId');
+  const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
+  if (!loaded) return c.json({ error: 'Not found' }, 404);
+  await assertWorkspaceCapability(c, loaded.userId, loaded.row.accountId, workspaceId, WORKSPACE_ACTIONS.WORKSPACE_SESSION_READ);
+
+  const rows = await db
+    .select({
+      groupId: workspaceGroupGrants.groupId,
+      role: workspaceGroupGrants.role,
+      grantedBy: workspaceGroupGrants.grantedBy,
+      createdAt: workspaceGroupGrants.createdAt,
+      expiresAt: workspaceGroupGrants.expiresAt,
+      groupName: accountGroups.name,
+    })
+    .from(workspaceGroupGrants)
+    .innerJoin(accountGroups, eq(accountGroups.groupId, workspaceGroupGrants.groupId))
+    .where(eq(workspaceGroupGrants.workspaceId, workspaceId))
+    // Deterministic order — without ORDER BY, Postgres can return rows
+    // in heap-scan order, which shifts when the row is UPDATEd (e.g., a
+    // role change). The UI list would then visibly reshuffle after a
+    // role flip. Oldest attachments first matches the "Attached <date>"
+    // subtitle most users scan along.
+    .orderBy(asc(workspaceGroupGrants.createdAt), asc(workspaceGroupGrants.groupId));
+
+  // Per-group member breakdown so the UI can flag attachments where the
+  // grant role won't apply uniformly. When a group includes account
+  // owners/admins, those users have implicit Manager on every workspace,
+  // so the group's grant role is moot for them. Surfacing
+  // override_count = N lets the workspace admin see at a glance "this
+  // Viewer attachment doesn't actually viewer-cap 3 of these 5 people".
+  const groupIds = rows.map((r) => r.groupId);
+  type GroupStats = { total: number; overrideCount: number };
+  const statsByGroup = new Map<string, GroupStats>();
+  if (groupIds.length > 0) {
+    const memberRows = await db
+      .select({
+        groupId: accountGroupMembers.groupId,
+        accountRole: accountMembers.accountRole,
+        isSuperAdmin: accountMembers.isSuperAdmin,
+      })
+      .from(accountGroupMembers)
+      .innerJoin(
+        accountMembers,
+        and(
+          eq(accountMembers.userId, accountGroupMembers.userId),
+          eq(accountMembers.accountId, loaded.row.accountId),
+        ),
+      )
+      .where(inArray(accountGroupMembers.groupId, groupIds));
+    for (const m of memberRows) {
+      const stats = statsByGroup.get(m.groupId) ?? { total: 0, overrideCount: 0 };
+      stats.total += 1;
+      if (
+        m.isSuperAdmin ||
+        m.accountRole === 'owner' ||
+        m.accountRole === 'admin'
+      ) {
+        stats.overrideCount += 1;
+      }
+      statsByGroup.set(m.groupId, stats);
+    }
+  }
+
+  return c.json({
+    grants: rows.map((r) => {
+      const stats = statsByGroup.get(r.groupId) ?? { total: 0, overrideCount: 0 };
+      return {
+        group_id: r.groupId,
+        group_name: r.groupName,
+        role: r.role,
+        granted_by: r.grantedBy,
+        created_at: r.createdAt.toISOString(),
+        /** Auto-revoke timestamp. NULL = permanent attachment. */
+        expires_at: r.expiresAt?.toISOString() ?? null,
+        member_count: stats.total,
+        // How many of the group's members are account owners/admins —
+        // their implicit Manager access overrides this grant's role.
+        override_count: stats.overrideCount,
+      };
+    }),
+  });
+},
+);
+
+class WarmSessionCreateFailure extends Error {
+  constructor(readonly detail: SessionCreateError) {
+    super(
+      typeof detail.body.error === 'string'
+        ? detail.body.error
+        : 'Warm session creation failed',
+    );
+    this.name = 'WarmSessionCreateFailure';
+  }
+}
+
+function resolvedWarmSessionConfiguration(workspace: {
+  defaultBranch: string;
+  metadata: Record<string, unknown> | null;
+}) {
+  const metadata = workspace.metadata ?? {};
+  return {
+    baseRef: workspace.defaultBranch,
+    agentName: normalizeString(metadata.default_agent) ?? 'default',
+    sandboxSlug:
+      normalizeString(metadata.default_sandbox_slug) ?? DEFAULT_SANDBOX_SLUG,
+  };
+}
+
+// POST /v1/workspaces/:workspaceId/sessions/warm
+
+workspacesApp.openapi(
+  createRoute({
+    method: 'post',
+    path: '/{workspaceId}/sessions/warm',
+    tags: ['sessions'],
+    summary: 'Create or reuse the current user warm workspace session',
+    ...auth,
+    request: {
+      params: z.object({ workspaceId: z.string() }),
+      body: { content: { 'application/json': { schema: z.object({}).strict() } } },
+    },
+    responses: {
+      200: json(WarmWorkspaceSessionResultSchema, 'The available warm session'),
+      ...errors(400, 402, 403, 404, 409, 429, 500, 503),
+    },
+  }),
+  async (c: any) => {
+    const workspaceId = c.req.param('workspaceId');
+    const loaded = await loadWorkspaceForUser(c, workspaceId, 'session');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+    assertAgentScope(c, WORKSPACE_ACTIONS.WORKSPACE_SESSION_START);
+
+    const scope = {
+      accountId: loaded.row.accountId,
+      workspaceId,
+      userId: loaded.userId,
+    };
+    const configuration = resolvedWarmSessionConfiguration(loaded.row);
+    const coordinator = createWarmWorkspaceSessionCoordinator({
+      findAvailable: () => findAvailableWarmWorkspaceSession(scope),
+      discard: (sessionId, metadata) =>
+        discardAvailableWarmWorkspaceSession(scope, sessionId, metadata),
+      claim: (sessionId, metadata) =>
+        claimAvailableWarmWorkspaceSession(scope, sessionId, metadata),
+      create: async (metadata) => {
+        const result = await createWorkspaceSession({
+          workspace: loaded.row,
+          userId: loaded.userId,
+          requestingPrincipalType:
+            c.get('authType') === 'service_account' ? 'service_account' : 'human',
+          body: {
+            base_ref: configuration.baseRef,
+            agent_name: configuration.agentName,
+            sandbox_slug: configuration.sandboxSlug,
+          },
+          metadata: { source: 'ui', ...metadata },
+          authType: c.get('authType') as string | undefined,
+          apiKeyType: c.get('apiKeyType') as string | undefined,
+          inSession: c.get('sessionId') != null || getAgentGrant(c) != null,
+          request: requestAuditContext(c),
+        });
+        if (result.error) throw new WarmSessionCreateFailure(result.error);
+        if (!result.row) {
+          throw new WarmSessionCreateFailure({
+            status: 500,
+            body: { error: 'Warm session creation returned no row', retry: true },
+          });
+        }
+        return result.row;
+      },
+    });
+
+    try {
+      const ensured = await coordinator.ensure(configuration);
+      const workspaceRefresh = ensured.reused
+        ? await refreshWarmSessionWorkspace(
+            loaded.row,
+            ensured.session.sessionId,
+          )
+        : { status: 'skipped' as const };
+      return c.json(
+        {
+          session: serializeSession(ensured.session, {
+            viewerId: loaded.userId,
+            canManageWorkspace: roleAllows(loaded.effectiveRole, 'manage'),
+          }),
+          reused: ensured.reused,
+          workspace_refresh: workspaceRefresh,
+        },
+        200,
+      );
+    } catch (error) {
+      if (error instanceof WarmSessionCreateFailure) {
+        return sendSessionCreateError(c, error.detail);
+      }
+      throw error;
+    }
+  },
+);
+
+// POST /v1/workspaces/:workspaceId/sessions/warm/claim
+
+workspacesApp.openapi(
+  createRoute({
+    method: 'post',
+    path: '/{workspaceId}/sessions/warm/claim',
+    tags: ['sessions'],
+    summary: 'Claim the current user warm workspace session',
+    ...auth,
+    request: {
+      params: z.object({ workspaceId: z.string() }),
+      body: {
+        content: {
+          'application/json': { schema: ClaimWarmWorkspaceSessionInputSchema },
+        },
+      },
+    },
+    responses: {
+      200: json(SessionSchema, 'The claimed session'),
+      ...errors(400, 403, 404, 409),
+    },
+  }),
+  async (c: any) => {
+    const workspaceId = c.req.param('workspaceId');
+    const body = await readBody(c);
+    const sessionId = normalizeString(body.session_id);
+    if (!sessionId || !UUID_V4_REGEX.test(sessionId)) {
+      return c.json({ error: 'Invalid session id', code: 'INVALID_SESSION_ID' }, 400);
+    }
+
+    const loaded = await loadWorkspaceForUser(c, workspaceId, 'session');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+    assertAgentScope(c, WORKSPACE_ACTIONS.WORKSPACE_SESSION_START);
+
+    const scope = {
+      accountId: loaded.row.accountId,
+      workspaceId,
+      userId: loaded.userId,
+    };
+    const coordinator = createWarmWorkspaceSessionCoordinator({
+      findAvailable: () => findAvailableWarmWorkspaceSession(scope),
+      discard: (candidateSessionId, metadata) =>
+        discardAvailableWarmWorkspaceSession(scope, candidateSessionId, metadata),
+      claim: (candidateSessionId, metadata) =>
+        claimAvailableWarmWorkspaceSession(scope, candidateSessionId, metadata),
+      create: async () => {
+        throw new Error('Claim cannot create a warm session');
+      },
+    });
+
+    try {
+      const claimed = await coordinator.claim({
+        sessionId,
+        agentName: normalizeString(body.agent_name) ?? undefined,
+        sandboxSlug: normalizeString(body.sandbox_slug) ?? undefined,
+      });
+      return c.json(
+        serializeSession(claimed, {
+          viewerId: loaded.userId,
+          canManageWorkspace: roleAllows(loaded.effectiveRole, 'manage'),
+        }),
+        200,
+      );
+    } catch (error) {
+      if (error instanceof WarmWorkspaceSessionError) {
+        return c.json({ error: error.message, code: error.code }, error.status as 409);
+      }
+      throw error;
+    }
+  },
+);
+
+// POST /v1/workspaces/:workspaceId/group-grants
+// Attach a group to this workspace at the given role. Idempotent — if the
+// group already has a grant, the role is updated.
+
+workspacesApp.openapi(
+  createRoute({
+    method: 'post',
+    path: '/{workspaceId}/group-grants',
+    tags: ['access'],
+    summary: 'POST /:workspaceId/group-grants',
+    ...auth,
+      request: {
+        params: z.object({ workspaceId: z.string() }),
+        body: { content: { 'application/json': { schema: AnyObject } } },
+      },
+    responses: {
+        201: json(GroupGrantSchema, 'The created group grant'),
+        ...errors(400, 404),
+    },
+  }),
+  async (c: any) => {
+  const workspaceId = c.req.param('workspaceId');
+  const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
+  if (!loaded) return c.json({ error: 'Not found' }, 404);
+  // assertWorkspaceCapability (not bare assertAuthorized) so the acting token is
+  // threaded and the agent-grant fold fires: an agent-session token must also
+  // hold workspace.members.manage to mutate group grants, not just its user.
+  await assertWorkspaceCapability(c, loaded.userId, loaded.row.accountId, workspaceId, WORKSPACE_ACTIONS.WORKSPACE_MEMBERS_MANAGE);
+  // Entitlement mirror of accounts/iam/groups.ts so grants can't be minted
+  // through the workspace-scoped path when the account-scoped one is gated.
+  // Dormant since 2026-07-08: `rbac` is granted on every tier (groups + roles
+  // are core collaboration, not an upsell) — it only bites again if the
+  // packaging in tiers.ts changes.
+  {
+    const denied = await requireEntitlement(c, loaded.row.accountId, 'rbac');
+    if (denied) return denied;
+  }
+
+  const body = await readBody(c);
+  const groupId = normalizeString(body.group_id ?? body.groupId);
+  // normalizeWorkspaceRole folds the legacy `viewer`/`user` aliases into `member`,
+  // so a grant is never persisted with a retired role.
+  const role = normalizeWorkspaceRole(body.role);
+  if (!groupId) return c.json({ error: 'group_id is required' }, 400);
+  if (!role) {
+    return c.json({ error: 'role must be manager, editor, or member' }, 400);
+  }
+  const expires = parseExpiresAtBody(body.expires_at);
+  if (!expires.ok) return c.json({ error: expires.error }, 400);
+
+  // Confirm the group exists and belongs to this account — prevents
+  // attaching a foreign-account group via a guessed UUID.
+  const [group] = await db
+    .select({ groupId: accountGroups.groupId })
+    .from(accountGroups)
+    .where(
+      and(eq(accountGroups.groupId, groupId), eq(accountGroups.accountId, loaded.row.accountId)),
+    )
+    .limit(1);
+  if (!group) return c.json({ error: 'group not found in this account' }, 404);
+
+  const now = new Date();
+  await db
+    .insert(workspaceGroupGrants)
+    .values({
+      workspaceId,
+      groupId,
+      accountId: loaded.row.accountId,
+      role,
+      grantedBy: loaded.userId,
+      expiresAt: expires.value ?? null,
+    })
+    .onConflictDoUpdate({
+      target: [workspaceGroupGrants.workspaceId, workspaceGroupGrants.groupId],
+      set: {
+        role,
+        grantedBy: loaded.userId,
+        updatedAt: now,
+        // Only overwrite when caller explicitly set the field.
+        ...(expires.value !== undefined ? { expiresAt: expires.value } : {}),
+      },
+    });
+  await invalidateIamCacheForGroup(groupId);
+
+  return c.json({ workspace_id: workspaceId, group_id: groupId, role }, 201);
+},
+);
+
+// PATCH /v1/workspaces/:workspaceId/group-grants/:groupId
+// Change the role on an existing attachment. Returns 404 when there's
+// nothing to change.
+
+workspacesApp.openapi(
+  createRoute({
+    method: 'patch',
+    path: '/{workspaceId}/group-grants/{groupId}',
+    tags: ['access'],
+    summary: 'PATCH /:workspaceId/group-grants/:groupId',
+    ...auth,
+      request: {
+        params: z.object({ workspaceId: z.string(), groupId: z.string() }),
+        body: { content: { 'application/json': { schema: AnyObject } } },
+      },
+    responses: {
+        200: json(z.any(), 'OK'),
+        ...errors(400, 404),
+    },
+  }),
+  async (c: any) => {
+  const workspaceId = c.req.param('workspaceId');
+  const groupId = c.req.param('groupId');
+  const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
+  if (!loaded) return c.json({ error: 'Not found' }, 404);
+  // assertWorkspaceCapability (not bare assertAuthorized) so the acting token is
+  // threaded and the agent-grant fold fires: an agent-session token must also
+  // hold workspace.members.manage to mutate group grants, not just its user.
+  await assertWorkspaceCapability(c, loaded.userId, loaded.row.accountId, workspaceId, WORKSPACE_ACTIONS.WORKSPACE_MEMBERS_MANAGE);
+  // Same dormant entitlement mirror as the POST above (rbac is on every
+  // tier). DELETE below carries no gate at all: revoking access is never
+  // paywalled, so an account can always detach grants it can't manage.
+  {
+    const denied = await requireEntitlement(c, loaded.row.accountId, 'rbac');
+    if (denied) return denied;
+  }
+
+  const body = await readBody(c);
+  const role = normalizeWorkspaceRole(body.role);
+  if (!role) {
+    return c.json({ error: 'role must be manager, editor, or member' }, 400);
+  }
+  const expires = parseExpiresAtBody(body.expires_at);
+  if (!expires.ok) return c.json({ error: expires.error }, 400);
+
+  const result = await db
+    .update(workspaceGroupGrants)
+    .set({
+      role,
+      updatedAt: new Date(),
+      ...(expires.value !== undefined ? { expiresAt: expires.value } : {}),
+    })
+    .where(
+      and(
+        eq(workspaceGroupGrants.workspaceId, workspaceId),
+        eq(workspaceGroupGrants.groupId, groupId),
+      ),
+    )
+    .returning({ groupId: workspaceGroupGrants.groupId });
+
+  if (result.length === 0) return c.json({ error: 'grant not found' }, 404);
+  await invalidateIamCacheForGroup(groupId);
+  return c.json({ workspace_id: workspaceId, group_id: groupId, role: body.role });
+},
+);
+
+// DELETE /v1/workspaces/:workspaceId/group-grants/:groupId
+// Detach a group. Members of the group lose access via this grant
+// immediately; any direct workspace_members row they have is unaffected.
+
+workspacesApp.openapi(
+  createRoute({
+    method: 'delete',
+    path: '/{workspaceId}/group-grants/{groupId}',
+    tags: ['access'],
+    summary: 'DELETE /:workspaceId/group-grants/:groupId',
+    ...auth,
+      request: {
+        params: z.object({ workspaceId: z.string(), groupId: z.string() }),
+      },
+    responses: {
+        200: json(z.any(), 'OK'),
+        ...errors(404),
+    },
+  }),
+  async (c: any) => {
+  const workspaceId = c.req.param('workspaceId');
+  const groupId = c.req.param('groupId');
+  const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
+  if (!loaded) return c.json({ error: 'Not found' }, 404);
+  // assertWorkspaceCapability (not bare assertAuthorized) so the acting token is
+  // threaded and the agent-grant fold fires: an agent-session token must also
+  // hold workspace.members.manage to mutate group grants, not just its user.
+  await assertWorkspaceCapability(c, loaded.userId, loaded.row.accountId, workspaceId, WORKSPACE_ACTIONS.WORKSPACE_MEMBERS_MANAGE);
+
+  await db
+    .delete(workspaceGroupGrants)
+    .where(
+      and(
+        eq(workspaceGroupGrants.workspaceId, workspaceId),
+        eq(workspaceGroupGrants.groupId, groupId),
+      ),
+    );
+  await invalidateIamCacheForGroup(groupId);
+
+  return c.json({ ok: true });
+},
+);
+
+// Session routes. Invariant: session_id == sandbox_id == git branch name.
+
+// POST /v1/workspaces/:workspaceId/sessions
+
+workspacesApp.openapi(
+  createRoute({
+    method: 'post',
+    path: '/{workspaceId}/sessions',
+    tags: ['sessions'],
+    summary: 'POST /:workspaceId/sessions',
+    ...auth,
+      request: {
+        params: z.object({ workspaceId: z.string() }),
+        body: { content: { 'application/json': { schema: SessionCreateInputSchema } } },
+      },
+    responses: {
+        201: json(SessionSchema, 'The created session'),
+        202: json(SessionCreateAcceptedSchema, 'Create accepted; poll the session'),
+        ...errors(400, 403, 404, 409),
+    },
+  }),
+  async (c: any) => {
+  const workspaceId = c.req.param('workspaceId');
+  const body = await readBody(c);
+  const loaded = await loadWorkspaceForUser(c, workspaceId, 'session');
+  if (!loaded) return c.json({ error: 'Not found' }, 404);
+  // Per-agent gate: starting a session provisions compute. A scoped agent token
+  // must hold workspace.session.start (no-op for human/PAT tokens).
+  assertAgentScope(c, WORKSPACE_ACTIONS.WORKSPACE_SESSION_START);
+  const requestedConnectorBindings = body.connector_bindings;
+  const mayManageSystemConnectorProfiles =
+    requestedConnectorBindings &&
+    typeof requestedConnectorBindings === 'object' &&
+    Object.keys(requestedConnectorBindings).length > 0
+      ? await workspaceCapabilityAllowed(
+          c,
+          loaded.userId,
+          loaded.row.accountId,
+          workspaceId,
+          WORKSPACE_ACTIONS.WORKSPACE_SESSION_BINDINGS_WRITE,
+        )
+      : false;
+  // Per-RESOURCE scoping: a member/department can only launch agents they're
+  // scoped to. No-op when the agent isn't scoped (unscoped = workspace-wide) and
+  // for owner/admins. Mirrors the agent the session core resolves (sessions.ts).
+  const launchAgent = normalizeString(body.agent_name ?? body.agentName);
+  if (launchAgent) {
+    await assertWorkspaceCapability(
+      c,
+      loaded.userId,
+      loaded.row.accountId,
+      workspaceId,
+      WORKSPACE_ACTIONS.WORKSPACE_AGENT_READ,
+      { type: 'agent', id: launchAgent },
+    );
+  }
+  // Bound the client-supplied idempotency key at intake. It's stored in a unique
+  // btree (index entry limit ~2704 bytes), so an oversized header would surface
+  // as an uncaught 500 (+ Sentry spam) instead of a clean rejection.
+  const idempotencyKey = c.req.header('idempotency-key') ?? null;
+  if (idempotencyKey !== null && !/^[\w.:+/=-]{1,255}$/.test(idempotencyKey)) {
+    return c.json(
+      {
+        error: 'idempotency-key must be 1–255 characters of [A-Za-z0-9._:+/=-]',
+        code: 'INVALID_IDEMPOTENCY_KEY',
+      },
+      400,
+    );
+  }
+  const result = await createSession({
+    source: 'ui',
+    workspace: loaded.row,
+    userId: loaded.userId,
+    requestingPrincipalType:
+      c.get('authType') === 'service_account' ? 'service_account' : 'human',
+    body,
+    // Origin is derived from the caller's token kind (service_account / pat /
+    // 'user' apiKey → backend), never the body — see resolveSessionOrigin. A
+    // token operating from INSIDE a session stays 'user' so an in-sandbox agent
+    // can't vouch via origin_ref. Keyed on session-binding (`sessionId`, set on
+    // the executor PAT injected into every sandbox) OR an agent grant — NOT the
+    // grant alone, which is null for v1/default agents and would fail open.
+    authType: c.get('authType') as string | undefined,
+    apiKeyType: c.get('apiKeyType') as string | undefined,
+    inSession: c.get('sessionId') != null || getAgentGrant(c) != null,
+    request: requestAuditContext(c),
+    idempotencyKey,
+    mayManageSystemConnectorProfiles,
+  });
+  if (result.error) return sendSessionCreateError(c, result.error);
+  for (const [key, value] of Object.entries(result.headers ?? {})) {
+    c.header(key, value);
+  }
+  if (!result.row) {
+    return c.json(
+      {
+        status: result.status,
+        command_id: result.commandId ?? null,
+        session_id: result.sessionId ?? null,
+        reason: result.reason ?? null,
+      },
+      202,
+    );
+  }
+  return c.json(
+      serializeSession(result.row, {
+      viewerId: loaded.userId,
+      canManageWorkspace: roleAllows(loaded.effectiveRole, 'manage'),
+    }),
+    201,
+  );
+},
+);
+
+// GET /v1/workspaces/:workspaceId/sessions
+
+workspacesApp.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{workspaceId}/sessions',
+    tags: ['sessions'],
+    summary: 'GET /:workspaceId/sessions',
+    ...auth,
+      request: {
+        params: z.object({ workspaceId: z.string() }),
+        query: z.object({
+          scope: z.enum(['visible', 'workspace']).optional(),
+        }),
+      },
+    responses: {
+        200: json(z.array(SessionSchema), 'Sessions'),
+        ...errors(403, 404),
+    },
+  }),
+  async (c) => {
+  const workspaceId = c.req.param('workspaceId');
+  const scope = (c.req.valid('query').scope ?? 'visible') as WorkspaceSessionListScope;
+
+  const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
+  if (!loaded) return c.json({ error: 'Not found' }, 404);
+  await assertWorkspaceCapability(c, loaded.userId, loaded.row.accountId, workspaceId, WORKSPACE_ACTIONS.WORKSPACE_SESSION_READ);
+
+  const rows = await db
+    .select()
+    .from(workspaceSessions)
+    .where(and(eq(workspaceSessions.workspaceId, workspaceId), eq(workspaceSessions.accountId, loaded.row.accountId)))
+    .orderBy(desc(workspaceSessions.updatedAt));
+
+  const runtimeRows = rows.length
+    ? await db
+        .select({ sessionId: sessionSandboxes.sessionId, status: sessionSandboxes.status })
+        .from(sessionSandboxes)
+        .where(
+          and(
+            eq(sessionSandboxes.workspaceId, workspaceId),
+            eq(sessionSandboxes.accountId, loaded.row.accountId),
+            inArray(sessionSandboxes.sessionId, rows.map((row) => row.sessionId)),
+          ),
+        )
+    : [];
+  const runtimeStatusBySession = new Map(runtimeRows.map((row) => [row.sessionId, row.status]));
+
+  const subject = await resolveShareSubject(loaded.userId);
+  const canManageWorkspace = roleAllows(loaded.effectiveRole, 'manage');
+  const grantsBySession = await loadSessionGrants(
+    rows.filter((row) => row.visibility === 'restricted').map((row) => row.sessionId),
+  );
+  const selected = selectSessionRowsForViewer({
+    rows,
+    scope,
+    canManageWorkspace,
+    subject,
+    grantsBySession,
+    runtimeStatusBySession,
+  });
+  if (!selected.authorized) {
+    return c.json({ error: 'Workspace manager access is required to list every session' }, 403);
+  }
+
+  const ownerIds = selected.items
+    .map((item) => item.row.createdBy)
+    .filter((ownerId): ownerId is string => Boolean(ownerId));
+  const ownerIdentities = await resolveSessionOwnerIdentities(ownerIds, loaded.row.accountId);
+
+  return c.json(
+    selected.items.map((item) => {
+      const row = item.row;
+      const owner = row.createdBy ? ownerIdentities.get(row.createdBy) : null;
+      return serializeSession(row, {
+        grants: grantsBySession.get(row.sessionId) ?? [],
+        viewerId: loaded.userId,
+        canManageWorkspace,
+        ownerEmail: owner?.email ?? null,
+        ownerName: owner?.name ?? null,
+        ownerType: owner?.type ?? (row.createdBy ? 'unknown' : null),
+        canAccess: item.canAccess,
+        runtimeStatus: item.runtimeStatus,
+        deletedAt: item.deletedAt,
+        deletedBy: item.deletedBy,
+      });
+    }),
+  );
+},
+);
+
+workspacesApp.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{workspaceId}/sessions/{sessionId}',
+    tags: ['sessions'],
+    summary: 'GET /:workspaceId/sessions/:sessionId',
+    ...auth,
+      request: {
+        params: z.object({ workspaceId: z.string(), sessionId: z.string() }),
+      },
+    responses: {
+        200: json(SessionSchema, 'The session'),
+        ...errors(400, 404),
+    },
+  }),
+  async (c) => {
+  const workspaceId = c.req.param('workspaceId');
+  const sessionId = c.req.param('sessionId');
+  if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
+
+  const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
+  if (!loaded) return c.json({ error: 'Not found' }, 404);
+  await assertWorkspaceCapability(c, loaded.userId, loaded.row.accountId, workspaceId, WORKSPACE_ACTIONS.WORKSPACE_SESSION_READ);
+
+  const visible = await loadVisibleSession(loaded, sessionId);
+  if (!visible) return c.json({ error: 'Not found' }, 404);
+  const ownerEmail = visible.row.createdBy && !visible.isOwner
+    ? (await lookupEmailsByUserIds([visible.row.createdBy])).get(visible.row.createdBy) ?? null
+    : null;
+  return c.json(serializeSession(visible.row, {
+    grants: visible.grants,
+    viewerId: loaded.userId,
+    canManageWorkspace: visible.canManageWorkspace,
+    ownerEmail,
+  }));
+},
+);
+
+
+// GET /v1/workspaces/:workspaceId/sessions/:sessionId/transcript
+// Compact server-side transcript read for workspace automation. Unlike the raw
+// /v1/p sandbox proxy, this endpoint is callable with workspace-scoped session
+// tokens and strips tool inputs/outputs before returning messages.
+
+workspacesApp.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{workspaceId}/sessions/{sessionId}/transcript',
+    tags: ['sessions'],
+    summary: 'GET /:workspaceId/sessions/:sessionId/transcript',
+    ...auth,
+      request: {
+        params: z.object({ workspaceId: z.string(), sessionId: z.string() }),
+        query: z.object({
+          limit: z.string().optional(),
+          chars: z.string().optional(),
+        }),
+      },
+    responses: {
+        200: json(AnyObject, 'Compact session transcript'),
+        ...errors(400, 404),
+    },
+  }),
+  async (c: any) => {
+  const workspaceId = c.req.param('workspaceId');
+  const sessionId = c.req.param('sessionId');
+  if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
+
+  const limit = parseBoundedPositiveInt(c.req.query('limit'), 40, 1, 500, 'limit');
+  if (!limit.ok) return c.json({ error: limit.error }, 400);
+  const maxChars = parseBoundedPositiveInt(c.req.query('chars'), 700, 80, 5000, 'chars');
+  if (!maxChars.ok) return c.json({ error: maxChars.error }, 400);
+
+  const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
+  if (!loaded) return c.json({ error: 'Not found' }, 404);
+  await assertWorkspaceCapability(c, loaded.userId, loaded.row.accountId, workspaceId, WORKSPACE_ACTIONS.WORKSPACE_SESSION_READ);
+
+  const visible = await loadVisibleSession(loaded, sessionId);
+  if (!visible) return c.json({ error: 'Not found' }, 404);
+
+  const transcript = await buildSessionTranscriptDigest({
+    session: visible.row,
+    workspaceId,
+    accountId: loaded.row.accountId,
+    userId: loaded.userId,
+    limit: limit.value,
+    maxChars: maxChars.value,
+  });
+  return c.json(transcript);
+},
+);
+
+
+// GET /v1/workspaces/:workspaceId/sessions/:sessionId/audit
+// Per-session audit log — the governed actions an agent took in this session:
+// every connector/tool call the executor gated, with its risk, allow/ask/block
+// verdict, who acted, and (for approvals) who resolved it. This is the enterprise
+// "what did the agent actually do" trail, read straight from executor_executions.
+// Same visibility gate as the session detail/transcript (workspace read + the
+// session must be visible to the caller). Non-Enterprise accounts get only the
+// unresolved pending approvals (never a 402 — see the entitlement note below).
+
+workspacesApp.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{workspaceId}/sessions/{sessionId}/audit',
+    tags: ['sessions'],
+    summary: 'GET /:workspaceId/sessions/:sessionId/audit',
+    ...auth,
+    request: {
+      params: z.object({ workspaceId: z.string(), sessionId: z.string() }),
+      query: z.object({ limit: z.string().optional() }),
+    },
+    responses: {
+      200: json(AnyObject, 'Per-session agent action audit log'),
+      ...errors(400, 404),
+    },
+  }),
+  async (c: any) => {
+    const workspaceId = c.req.param('workspaceId');
+    const sessionId = c.req.param('sessionId');
+    if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
+
+    const limit = parseBoundedPositiveInt(c.req.query('limit'), 200, 1, 1000, 'limit');
+    if (!limit.ok) return c.json({ error: limit.error }, 400);
+
+    const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+    await assertWorkspaceCapability(c, loaded.userId, loaded.row.accountId, workspaceId, WORKSPACE_ACTIONS.WORKSPACE_SESSION_READ);
+    const visible = await loadVisibleSession(loaded, sessionId);
+    if (!visible) return c.json({ error: 'Not found' }, 404);
+    // The historical trail is Enterprise (`auditAccess`), but this endpoint is
+    // also the approval CONTROL PLANE: write/destructive connector actions
+    // default to require_approval on every tier (executor/policy.ts), the web
+    // app polls this route from every open session to render the approval
+    // prompt, and it is the launcher's only view of what's blocking the run.
+    // A 402 here breaks approvals for every non-Enterprise account (and toasts
+    // the upsell on each poll) — so unentitled accounts degrade to unresolved
+    // pending approvals only instead of being denied.
+    const audited = await accountHasEntitlement(loaded.row.accountId, 'auditAccess');
+
+    const rows = await db
+      .select({
+        executionId: executorExecutions.executionId,
+        connectorId: executorExecutions.connectorId,
+        actionPath: executorExecutions.actionPath,
+        actingUserId: executorExecutions.actingUserId,
+        status: executorExecutions.status,
+        risk: executorExecutions.risk,
+        resultSummary: executorExecutions.resultSummary,
+        approvedBy: executorExecutions.approvedBy,
+        createdAt: executorExecutions.createdAt,
+        resolvedAt: executorExecutions.resolvedAt,
+      })
+      .from(executorExecutions)
+      .where(
+        and(
+          eq(executorExecutions.workspaceId, workspaceId),
+          eq(executorExecutions.sessionId, sessionId),
+          ...(audited
+            ? []
+            : [
+                eq(executorExecutions.status, 'pending_approval'),
+                isNull(executorExecutions.approvedBy),
+                isNull(executorExecutions.resolvedAt),
+              ]),
+        ),
+      )
+      // Most-recent-first: when a busy session exceeds `limit`, keep the RECENT
+      // actions (truncating oldest), not the other way round.
+      .orderBy(desc(executorExecutions.createdAt))
+      .limit(limit.value);
+
+    // Resolve actor + approver emails in one batched lookup (managers see who).
+    const userIds = [
+      ...new Set(rows.flatMap((r) => [r.actingUserId, r.approvedBy]).filter((v): v is string => !!v)),
+    ];
+    const emailByUser = userIds.length ? await lookupEmailsByUserIds(userIds) : new Map<string, string>();
+
+    // Connector slugs in one batched lookup — the UI needs `<slug>.<action>`
+    // to offer a "always run this" workspace-policy shortcut on a pending row.
+    const connectorIds = [...new Set(rows.map((r) => r.connectorId).filter((v): v is string => !!v))];
+    const slugByConnector = new Map<string, string>();
+    if (connectorIds.length) {
+      const conns = await db
+        .select({ connectorId: executorConnectors.connectorId, slug: executorConnectors.slug })
+        .from(executorConnectors)
+        .where(inArray(executorConnectors.connectorId, connectorIds));
+      for (const conn of conns) slugByConnector.set(conn.connectorId, conn.slug);
+    }
+
+    return c.json({
+      session_id: sessionId,
+      agent: (visible.row.agentName as string | null) ?? null,
+      // False when the account lacks the Enterprise `auditAccess` entitlement:
+      // `actions` then contains only unresolved pending approvals, and the UI
+      // shows the upgrade path for the full trail.
+      audit_access: audited,
+      count: rows.length,
+      // Most-recent-first trail of every executor-gated action this session took.
+      actions: rows.map((r) => ({
+        execution_id: r.executionId,
+        action: r.actionPath,
+        connector_id: r.connectorId,
+        connector: r.connectorId ? (slugByConnector.get(r.connectorId) ?? null) : null,
+        status: r.status, // ok | error | denied | pending_approval
+        risk: r.risk, // read | write | destructive | null
+        acted_by: r.actingUserId,
+        acted_by_email: r.actingUserId ? emailByUser.get(r.actingUserId) ?? null : null,
+        // Who resolved a gated action — set for BOTH approve and deny (the
+        // approvedBy column doubles as "resolver"). null while still pending.
+        resolved_by: r.approvedBy,
+        resolved_by_email: r.approvedBy ? emailByUser.get(r.approvedBy) ?? null : null,
+        result_summary: r.resultSummary ?? null,
+        at: r.createdAt.toISOString(),
+        resolved_at: r.resolvedAt?.toISOString() ?? null,
+      })),
+    });
+  },
+);
+
+
+// GET /v1/workspaces/:workspaceId/approvals
+// The approval inbox: executor actions a policy gated as `require_approval` that
+// are still awaiting a human decision (status=pending_approval, unresolved).
+// Manager-scoped — this is the workspace-wide oversight surface. A session's own
+// launcher also sees + resolves the pending items for their session via the
+// per-session audit view + the POST below.
+
+workspacesApp.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{workspaceId}/approvals',
+    tags: ['access'],
+    summary: 'GET /:workspaceId/approvals',
+    ...auth,
+    request: {
+      params: z.object({ workspaceId: z.string() }),
+      query: z.object({ limit: z.string().optional() }),
+    },
+    responses: {
+      200: json(AnyObject, 'Pending approval inbox'),
+      ...errors(400, 404),
+    },
+  }),
+  async (c: any) => {
+    const workspaceId = c.req.param('workspaceId');
+    const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+    await assertWorkspaceCapability(c, loaded.userId, loaded.row.accountId, workspaceId, WORKSPACE_ACTIONS.WORKSPACE_MEMBERS_MANAGE);
+
+    const limit = parseBoundedPositiveInt(c.req.query('limit'), 100, 1, 500, 'limit');
+    if (!limit.ok) return c.json({ error: limit.error }, 400);
+
+    const rows = await db
+      .select({
+        executionId: executorExecutions.executionId,
+        actionPath: executorExecutions.actionPath,
+        risk: executorExecutions.risk,
+        sessionId: executorExecutions.sessionId,
+        actingUserId: executorExecutions.actingUserId,
+        resultSummary: executorExecutions.resultSummary,
+        createdAt: executorExecutions.createdAt,
+      })
+      .from(executorExecutions)
+      .where(
+        and(
+          eq(executorExecutions.workspaceId, workspaceId),
+          eq(executorExecutions.status, 'pending_approval'),
+          isNull(executorExecutions.approvedBy),
+          isNull(executorExecutions.resolvedAt),
+        ),
+      )
+      .orderBy(desc(executorExecutions.createdAt))
+      .limit(limit.value);
+
+    const userIds = [...new Set(rows.map((r) => r.actingUserId).filter((v): v is string => !!v))];
+    const emailByUser = userIds.length ? await lookupEmailsByUserIds(userIds) : new Map<string, string>();
+
+    return c.json({
+      count: rows.length,
+      approvals: rows.map((r) => ({
+        execution_id: r.executionId,
+        action: r.actionPath,
+        risk: r.risk,
+        session_id: r.sessionId,
+        requested_by: r.actingUserId,
+        requested_by_email: r.actingUserId ? emailByUser.get(r.actingUserId) ?? null : null,
+        requested_at: r.createdAt.toISOString(),
+        detail: r.resultSummary ?? null,
+      })),
+    });
+  },
+);
+
+// GET /v1/workspaces/:workspaceId/approvals/needs-input
+// Lightweight per-session summary for the sidebar "needs input" indicator: which
+// sessions have an executor action awaiting a human decision, and how many. A
+// workspace MANAGER sees every session; everyone else sees only the sessions they
+// LAUNCHED (mirrors who may resolve). Read-gated + cheap enough to poll.
+
+workspacesApp.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{workspaceId}/approvals/needs-input',
+    tags: ['access'],
+    summary: 'GET /:workspaceId/approvals/needs-input',
+    ...auth,
+    request: { params: z.object({ workspaceId: z.string() }) },
+    responses: {
+      200: json(AnyObject, 'Sessions awaiting a human decision'),
+      ...errors(400, 404),
+    },
+  }),
+  async (c: any) => {
+    const workspaceId = c.req.param('workspaceId');
+    const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+
+    // Managers see every session's pending items; others only their own launched
+    // sessions (same principal set the resolve endpoint accepts).
+    let isManager = false;
+    try {
+      await assertWorkspaceCapability(
+        c,
+        loaded.userId,
+        loaded.row.accountId,
+        workspaceId,
+        WORKSPACE_ACTIONS.WORKSPACE_MEMBERS_MANAGE,
+      );
+      isManager = true;
+    } catch {
+      isManager = false;
+    }
+
+    // Every unresolved pending action in the workspace, by session. (No DB join:
+    // executor_executions.session_id is `uuid` while workspace_sessions.session_id
+    // is `text` — cross-type equality errors in Postgres, so we resolve in JS
+    // where both surface as strings.)
+    const pendingRows = await db
+      .select({ sessionId: executorExecutions.sessionId })
+      .from(executorExecutions)
+      .where(
+        and(
+          eq(executorExecutions.workspaceId, workspaceId),
+          eq(executorExecutions.status, 'pending_approval'),
+          isNull(executorExecutions.approvedBy),
+          isNull(executorExecutions.resolvedAt),
+        ),
+      );
+
+    // Count per (Kortix) session id.
+    const byKortix: Record<string, number> = {};
+    for (const r of pendingRows) {
+      const sid = r.sessionId ? String(r.sessionId) : null;
+      if (sid) byKortix[sid] = (byKortix[sid] ?? 0) + 1;
+    }
+    const kortixIds = Object.keys(byKortix);
+    if (kortixIds.length === 0) return c.json({ total: 0, sessions: {} });
+
+    // Look these sessions up to (a) gate non-managers to their own and (b) map to
+    // the OpenCode session id the sidebar list keys on. The response carries BOTH
+    // id forms → the caller matches whichever it holds.
+    const sess = await db
+      .select({
+        sessionId: workspaceSessions.sessionId,
+        opencodeSessionId: workspaceSessions.opencodeSessionId,
+        createdBy: workspaceSessions.createdBy,
+      })
+      .from(workspaceSessions)
+      .where(and(eq(workspaceSessions.workspaceId, workspaceId), inArray(workspaceSessions.sessionId, kortixIds)));
+
+    const sessions: Record<string, number> = {};
+    let total = 0;
+    for (const s of sess) {
+      if (!isManager && s.createdBy !== loaded.userId) continue;
+      const n = byKortix[s.sessionId] ?? 0;
+      if (n <= 0) continue;
+      sessions[s.sessionId] = n;
+      if (s.opencodeSessionId) sessions[s.opencodeSessionId] = n;
+      total += n;
+    }
+    return c.json({ total, sessions });
+  },
+);
+
+// POST /v1/workspaces/:workspaceId/approvals/:executionId
+// Resolve a pending approval — { decision: 'approve' | 'deny' }. Allowed for a
+// workspace MANAGER or the LAUNCHER of the session the action belongs to (the two
+// principals a human-in-the-loop approval should recognise). Records who decided
+// + when; idempotent-safe (a non-pending row 409s).
+
+workspacesApp.openapi(
+  createRoute({
+    method: 'post',
+    path: '/{workspaceId}/approvals/{executionId}',
+    tags: ['access'],
+    summary: 'POST /:workspaceId/approvals/:executionId',
+    ...auth,
+    request: {
+      params: z.object({ workspaceId: z.string(), executionId: z.string() }),
+      body: { content: { 'application/json': { schema: AnyObject } } },
+    },
+    responses: {
+      200: json(OkSchema, 'Resolved'),
+      ...errors(400, 403, 404, 409),
+    },
+  }),
+  async (c: any) => {
+    const workspaceId = c.req.param('workspaceId');
+    const executionId = c.req.param('executionId');
+    if (!isUuid(executionId)) return c.json({ error: 'Invalid execution id' }, 400);
+    const body = await readBody(c);
+    const decision = normalizeString(body.decision);
+    if (decision !== 'approve' && decision !== 'deny') {
+      return c.json({ error: "decision must be 'approve' or 'deny'" }, 400);
+    }
+    // 'once' (default) = approve just this call; 'session' = also stop asking for
+    // THIS connector+action for the rest of the session; 'session_all' = stop
+    // asking for ANY gated action for the rest of the session (a `*` wildcard
+    // grant per enabled connector). Only meaningful on approve. (A policy
+    // `block` never reaches this endpoint as pending, so a session grant can
+    // only ever widen require_approval → run.)
+    const scopeRaw = normalizeString(body.scope);
+    const scope =
+      scopeRaw === 'session' ? 'session' : scopeRaw === 'session_all' ? 'session_all' : 'once';
+
+    const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+
+    const [row] = await db
+      .select({
+        executionId: executorExecutions.executionId,
+        sessionId: executorExecutions.sessionId,
+        connectorId: executorExecutions.connectorId,
+        actionPath: executorExecutions.actionPath,
+        status: executorExecutions.status,
+        approvedBy: executorExecutions.approvedBy,
+        resolvedAt: executorExecutions.resolvedAt,
+        resultSummary: executorExecutions.resultSummary,
+      })
+      .from(executorExecutions)
+      .where(and(eq(executorExecutions.executionId, executionId), eq(executorExecutions.workspaceId, workspaceId)))
+      .limit(1);
+    if (!row) return c.json({ error: 'Not found' }, 404);
+    if (row.status !== 'pending_approval' || row.approvedBy || row.resolvedAt) {
+      return c.json({ error: 'Approval already resolved' }, 409);
+    }
+
+    // Who may resolve: a workspace MANAGER (the same workspace.members.manage IAM
+    // gate the inbox uses — capability-consistent, so a custom role holding the
+    // leaf without the "manager" label still qualifies), OR the human who
+    // launched the session the gated action belongs to. (Founder decision:
+    // managers + launcher.) assertWorkspaceCapability throws on denial, so probe
+    // it — a non-manager launcher must still fall through.
+    let isManager = false;
+    try {
+      await assertWorkspaceCapability(
+        c,
+        loaded.userId,
+        loaded.row.accountId,
+        workspaceId,
+        WORKSPACE_ACTIONS.WORKSPACE_MEMBERS_MANAGE,
+      );
+      isManager = true;
+    } catch {
+      isManager = false;
+    }
+    let isLauncher = false;
+    if (!isManager && row.sessionId) {
+      const [session] = await db
+        .select({ createdBy: workspaceSessions.createdBy })
+        .from(workspaceSessions)
+        // Scope to THIS workspace too — sessionId is a PK so it's globally unique,
+        // but making the workspace bound explicit keeps the gate self-documenting.
+        .where(and(eq(workspaceSessions.sessionId, row.sessionId), eq(workspaceSessions.workspaceId, workspaceId)))
+        .limit(1);
+      isLauncher = Boolean(session && session.createdBy === loaded.userId);
+    }
+    if (!isManager && !isLauncher) {
+      return c.json({ error: 'Only a workspace manager or the session launcher can resolve this' }, 403);
+    }
+
+    const detail = {
+      ...(typeof row.resultSummary === 'object' && row.resultSummary ? row.resultSummary : {}),
+      decision,
+      decided_by: loaded.userId,
+    };
+    // Atomic resolve — guard the UPDATE on the still-pending state so two
+    // concurrent resolvers can't both win (TOCTOU): approve clears the gate to
+    // the terminal `ok` (the real retried call re-audits as its own row), deny
+    // flips it to `denied`. Both stamp approvedBy (= who resolved) + resolvedAt,
+    // so the row leaves the pending inbox. A lost race matches 0 rows → 409.
+    const resolved = await db
+      .update(executorExecutions)
+      .set({
+        status: decision === 'approve' ? 'ok' : 'denied',
+        approvedBy: loaded.userId,
+        resolvedAt: new Date(),
+        resultSummary: detail,
+      })
+      .where(
+        and(
+          eq(executorExecutions.executionId, executionId),
+          eq(executorExecutions.workspaceId, workspaceId),
+          eq(executorExecutions.status, 'pending_approval'),
+          isNull(executorExecutions.approvedBy),
+          isNull(executorExecutions.resolvedAt),
+        ),
+      )
+      .returning({ id: executorExecutions.executionId });
+
+    if (resolved.length === 0) {
+      return c.json({ error: 'Approval already resolved' }, 409);
+    }
+
+    // "Allow for this session": record (session, connector, action) so the
+    // gateway auto-runs the same tool for the rest of the session. Best-effort +
+    // idempotent — a failure here doesn't undo the (already-committed) approval.
+    // The execution row's actionPath is the QUALIFIED audit form
+    // (`google_drive.create_folder`); the gateway's session-allow check matches
+    // the CONNECTOR-RELATIVE form (`create_folder`) — strip the slug prefix or
+    // the grant never matches and "Allow for session" keeps re-asking (the bug
+    // this comment is a headstone for).
+    if (decision === 'approve' && scope === 'session' && row.sessionId && row.connectorId) {
+      try {
+        const [conn] = await db
+          .select({ slug: executorConnectors.slug })
+          .from(executorConnectors)
+          .where(eq(executorConnectors.connectorId, row.connectorId))
+          .limit(1);
+        const relativeActionPath =
+          conn && row.actionPath.startsWith(`${conn.slug}.`)
+            ? row.actionPath.slice(conn.slug.length + 1)
+            : row.actionPath;
+        await recordSessionToolApproval({
+          sessionId: row.sessionId,
+          workspaceId,
+          connectorId: row.connectorId,
+          actionPath: relativeActionPath,
+          grantedBy: loaded.userId,
+        });
+      } catch (err) {
+        console.warn('[approvals] failed to record session allow', {
+          executionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // "Allow everything for this session": one `*` wildcard grant per enabled
+    // connector (the gateway's session check matches `*` against any action).
+    // Enumerated per connector — instead of a schema-level "all connectors"
+    // marker — so a connector added AFTER this grant still asks. Best-effort +
+    // idempotent, same as the single-action grant above.
+    if (decision === 'approve' && scope === 'session_all' && row.sessionId) {
+      try {
+        const conns = await db
+          .select({ connectorId: executorConnectors.connectorId })
+          .from(executorConnectors)
+          .where(
+            and(eq(executorConnectors.workspaceId, workspaceId), eq(executorConnectors.enabled, true)),
+          );
+        for (const conn of conns) {
+          await recordSessionToolApproval({
+            sessionId: row.sessionId,
+            workspaceId,
+            connectorId: conn.connectorId,
+            actionPath: '*',
+            grantedBy: loaded.userId,
+          });
+        }
+      } catch (err) {
+        console.warn('[approvals] failed to record session allow-all', {
+          executionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // Server-side resume — the reliability backstop. A LIVE gated call (the
+    // sandbox CLI/MCP pause loop, or an approve within the gateway's 45s hold)
+    // picks this decision out of the DB within ~1s, marks it consumed, and the
+    // agent's turn resumes in-band — no message needed. When nobody was
+    // waiting (an older sandbox image without the pause loop, or a decision
+    // after the ~30min poll budget), the resolve would otherwise change
+    // nothing the agent can see: its turn already ended on `pending_approval`.
+    // So we enqueue a DURABLE continue_session command with a grace-window
+    // schedule: the drain re-checks the consumed marker at execution time and
+    // either no-ops (a live waiter got there first) or delivers the
+    // continuation prompt into the session (approval carry-over then lets the
+    // retried call run without re-asking). Queue-backed so it survives this
+    // pod dying; idempotency-keyed so a double-resolve can't double-prompt.
+    if (row.sessionId) {
+      const resumeText =
+        decision === 'approve'
+          ? `Your pending approval to run ${row.actionPath} was approved — continue.`
+          : `Your request to run ${row.actionPath} was denied — continue without it.`;
+      try {
+        await enqueueContinueSessionCommand({
+          source: 'system:approval-resume',
+          workspaceId,
+          accountId: loaded.row.accountId,
+          sessionId: row.sessionId,
+          actorUserId: loaded.userId,
+          text: resumeText,
+          executionId,
+          // > the waiter's 1s decision poll + hold re-issue latency, with margin.
+          availableAt: new Date(Date.now() + 6_000),
+          idempotencyKey: `approval-resume:${executionId}`,
+        });
+        // Best-effort fast path: the scheduler drains every ~60s; kick one
+        // drain shortly after the grace window so the resume usually lands in
+        // seconds. If this pod dies first, the scheduler still delivers.
+        setTimeout(() => {
+          drainSessionLifecycleQueue({ limit: 5 }).catch(() => {});
+        }, 7_000).unref?.();
+      } catch (err) {
+        console.warn('[approvals] failed to enqueue resume', {
+          executionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return c.json({ ok: true, scope });
+  },
+);
+
+
+// PUT /v1/workspaces/:workspaceId/sessions/:sessionId/sharing
+// Owner or workspace manager sets who can see/open this session
+// (private | workspace | members). Mirrors connector/secret sharing.
+
+workspacesApp.openapi(
+  createRoute({
+    method: 'put',
+    path: '/{workspaceId}/sessions/{sessionId}/sharing',
+    tags: ['sessions'],
+    summary: 'PUT /:workspaceId/sessions/:sessionId/sharing',
+    ...auth,
+      request: {
+        params: z.object({ workspaceId: z.string(), sessionId: z.string() }),
+        body: { content: { 'application/json': { schema: AnyObject } } },
+      },
+    responses: {
+        200: json(z.any(), 'OK'),
+        ...errors(400, 403, 404, 409),
+    },
+  }),
+  async (c: any) => {
+  const workspaceId = c.req.param('workspaceId');
+  const sessionId = c.req.param('sessionId');
+  if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
+
+  const body = await readBody(c);
+  const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
+  if (!loaded) return c.json({ error: 'Not found' }, 404);
+
+  const visible = await loadVisibleSession(loaded, sessionId);
+  if (!visible) return c.json({ error: 'Not found' }, 404);
+  if (!visible.canManageSharing) {
+    return c.json({ error: 'Only the session owner or a workspace manager can change sharing' }, 403);
+  }
+
+  const intent = parseSharingIntent(body, loaded.userId);
+  if (!intent) return c.json({ error: 'invalid sharing — mode must be workspace|private|members' }, 400);
+
+  if (
+    intent.mode !== 'private' &&
+    (await sessionHasMemberConnectorBinding({
+      accountId: loaded.row.accountId,
+      workspaceId,
+      sessionId,
+    }))
+  ) {
+    return c.json(
+      {
+        error: 'Sessions using a personal connector profile must remain private',
+        code: 'PERSONAL_CONNECTOR_PROFILE_REQUIRES_PRIVATE_SESSION',
+      },
+      409,
+    );
+  }
+
+  await setSessionSharing(sessionId, intent);
+
+  const fresh = await loadVisibleSession(loaded, sessionId);
+  return c.json(fresh ? serializeSession(fresh.row, {
+    grants: fresh.grants,
+    viewerId: loaded.userId,
+    canManageWorkspace: fresh.canManageWorkspace,
+  }) : { ok: true });
+},
+);
+
+// PATCH /v1/workspaces/:workspaceId/sessions/:sessionId
+
+workspacesApp.openapi(
+  createRoute({
+    method: 'patch',
+    path: '/{workspaceId}/sessions/{sessionId}',
+    tags: ['sessions'],
+    summary: 'PATCH /:workspaceId/sessions/:sessionId',
+    ...auth,
+      request: {
+        params: z.object({ workspaceId: z.string(), sessionId: z.string() }),
+        body: { content: { 'application/json': { schema: AnyObject } } },
+      },
+    responses: {
+        200: json(SessionSchema, 'The updated session'),
+        ...errors(400, 404),
+    },
+  }),
+  async (c) => {
+  const workspaceId = c.req.param('workspaceId');
+  const sessionId = c.req.param('sessionId');
+  if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
+
+  const body = await readBody(c);
+  const loaded = await loadWorkspaceForUser(c, workspaceId, 'session');
+  if (!loaded) return c.json({ error: 'Not found' }, 404);
+
+  const serverManagedFields = ['status', 'sandbox_url', 'sandboxUrl', 'error'];
+  const attemptedServerField = serverManagedFields.find((field) => hasOwn(body, field));
+  if (attemptedServerField) {
+    return c.json({ error: `field is server-managed: ${attemptedServerField}` }, 400);
+  }
+
+  // opencode_session_id is SERVER-MANAGED: the backend is the sole authority
+  // for the OpenCode↔Kortix mapping (see ensure-opencode + opencode-mapping.ts).
+  // Clients must never set it, so a stale/forged client value can't drift it.
+  const opencodeManagedField = ['opencode_session_id', 'opencodeSessionId'].find((f) => hasOwn(body, f));
+  if (opencodeManagedField) {
+    return c.json({ error: `field is server-managed: ${opencodeManagedField}` }, 400);
+  }
+
+  const allowedFields = ['name', 'metadata'];
+  const unknownField = Object.keys(body).find((field) => !allowedFields.includes(field));
+  if (unknownField) {
+    return c.json({ error: `field is not user-editable: ${unknownField}` }, 400);
+  }
+
+  // metadata.deletedAt / deletedBy are SERVER-MANAGED soft-delete markers.
+  // deleteSession() is the only legitimate writer; they are consumed by
+  // isSessionVisibleTo (r7.ts:488 — hides the session from every member's
+  // list), the continue-session guard (session-lifecycle/engine.ts:236 —
+  // returns 'no-session' so queued Slack/trigger follow-ups 404), and the
+  // sandbox reaper (sandbox-reaper.ts:477 — tombstones the live box).
+  // Letting a client forge either via PATCH lets any workspace member hide
+  // another member's session, block its follow-ups, and trip the reaper.
+  // See SSR-7 (weekly pentest run #4).
+  const SERVER_MANAGED_METADATA_KEYS = ['deletedAt', 'deletedBy'];
+  const metadataInput = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+    ? (body.metadata as Record<string, unknown>)
+    : null;
+  if (metadataInput) {
+    const forgedKey = SERVER_MANAGED_METADATA_KEYS.find((k) => hasOwn(metadataInput, k));
+    if (forgedKey) {
+      return c.json({ error: `metadata key is server-managed: ${forgedKey}` }, 400);
+    }
+  }
+
+  const visible = await loadVisibleSession(loaded, sessionId);
+  if (!visible) return c.json({ error: 'Not found' }, 404);
+  const existing = visible.row;
+
+  const updates: Partial<typeof workspaceSessions.$inferInsert> = { updatedAt: new Date() };
+
+  // A user-set name is the AUTHORITATIVE display name. It lives in
+  // metadata.custom_name — a separate key from metadata.name (the server-side
+  // auto title mirrored from OpenCode during session reads) so a rename is never
+  // clobbered by a later sync. Passing name: "" (or null) clears the override
+  // and reverts the session to its auto title.
+  const hasNameField = hasOwn(body, 'name');
+  const name = normalizeString(body.name);
+  const metadata = metadataInput;
+
+  if (hasNameField || metadata) {
+    const nextMetadata: Record<string, unknown> = {
+      ...(existing.metadata ?? {}),
+      ...(metadata ?? {}),
+    };
+    if (hasNameField) {
+      if (name) nextMetadata.custom_name = name;
+      else delete nextMetadata.custom_name;
+    }
+    updates.metadata = nextMetadata;
+  }
+
+  const [row] = await db
+    .update(workspaceSessions)
+    .set(updates)
+    .where(and(
+      eq(workspaceSessions.sessionId, sessionId),
+      eq(workspaceSessions.workspaceId, workspaceId),
+      eq(workspaceSessions.accountId, loaded.row.accountId),
+    ))
+    .returning();
+
+  if (!row) return c.json({ error: 'Not found' }, 404);
+  return c.json(serializeSession(row, {
+    grants: visible.grants,
+    viewerId: loaded.userId,
+    canManageWorkspace: visible.canManageWorkspace,
+  }));
+},
+);
+
+// DELETE /v1/workspaces/:workspaceId/sessions/:sessionId
+// Soft delete only. We deliberately keep the remote branch so the user can
+// still merge or recover work.
+
+workspacesApp.openapi(
+  createRoute({
+    method: 'delete',
+    path: '/{workspaceId}/sessions/{sessionId}',
+    tags: ['sessions'],
+    summary: 'DELETE /:workspaceId/sessions/:sessionId',
+    ...auth,
+      request: {
+        params: z.object({ workspaceId: z.string(), sessionId: z.string() }),
+      },
+    responses: {
+        200: json(OkSchema, 'Session stopped'),
+        ...errors(400, 403, 404),
+    },
+  }),
+  async (c) => {
+  const workspaceId = c.req.param('workspaceId');
+  const sessionId = c.req.param('sessionId');
+  if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
+
+  const loaded = await loadWorkspaceForUser(c, workspaceId, 'session');
+  if (!loaded) return c.json({ error: 'Not found' }, 404);
+  // Per-agent gate: tearing down a session. A scoped agent token must hold
+  // workspace.session.stop (no-op for human/PAT tokens).
+  assertAgentScope(c, WORKSPACE_ACTIONS.WORKSPACE_SESSION_STOP);
+
+  // Stopping a session is reserved for its owner or a workspace manager.
+  const visible = await loadVisibleSession(loaded, sessionId);
+  if (!visible) return c.json({ error: 'Not found' }, 404);
+  if (!visible.canManageSharing) {
+    return c.json({ error: 'Only the session owner or a workspace manager can stop this session' }, 403);
+  }
+
+  const result = await deleteSession({
+    workspaceId,
+    sessionId,
+    accountId: loaded.row.accountId,
+    userId: loaded.userId,
+    metadata: visible.row.metadata,
+  });
+  if ('error' in result) return c.json({ error: result.error }, result.status as any);
+  return c.json(result);
+},
+);
+
+// ─── Per-resource (agent/skill) scoping ─────────────────────────────────────
+// Scope a member or group to SPECIFIC agents/skills. A resource with >=1 grant
+// is visible/usable only to granted principals; unscoped resources stay
+// workspace-wide. All three routes gate on workspace.members.manage (same as the
+// group-grant routes) and thread the acting token so the agent-grant fold fires.
+
+// GET /v1/workspaces/:workspaceId/resource-grants
+// Returns the workspace's grantable resources (for the picker) + every grant,
+// each enriched with a principal label so the UI needn't re-join.
+workspacesApp.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{workspaceId}/resource-grants',
+    tags: ['access'],
+    summary: 'GET /:workspaceId/resource-grants',
+    ...auth,
+    request: { params: z.object({ workspaceId: z.string() }) },
+    responses: { 200: json(z.any(), 'Resource grants + grantable resources'), ...errors(404) },
+  }),
+  async (c: any) => {
+    const workspaceId = c.req.param('workspaceId');
+    const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+    // Manager-only: this is the grant PICKER — it returns the FULL agent/skill
+    // catalogue + granted-member emails, so it must NOT be readable by a scoped
+    // member (who'd otherwise enumerate exactly what they were scoped away from).
+    // Gate identical to the POST/DELETE siblings below.
+    await assertWorkspaceCapability(c, loaded.userId, loaded.row.accountId, workspaceId, WORKSPACE_ACTIONS.WORKSPACE_MEMBERS_MANAGE);
+
+    // Enumerate grantable resources from the workspace config (best-effort: a repo
+    // that won't load just yields empty lists — the existing grants still show).
+    let resources: {
+      // Agents carry their DECLARED scope so the grant UI can preview the blast
+      // radius — "assigning this agent also grants these secrets + connectors"
+      // (the inheritance pyramid). `'all'` = every secret/connector the assignee
+      // can already see (nothing extra inherited).
+      agents: {
+        id: string;
+        name: string;
+        declares?: { secrets: string[] | 'all'; connectors: string[] | 'all' };
+      }[];
+      skills: { id: string; name: string }[];
+    } = { agents: [], skills: [] };
+    let configLoaded = false;
+    try {
+      const config = await loadConfigWithFiles(loaded.row);
+      const fromConfig = workspaceResourcesFromConfig(config);
+      const scopeByAgent = new Map(config.agents.map((a) => [a.name, a.scope]));
+      resources.agents = fromConfig.agents.map((a) => ({
+        ...a,
+        declares: {
+          secrets: scopeByAgent.get(a.id)?.env ?? 'all',
+          connectors: scopeByAgent.get(a.id)?.connectors ?? 'all',
+        },
+      }));
+      resources.skills = fromConfig.skills;
+      configLoaded = true;
+    } catch (err) {
+      console.warn('[resource-grants] config load failed', {
+        workspaceId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    // Grants key on the agent NAME / skill SLUG. A rename or delete of the
+    // underlying resource leaves the grant ORPHANED — and since an unscoped
+    // resource is workspace-wide, the restriction silently evaporates. Flag
+    // orphaned grants so the manager gets a SIGNAL to re-grant.
+    // Only checked when the config actually loaded (a transient repo failure
+    // must not mass-flag).
+    const liveAgentIds = new Set(resources.agents.map((r) => r.id));
+    const liveSkillIds = new Set(resources.skills.map((r) => r.id));
+    const isOrphan = (type: string, id: string) => {
+      if (!configLoaded) return false;
+      return type === 'agent' ? !liveAgentIds.has(id) : type === 'skill' ? !liveSkillIds.has(id) : false;
+    };
+
+    // Agents/skills come from iam_resource_grants. SECRETS no longer have a
+    // resource-type here — secret sharing was retired (a secret is always
+    // workspace-wide; the only access gate is the agent-side `secrets` grant).
+    const grants = (await listResourceGrants(workspaceId)).filter((g) => g.resourceType !== 'secret');
+
+    // Resolve principal labels in two batched lookups.
+    const memberIds = [...new Set(grants.filter((g) => g.principalType === 'member').map((g) => g.principalId))];
+    const groupIds = [...new Set(grants.filter((g) => g.principalType === 'group').map((g) => g.principalId))];
+    const emailByUser = memberIds.length ? await lookupEmailsByUserIds(memberIds) : new Map<string, string>();
+    const groupNameById = new Map<string, string>();
+    if (groupIds.length) {
+      const groupRows = await db
+        .select({ groupId: accountGroups.groupId, name: accountGroups.name })
+        .from(accountGroups)
+        .where(and(eq(accountGroups.accountId, loaded.row.accountId), inArray(accountGroups.groupId, groupIds)));
+      for (const g of groupRows) groupNameById.set(g.groupId, g.name);
+    }
+
+    return c.json({
+      resources,
+      grants: grants.map((g) => ({
+        grant_id: g.grantId,
+        resource_type: g.resourceType,
+        resource_id: g.resourceId,
+        principal_type: g.principalType,
+        principal_id: g.principalId,
+        principal_label:
+          g.principalType === 'member'
+            ? emailByUser.get(g.principalId) ?? g.principalId
+            : groupNameById.get(g.principalId) ?? g.principalId,
+        granted_by: g.grantedBy,
+        created_at: g.createdAt.toISOString(),
+        expires_at: g.expiresAt?.toISOString() ?? null,
+        // true = the agent/skill this grant scopes no longer exists (renamed or
+        // deleted); the grant is inert and should be removed or re-pointed.
+        orphaned: isOrphan(g.resourceType, g.resourceId),
+      })),
+    });
+  },
+);
+
+// POST /v1/workspaces/:workspaceId/resource-grants
+// Create/update a grant (idempotent on resource+principal). Validates the
+// resource exists in the workspace and the principal belongs to this account.
+workspacesApp.openapi(
+  createRoute({
+    method: 'post',
+    path: '/{workspaceId}/resource-grants',
+    tags: ['access'],
+    summary: 'POST /:workspaceId/resource-grants',
+    ...auth,
+    request: {
+      params: z.object({ workspaceId: z.string() }),
+      body: { content: { 'application/json': { schema: AnyObject } } },
+    },
+    responses: { 201: json(z.any(), 'The created grant'), ...errors(400, 404) },
+  }),
+  async (c: any) => {
+    const workspaceId = c.req.param('workspaceId');
+    const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+    await assertWorkspaceCapability(c, loaded.userId, loaded.row.accountId, workspaceId, WORKSPACE_ACTIONS.WORKSPACE_MEMBERS_MANAGE);
+
+    const body = await readBody(c);
+    const resourceType = normalizeString(body.resource_type ?? body.resourceType);
+    const resourceId = normalizeString(body.resource_id ?? body.resourceId);
+    const principalType = normalizeString(body.principal_type ?? body.principalType);
+    const principalId = normalizeString(body.principal_id ?? body.principalId);
+    // AGENT-ONLY resource model: agent is the only member/department-scoped
+    // resource. Skills and secrets are governed by the editor role (edit) +
+    // agent inheritance (use) — no NEW skill/secret grant may be created here.
+    // Pre-existing skill/secret rows still read/list/revoke fine (see
+    // resource-grants.ts's RESOURCE_GRANT_TYPES doc comment).
+    if (!resourceType || !isCreatableResourceType(resourceType)) {
+      return c.json({ error: 'resource_type must be agent' }, 400);
+    }
+    if (!resourceId) return c.json({ error: 'resource_id is required' }, 400);
+    if (principalType !== 'member' && principalType !== 'group') {
+      return c.json({ error: 'principal_type must be member or group' }, 400);
+    }
+    if (!principalId) return c.json({ error: 'principal_id is required' }, 400);
+    // principal_id flows into a uuid column — validate the shape first so a
+    // malformed value is a clean 400, not a 22P02 500.
+    if (!isUuid(principalId)) return c.json({ error: 'principal_id must be a valid id' }, 400);
+    const expires = parseExpiresAtBody(body.expires_at);
+    if (!expires.ok) return c.json({ error: expires.error }, 400);
+
+    // The principal must belong to THIS account — never grant a foreign member/
+    // group via a guessed id.
+    if (principalType === 'member') {
+      const [m] = await db
+        .select({ userId: accountMembers.userId })
+        .from(accountMembers)
+        .where(and(eq(accountMembers.accountId, loaded.row.accountId), eq(accountMembers.userId, principalId)))
+        .limit(1);
+      if (!m) return c.json({ error: 'member not found in this account' }, 404);
+    } else {
+      const [g] = await db
+        .select({ groupId: accountGroups.groupId })
+        .from(accountGroups)
+        .where(and(eq(accountGroups.accountId, loaded.row.accountId), eq(accountGroups.groupId, principalId)))
+        .limit(1);
+      if (!g) return c.json({ error: 'group not found in this account' }, 404);
+    }
+
+    // Agents live in the git config → validate there, store in
+    // iam_resource_grants. A typo'd grant would be a silent dead row. (Skills
+    // and secrets used to be creatable here too — SECRETS routed to the share
+    // model, workspace_secret_grants — but the resourceType guard above now
+    // rejects both before we get here; only 'agent' reaches this point.)
+    let config;
+    try {
+      config = await loadConfigWithFiles(loaded.row);
+    } catch (err) {
+      return c.json({ error: `workspace config unavailable: ${err instanceof Error ? err.message : String(err)}` }, 400);
+    }
+    if (!workspaceHasResource(config, resourceType, resourceId)) {
+      return c.json({ error: `no ${resourceType} '${resourceId}' in this workspace` }, 400);
+    }
+
+    const { grantId } = await upsertResourceGrant({
+      accountId: loaded.row.accountId,
+      workspaceId,
+      resourceType,
+      resourceId,
+      principalType,
+      principalId,
+      grantedBy: loaded.userId,
+      expiresAt: expires.value ?? null,
+    });
+    return c.json({ grant_id: grantId, resource_type: resourceType, resource_id: resourceId, principal_type: principalType, principal_id: principalId }, 201);
+  },
+);
+
+// DELETE /v1/workspaces/:workspaceId/resource-grants/:grantId
+workspacesApp.openapi(
+  createRoute({
+    method: 'delete',
+    path: '/{workspaceId}/resource-grants/{grantId}',
+    tags: ['access'],
+    summary: 'DELETE /:workspaceId/resource-grants/:grantId',
+    ...auth,
+    request: { params: z.object({ workspaceId: z.string(), grantId: z.string() }) },
+    responses: { 200: json(z.any(), 'OK'), ...errors(404) },
+  }),
+  async (c: any) => {
+    const workspaceId = c.req.param('workspaceId');
+    const grantId = c.req.param('grantId');
+    // grant_id is a uuid column — a malformed id is a clean 404 (same as missing),
+    // not a 22P02 500.
+    if (!isUuid(grantId)) return c.json({ error: 'grant not found' }, 404);
+    const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+    await assertWorkspaceCapability(c, loaded.userId, loaded.row.accountId, workspaceId, WORKSPACE_ACTIONS.WORKSPACE_MEMBERS_MANAGE);
+
+    // The id belongs to an agent/skill grant (iam_resource_grants). Secrets no
+    // longer have a resource grant to remove — secret sharing was retired.
+    const removed = await deleteResourceGrant(grantId, workspaceId);
+    if (!removed) return c.json({ error: 'grant not found' }, 404);
+    return c.json({ ok: true });
+  },
+);

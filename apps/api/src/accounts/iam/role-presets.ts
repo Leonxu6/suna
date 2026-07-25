@@ -2,31 +2,31 @@
 // (read-only reference + clone templates, incl. the "Member" read+run tier) and
 // the write-time action validator. No db/router imports → unit-testable.
 
-import { ACCOUNT_ACTIONS, ACTION_CATALOG, PROJECT_ACTIONS, VALID_ACTIONS, resourceTypeForAction } from '../../iam';
-import { ACCOUNT_ROLE_PERMS, PROJECT_ROLE_PERMS } from '../../iam/role-perms';
+import { ACCOUNT_ACTIONS, ACTION_CATALOG, WORKSPACE_ACTIONS, VALID_ACTIONS, resourceTypeForAction } from '../../iam';
+import { ACCOUNT_ROLE_PERMS, WORKSPACE_ROLE_PERMS } from '../../iam/role-perms';
 
 /** The "Member" floor tier: read everything + start/run sessions + fire
  *  triggers; no editing, config, deploy, gitops, members or secret write.
- *  (The project floor role now that `viewer` was folded into it.) */
+ *  (The workspace floor role now that `viewer` was folded into it.) */
 export const USER_PRESET_ACTIONS: readonly string[] = [
-  ...PROJECT_ROLE_PERMS.member,
-  PROJECT_ACTIONS.PROJECT_SESSION_START,
-  PROJECT_ACTIONS.PROJECT_SESSION_STOP,
-  PROJECT_ACTIONS.PROJECT_TRIGGER_FIRE,
+  ...WORKSPACE_ROLE_PERMS.member,
+  WORKSPACE_ACTIONS.WORKSPACE_SESSION_START,
+  WORKSPACE_ACTIONS.WORKSPACE_SESSION_STOP,
+  WORKSPACE_ACTIONS.WORKSPACE_TRIGGER_FIRE,
 ];
 
 export interface BuiltinPreset {
   key: string;
   name: string;
   description: string;
-  resourceType: 'account' | 'project';
+  resourceType: 'account' | 'workspace';
   actions: readonly string[];
 }
 
 export const BUILTIN_PRESETS: readonly BuiltinPreset[] = [
-  { key: 'manager', name: 'Manager', description: 'Full project control, including members and delete.', resourceType: 'project', actions: [...PROJECT_ROLE_PERMS.manager] },
-  { key: 'editor', name: 'Editor', description: 'Create and edit project content, run sessions.', resourceType: 'project', actions: [...PROJECT_ROLE_PERMS.editor] },
-  { key: 'user', name: 'Member (read + run)', description: 'Read, run sessions, and fire triggers — no editing or config. The project floor role.', resourceType: 'project', actions: [...USER_PRESET_ACTIONS] },
+  { key: 'manager', name: 'Manager', description: 'Full workspace control, including members and delete.', resourceType: 'workspace', actions: [...WORKSPACE_ROLE_PERMS.manager] },
+  { key: 'editor', name: 'Editor', description: 'Create and edit workspace content, run sessions.', resourceType: 'workspace', actions: [...WORKSPACE_ROLE_PERMS.editor] },
+  { key: 'user', name: 'Member (read + run)', description: 'Read, run sessions, and fire triggers — no editing or config. The workspace floor role.', resourceType: 'workspace', actions: [...USER_PRESET_ACTIONS] },
   { key: 'owner', name: 'Owner', description: 'Full account control.', resourceType: 'account', actions: [...ACCOUNT_ROLE_PERMS.owner] },
   { key: 'admin', name: 'Admin', description: 'Manage members, groups, roles and tokens.', resourceType: 'account', actions: [...ACCOUNT_ROLE_PERMS.admin] },
   { key: 'member', name: 'Member', description: 'Baseline account membership.', resourceType: 'account', actions: [...ACCOUNT_ROLE_PERMS.member] },
@@ -52,9 +52,9 @@ export const ACTION_CATALOG_WIRE = ACTION_CATALOG.map((e) => ({
  * own ceiling — becoming an owner in all but name. These powers stay exclusive
  * to the built-in owner/admin presets, which are not user-editable.
  *
- * Note: project.members.manage / project.gateway.keys.manage are intentionally
- * NOT here — they are project-scoped (a department lead managing their own
- * project's members can only hand out project roles, never account roles), and
+ * Note: workspace.members.manage / workspace.gateway.keys.manage are intentionally
+ * NOT here — they are workspace-scoped (a department lead managing their own
+ * workspace's members can only hand out workspace roles, never account roles), and
  * the built-in Manager preset already carries them.
  */
 export const NON_DELEGABLE_ACTIONS: ReadonlySet<string> = new Set<string>([
@@ -88,11 +88,11 @@ export const NON_DELEGABLE_ACTIONS: ReadonlySet<string> = new Set<string>([
  *  (or, worse, forward-incompatible) role. When `resourceType` is supplied it
  *  also enforces (a) the privilege-escalation ceiling — no NON_DELEGABLE
  *  actions — and (b) namespace integrity: an `account` role holds only
- *  account-scoped actions, a `project` role holds only project-scoped actions,
- *  so a "department" project role can't smuggle account powers (or vice-versa). */
+ *  account-scoped actions, a `workspace` role holds only workspace-scoped actions,
+ *  so a "department" workspace role can't smuggle account powers (or vice-versa). */
 export function validateActions(
   actions: unknown,
-  resourceType?: 'account' | 'project',
+  resourceType?: 'account' | 'workspace',
 ): { ok: true; actions: string[] } | { ok: false; error: string } {
   if (!Array.isArray(actions)) return { ok: false, error: 'actions must be an array of permission strings' };
   const out: string[] = [];
@@ -105,10 +105,10 @@ export function validateActions(
     }
     if (resourceType) {
       // resourceTypeForAction returns the engine bucket: account-scoped admin
-      // actions → 'account'; everything else (project/channel/trigger/sandbox)
+      // actions → 'account'; everything else (workspace/channel/trigger/sandbox)
       // → a non-account resource type. Custom roles only have two scope types,
-      // so collapse non-account into 'project'.
-      const bucket = resourceTypeForAction(a) === 'account' ? 'account' : 'project';
+      // so collapse non-account into 'workspace'.
+      const bucket = resourceTypeForAction(a) === 'account' ? 'account' : 'workspace';
       if (bucket !== resourceType) {
         return { ok: false, error: `action ${a} is not a ${resourceType}-scoped permission` };
       }

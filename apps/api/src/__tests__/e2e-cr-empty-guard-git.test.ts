@@ -6,14 +6,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-// Importing src/projects/git/* into the test process trips the apps/api env
+// Importing src/workspaces/git/* into the test process trips the apps/api env
 // validation under `bun test` — same constraint as the other git-transport
 // e2e files, so this follows their harness: all src work happens in a
 // `bun --eval` subprocess run from the repo root (see
-// e2e-project-session-branch-git.test.ts).
+// e2e-workspace-session-branch-git.test.ts).
 
 let root = '';
-let projectCounter = 0;
+let workspaceCounter = 0;
 
 function git(args: string[], cwd?: string): string {
   return execFileSync('git', args, {
@@ -36,17 +36,17 @@ function bunEval(script: string): string {
 }
 
 function mergeModuleUrl(): string {
-  return pathToFileURL(join(import.meta.dir, '..', 'projects', 'git', 'merge.ts')).href;
+  return pathToFileURL(join(import.meta.dir, '..', 'workspaces', 'git', 'merge.ts')).href;
 }
 
 function commitsModuleUrl(): string {
-  return pathToFileURL(join(import.meta.dir, '..', 'projects', 'git', 'commits.ts')).href;
+  return pathToFileURL(join(import.meta.dir, '..', 'workspaces', 'git', 'commits.ts')).href;
 }
 
 function makeFixture() {
-  projectCounter += 1;
-  const source = join(root, `source-${projectCounter}`);
-  const origin = join(root, `origin-${projectCounter}.git`);
+  workspaceCounter += 1;
+  const source = join(root, `source-${workspaceCounter}`);
+  const origin = join(root, `origin-${workspaceCounter}.git`);
   mkdirSync(source, { recursive: true });
   git(['init', '-b', 'main'], source);
   git(['config', 'user.email', 'e2e@kortix.test'], source);
@@ -60,8 +60,8 @@ function makeFixture() {
   // The platform creates every session branch at base tip on session boot —
   // reproduce that: the branch EXISTS remotely, pointing at main's tip.
   git(['push', '--quiet', 'origin', 'main:session-branch'], source);
-  const project = {
-    projectId: `00000000-0000-4000-a000-${String(projectCounter).padStart(12, '0')}`,
+  const workspace = {
+    workspaceId: `00000000-0000-4000-a000-${String(workspaceCounter).padStart(12, '0')}`,
     repoUrl: origin,
     defaultBranch: 'main',
     manifestPath: 'kortix.yaml',
@@ -71,14 +71,14 @@ function makeFixture() {
     // file:// clones ignore the auth header entirely.
     gitAuthToken: 'e2e-local-token',
   };
-  return { source, origin, project };
+  return { source, origin, workspace };
 }
 
-function resolveAheadState(project: unknown): { ahead: boolean; baseSha: string; headSha: string } {
+function resolveAheadState(workspace: unknown): { ahead: boolean; baseSha: string; headSha: string } {
   return JSON.parse(
     bunEval(`
       const { resolveBranchAheadState } = await import(${JSON.stringify(mergeModuleUrl())});
-      const state = await resolveBranchAheadState(${JSON.stringify(project)}, 'main', 'session-branch');
+      const state = await resolveBranchAheadState(${JSON.stringify(workspace)}, 'main', 'session-branch');
       process.stdout.write(JSON.stringify(state));
     `),
   );
@@ -102,22 +102,22 @@ describe('resolveBranchAheadState — the empty-CR guard', () => {
   });
 
   test('committed-but-never-pushed session branch (head tip == base tip) is not ahead', () => {
-    const { project } = makeFixture();
-    const state = resolveAheadState(project);
+    const { workspace } = makeFixture();
+    const state = resolveAheadState(workspace);
     expect(state.ahead).toBe(false);
     expect(state.headSha).toBe(state.baseSha);
   });
 
   test('a pushed commit on the session branch is ahead', () => {
-    const { source, project } = makeFixture();
+    const { source, workspace } = makeFixture();
     commitOnSessionBranch(source, 'work.txt');
-    const state = resolveAheadState(project);
+    const state = resolveAheadState(workspace);
     expect(state.ahead).toBe(true);
     expect(state.headSha).not.toBe(state.baseSha);
   });
 
   test('a push landing AFTER the mirror warmed in the same process is still seen (forced re-fetch beats the staleness window)', () => {
-    const { source, origin, project } = makeFixture();
+    const { source, origin, workspace } = makeFixture();
     // One process: warm the mirror with the branch empty, push from a second
     // clone while the in-process refresh marker is fresh, resolve again —
     // exactly an agent's `git push && kortix cr open` against a warm mirror.
@@ -125,15 +125,15 @@ describe('resolveBranchAheadState — the empty-CR guard', () => {
       bunEval(`
         const { execFileSync } = await import('node:child_process');
         const { resolveBranchAheadState } = await import(${JSON.stringify(mergeModuleUrl())});
-        const project = ${JSON.stringify(project)};
-        const before = await resolveBranchAheadState(project, 'main', 'session-branch');
+        const workspace = ${JSON.stringify(workspace)};
+        const before = await resolveBranchAheadState(workspace, 'main', 'session-branch');
         const run = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8' });
         run(['checkout', '-B', 'session-branch', 'origin/session-branch'], ${JSON.stringify(source)});
         await (await import('node:fs/promises')).writeFile(${JSON.stringify(join(source, 'late-push.txt'))}, 'late\\n');
         run(['add', 'late-push.txt'], ${JSON.stringify(source)});
         run(['commit', '-m', 'late push'], ${JSON.stringify(source)});
         run(['push', '--quiet', 'origin', 'session-branch'], ${JSON.stringify(source)});
-        const after = await resolveBranchAheadState(project, 'main', 'session-branch');
+        const after = await resolveBranchAheadState(workspace, 'main', 'session-branch');
         process.stdout.write(JSON.stringify({ before: before.ahead, after: after.ahead }));
       `),
     );
@@ -142,7 +142,7 @@ describe('resolveBranchAheadState — the empty-CR guard', () => {
   });
 
   test('a branch created AFTER the mirror warmed is resolved after one forced re-fetch', () => {
-    const { source, project } = makeFixture();
+    const { source, workspace } = makeFixture();
     git(['push', '--quiet', 'origin', '--delete', 'session-branch'], source);
 
     const result = JSON.parse(
@@ -150,15 +150,15 @@ describe('resolveBranchAheadState — the empty-CR guard', () => {
         const { execFileSync } = await import('node:child_process');
         const { resolveCommitSha } = await import(${JSON.stringify(commitsModuleUrl())});
         const { resolveBranchAheadState } = await import(${JSON.stringify(mergeModuleUrl())});
-        const project = ${JSON.stringify(project)};
-        await resolveCommitSha(project, 'main');
+        const workspace = ${JSON.stringify(workspace)};
+        await resolveCommitSha(workspace, 'main');
         const run = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8' });
         run(['checkout', '-B', 'session-branch', 'main'], ${JSON.stringify(source)});
         await (await import('node:fs/promises')).writeFile(${JSON.stringify(join(source, 'new-branch.txt'))}, 'new branch\\n');
         run(['add', 'new-branch.txt'], ${JSON.stringify(source)});
         run(['commit', '-m', 'create session branch'], ${JSON.stringify(source)});
         run(['push', '--quiet', 'origin', 'session-branch'], ${JSON.stringify(source)});
-        const state = await resolveBranchAheadState(project, 'main', 'session-branch');
+        const state = await resolveBranchAheadState(workspace, 'main', 'session-branch');
         process.stdout.write(JSON.stringify(state));
       `),
     );
@@ -168,26 +168,26 @@ describe('resolveBranchAheadState — the empty-CR guard', () => {
   });
 
   test('a stale branch strictly behind an advanced base (merge-base == head) is not ahead', () => {
-    const { source, project } = makeFixture();
+    const { source, workspace } = makeFixture();
     git(['checkout', 'main'], source);
     writeFileSync(join(source, 'main-moved.txt'), 'x\n', 'utf8');
     git(['add', 'main-moved.txt'], source);
     git(['commit', '-m', 'main advances'], source);
     git(['push', '--quiet', 'origin', 'main'], source);
-    const state = resolveAheadState(project);
+    const state = resolveAheadState(workspace);
     expect(state.ahead).toBe(false);
     expect(state.headSha).not.toBe(state.baseSha);
   });
 
   test('diverged branch (both sides moved) still counts as ahead — conflicts are the merge gate’s job, not this one’s', () => {
-    const { source, project } = makeFixture();
+    const { source, workspace } = makeFixture();
     commitOnSessionBranch(source, 'session-work.txt');
     git(['checkout', 'main'], source);
     writeFileSync(join(source, 'main-work.txt'), 'y\n', 'utf8');
     git(['add', 'main-work.txt'], source);
     git(['commit', '-m', 'main also advances'], source);
     git(['push', '--quiet', 'origin', 'main'], source);
-    const state = resolveAheadState(project);
+    const state = resolveAheadState(workspace);
     expect(state.ahead).toBe(true);
   });
 });

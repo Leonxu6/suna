@@ -1,7 +1,7 @@
 /**
  * Regression test for Better Stack error `8d0cffbb…`
  * ("Cloning into bare repository '/tmp/kortix/git-cache/….git'…" — state
- * Reoccurred, call site `runGit` at `apps/api/src/projects/git/mirror.ts`).
+ * Reoccurred, call site `runGit` at `apps/api/src/workspaces/git/mirror.ts`).
  *
  * Root cause: `git clone --bare` writes its progress line
  *   `Cloning into bare repository '/…/….git'...`
@@ -16,7 +16,7 @@
  * skipped the clone, and tried to `fetch` from a broken half-repo — wedging
  * every reader for the process lifetime.
  *
- * The fix (in `projects/git/mirror.ts`):
+ * The fix (in `workspaces/git/mirror.ts`):
  *   1. `runGit` now throws a typed `GitOperationError` (kind 'timeout' |
  *      'failed'). A killed/timed-out process is `kind: 'timeout'` with a
  *      message that names the timeout + signal — NEVER the `Cloning into …`
@@ -49,7 +49,7 @@ const {
   refreshMirror,
   repoCachePath,
   runGit,
-} = await import('../projects/git/mirror');
+} = await import('../workspaces/git/mirror');
 
 test('runGit applies backend-produced Authorization headers without rebuilding GitHub auth', async () => {
   const basic = `Basic ${Buffer.from('t:code-storage-jwt').toString('base64')}`;
@@ -173,8 +173,8 @@ describe('refreshMirror — partial-clone cleanup on failure', () => {
     // A real, fast, deterministic clone failure: nonexistent local source.
     const badUpstream = join(workdir, 'does-not-exist');
 
-    const project = {
-      projectId: 'cccccccc-0000-0000-0000-000000000003',
+    const workspace = {
+      workspaceId: 'cccccccc-0000-0000-0000-000000000003',
       repoUrl: badUpstream,
       defaultBranch: 'main',
       manifestPath: '',
@@ -184,13 +184,13 @@ describe('refreshMirror — partial-clone cleanup on failure', () => {
     const prevCacheDir = process.env.KORTIX_GIT_CACHE_DIR;
     process.env.KORTIX_GIT_CACHE_DIR = cacheDir;
     try {
-      const repoPath = repoCachePath(project);
-      await expect(refreshMirror(project)).rejects.toBeInstanceOf(GitOperationError);
+      const repoPath = repoCachePath(workspace);
+      await expect(refreshMirror(workspace)).rejects.toBeInstanceOf(GitOperationError);
       // The bug: a killed/failed clone left a partial .git dir that poisoned
       // every subsequent read. The fix removes it on failure.
       expect(existsSync(repoPath)).toBe(false);
       // And the surfaced error is the real fatal line, not "Cloning into …".
-      await expect(refreshMirror(project)).rejects.toThrow(/does not exist|repository|clone/i);
+      await expect(refreshMirror(workspace)).rejects.toThrow(/does not exist|repository|clone/i);
     } finally {
       process.env.KORTIX_GIT_CACHE_DIR = prevCacheDir;
       await rm(workdir, { recursive: true, force: true }).catch(() => {});
@@ -208,8 +208,8 @@ describe('refreshMirror — partial-clone cleanup on failure', () => {
     await git(['add', '.'], upstream);
     await git(['commit', '-m', 'init'], upstream);
 
-    const project = {
-      projectId: 'dddddddd-0000-0000-0000-000000000004',
+    const workspace = {
+      workspaceId: 'dddddddd-0000-0000-0000-000000000004',
       repoUrl: upstream,
       defaultBranch: 'main',
       manifestPath: '',
@@ -219,10 +219,10 @@ describe('refreshMirror — partial-clone cleanup on failure', () => {
     const prevCacheDir = process.env.KORTIX_GIT_CACHE_DIR;
     process.env.KORTIX_GIT_CACHE_DIR = cacheDir;
     try {
-      const repoPath = await refreshMirror(project);
+      const repoPath = await refreshMirror(workspace);
       expect(existsSync(join(repoPath, 'HEAD'))).toBe(true);
       // Second call is a warm hit (no network) and must still resolve.
-      const repoPath2 = await refreshMirror(project);
+      const repoPath2 = await refreshMirror(workspace);
       expect(repoPath2).toBe(repoPath);
     } finally {
       process.env.KORTIX_GIT_CACHE_DIR = prevCacheDir;

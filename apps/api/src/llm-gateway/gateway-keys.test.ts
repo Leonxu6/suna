@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { accounts, gatewayApiKeys, projects } from '@kortix/db';
+import { accounts, gatewayApiKeys, workspaces } from '@kortix/db';
 import { eq } from 'drizzle-orm';
 import { hashSecretKey } from '../shared/crypto';
 import { db } from '../shared/db';
 import { validateGatewayKey } from './gateway-keys';
 
 const ACCOUNT = crypto.randomUUID();
-const PROJECT = crypto.randomUUID();
+const WORKSPACE = crypto.randomUUID();
 const CREATOR = crypto.randomUUID();
 
 let n = 0;
@@ -21,7 +21,7 @@ async function seedKey(opts: {
     .insert(gatewayApiKeys)
     .values({
       accountId: ACCOUNT,
-      projectId: PROJECT,
+      workspaceId: WORKSPACE,
       name: `test-key-${n}`,
       keyPrefix: secretKey.slice(0, 14),
       secretKeyHash: hashSecretKey(secretKey),
@@ -35,16 +35,16 @@ async function seedKey(opts: {
 
 beforeAll(async () => {
   await db.insert(accounts).values({ accountId: ACCOUNT, name: 'gateway-key-test-acct' });
-  await db.insert(projects).values({
-    projectId: PROJECT,
+  await db.insert(workspaces).values({
+    workspaceId: WORKSPACE,
     accountId: ACCOUNT,
-    name: 'gateway-key-test-project',
+    name: 'gateway-key-test-workspace',
     repoUrl: 'https://example.test/gw-key.git',
   });
 });
 
 afterAll(async () => {
-  await db.delete(projects).where(eq(projects.accountId, ACCOUNT));
+  await db.delete(workspaces).where(eq(workspaces.accountId, ACCOUNT));
   await db.delete(accounts).where(eq(accounts.accountId, ACCOUNT));
 });
 
@@ -53,7 +53,7 @@ describe('validateGatewayKey', () => {
     const { secretKey, keyId } = await seedKey({ expiresAt: null });
     expect(await validateGatewayKey(secretKey)).toEqual({
       accountId: ACCOUNT,
-      projectId: PROJECT,
+      workspaceId: WORKSPACE,
       userId: CREATOR,
       keyId,
     });

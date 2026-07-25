@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 //
 // The snapshot runtime fingerprint used to hash ALL of apps/cli/src, so every
 // developer-only CLI edit (`ship`, `cr`, `tunnel`, `self-host`, the scaffold
-// surface, …) re-minted every project's runtime identity and moved the non-agent
+// surface, …) re-minted every workspace's runtime identity and moved the non-agent
 // `swapKey`, disabling the cheap agent-swap and forcing a full rebuild. A sandbox
 // session only ever runs `kortix executor` / `kortix executor mcp`, so the
 // fingerprint now hashes just that command's import closure.
@@ -31,7 +31,7 @@ const HASHED_CLOSURE = [
   'api/client.ts',
   'api/config.ts',
   'api/sandbox-env.ts',
-  'project-link.ts',
+  'workspace-link.ts',
 ] as const;
 
 // Entrypoints the sandbox actually invokes (`kortix executor …`). The `index.ts`

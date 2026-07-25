@@ -3,7 +3,7 @@
  *
  * Exactly like the Slack `channel` connector, `computer` is a REGULAR connector
  * with no `[[connectors]]` entry and no experimental opt-in — connecting a
- * machine over the Agent Computer Tunnel IS the registration. When a project's
+ * machine over the Agent Computer Tunnel IS the registration. When a workspace's
  * account has at least one connected machine, we synthesize a SINGLE `computer`
  * ConnectorSpec here so the materializer treats it like any other connector (DB
  * rows, the fixed action catalog, policies, and the Executor/Connectors
@@ -12,7 +12,7 @@
  * relay is the credential, and per-machine auth/scope is the tunnel permission
  * layer.
  *
- * NOT gated by the per-project `agent_tunnel` experimental flag: a machine can
+ * NOT gated by the per-workspace `agent_tunnel` experimental flag: a machine can
  * only exist when the platform tunnel service is on (the tunnel routes are
  * `config.TUNNEL_ENABLED`-gated), so machine-presence already implies platform
  * support. The `agent_tunnel` flag now only gates the dedicated Computers
@@ -20,11 +20,11 @@
  * See docs/specs/computer-connector.md.
  */
 import { eq } from 'drizzle-orm';
-import { projects, tunnelConnections } from '@kortix/db';
+import { workspaces, tunnelConnections } from '@kortix/db';
 import { db } from '../shared/db';
 import { COMPUTER_SLUG, computerLabel } from './computers';
-import type { ConnectorSpec } from '../projects/connectors';
-import { MANIFEST_FILENAME } from '../projects/triggers';
+import type { ConnectorSpec } from '../workspaces/connectors';
+import { MANIFEST_FILENAME } from '../workspaces/triggers';
 
 function computerSpec(): ConnectorSpec {
   return {
@@ -57,21 +57,21 @@ function alreadyDeclared(declared: ConnectorSpec[]): boolean {
 }
 
 /**
- * A single synthetic `computer` ConnectorSpec when this project's account has a
+ * A single synthetic `computer` ConnectorSpec when this workspace's account has a
  * connected machine — never written to git, never shadowing an explicit
  * declaration. Returns `[]` otherwise. Machine presence is the only gate (no
  * experimental flag): it's a regular connector, materialized like Slack.
  */
 export async function synthesizeComputerConnectors(
-  projectId: string,
+  workspaceId: string,
   declared: ConnectorSpec[],
 ): Promise<ConnectorSpec[]> {
   if (alreadyDeclared(declared)) return [];
 
   const [proj] = await db
-    .select({ accountId: projects.accountId })
-    .from(projects)
-    .where(eq(projects.projectId, projectId))
+    .select({ accountId: workspaces.accountId })
+    .from(workspaces)
+    .where(eq(workspaces.workspaceId, workspaceId))
     .limit(1);
   if (!proj) return [];
 

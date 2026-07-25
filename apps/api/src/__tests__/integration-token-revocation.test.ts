@@ -6,17 +6,17 @@
  */
 import { describe, expect, test, beforeAll, afterAll } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { accountTokens, accounts, projects } from '@kortix/db';
+import { accountTokens, accounts, workspaces } from '@kortix/db';
 import { db } from '../shared/db';
 import { revokeAllAccountTokensForUser } from '../repositories/account-tokens';
 
 const ACCOUNT = crypto.randomUUID();
-const PROJECT = crypto.randomUUID();
+const WORKSPACE = crypto.randomUUID();
 const USER = crypto.randomUUID();
 const OTHER = crypto.randomUUID();
 
 let n = 0;
-async function seedToken(userId: string, opts: { projectId?: string; sessionId?: string } = {}) {
+async function seedToken(userId: string, opts: { workspaceId?: string; sessionId?: string } = {}) {
   const tokenId = crypto.randomUUID();
   n += 1;
   await db.insert(accountTokens).values({
@@ -26,7 +26,7 @@ async function seedToken(userId: string, opts: { projectId?: string; sessionId?:
     name: `tok-${n}`,
     publicKey: `pk_${n}_${tokenId.slice(0, 8)}`,
     secretKeyHash: `hash_${n}_${tokenId.slice(0, 8)}`,
-    projectId: opts.projectId ?? null,
+    workspaceId: opts.workspaceId ?? null,
     sessionId: opts.sessionId ?? null,
   });
   return tokenId;
@@ -36,18 +36,18 @@ const statusOf = async (tokenId: string) =>
 
 beforeAll(async () => {
   await db.insert(accounts).values({ accountId: ACCOUNT, name: 'tok-revoke-test' });
-  await db.insert(projects).values({ projectId: PROJECT, accountId: ACCOUNT, name: 'p', repoUrl: 'https://example.com/p.git' });
+  await db.insert(workspaces).values({ workspaceId: WORKSPACE, accountId: ACCOUNT, name: 'p', repoUrl: 'https://example.com/p.git' });
 });
 
 afterAll(async () => {
-  await db.delete(projects).where(eq(projects.accountId, ACCOUNT));
+  await db.delete(workspaces).where(eq(workspaces.accountId, ACCOUNT));
   await db.delete(accounts).where(eq(accounts.accountId, ACCOUNT)); // cascades tokens
 });
 
 describe('revokeAllAccountTokensForUser', () => {
   test('revokes ALL of the user’s active tokens (PAT + live session) but nobody else’s', async () => {
     const pat = await seedToken(USER); // a personal access token
-    const session = await seedToken(USER, { projectId: PROJECT, sessionId: 'sess-1' }); // a live sandbox token
+    const session = await seedToken(USER, { workspaceId: WORKSPACE, sessionId: 'sess-1' }); // a live sandbox token
     const otherPat = await seedToken(OTHER); // a different member — must be untouched
 
     const revoked = await revokeAllAccountTokensForUser(USER, ACCOUNT);

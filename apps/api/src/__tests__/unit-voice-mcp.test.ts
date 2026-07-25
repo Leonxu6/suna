@@ -3,7 +3,7 @@ import { handleVoiceMcp, type VoiceMcpContext } from '../channels/voice/mcp';
 
 function ctx(overrides: Partial<VoiceMcpContext> = {}): VoiceMcpContext {
   return {
-    projectId: 'proj-1',
+    workspaceId: 'proj-1',
     sessionId: 'sess-1',
     spawn: async () => ({ callId: 'sess-1', botId: 'bot-1' }),
     ...overrides,

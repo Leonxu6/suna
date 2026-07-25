@@ -3,13 +3,13 @@
  * resolution. Mirrors executor.sh's model.
  *
  * Two scopes, both declared in kortix.yaml (docs/specs/executor.md §8):
- *   • project-level `policies:` — patterns are fully-qualified (`<slug>.<path>`),
+ *   • workspace-level `policies:` — patterns are fully-qualified (`<slug>.<path>`),
  *     apply across ALL connectors, evaluated FIRST.
  *   • connector-level `connectors[].policies` — patterns are relative
- *     (the connector slug is implicit), evaluated AFTER the project scope.
+ *     (the connector slug is implicit), evaluated AFTER the workspace scope.
  *
  * If neither scope matches, the action falls back to a risk-derived default
- * controlled by the project's `policy.default_mode`:
+ * controlled by the workspace's `policy.default_mode`:
  *   • `allow_all` (legacy default — every tool runs)
  *   • `risk` (recommended — read = always_run, write/destructive = require_approval)
  *
@@ -129,14 +129,14 @@ function riskDefaultAction(risk: Risk): PolicyAction {
 }
 
 export interface EffectiveResolveInput {
-  /** Fully-qualified path, e.g. `stripe.charges.create` — matched against project policies. */
+  /** Fully-qualified path, e.g. `stripe.charges.create` — matched against workspace policies. */
   fullPath: string;
   /** Connector-relative path, e.g. `charges.create` — matched against connector policies. */
   relPath: string;
-  projectPolicies: Policy[];
+  workspacePolicies: Policy[];
   connectorPolicies: Policy[];
   risk: Risk;
-  /** Project setting from `policy.default_mode` in kortix.yaml. */
+  /** Workspace setting from `policy.default_mode` in kortix.yaml. */
   defaultMode: DefaultMode;
   /** Connector marked `sensitive` — its reads default to require_approval too. */
   sensitive?: boolean;
@@ -145,29 +145,29 @@ export interface EffectiveResolveInput {
 export interface EffectiveResolveResult {
   action: PolicyAction;
   /** Why this action — which scope decided. Useful for explainability + audit. */
-  source: 'project' | 'connector' | 'risk_default' | 'allow_all';
+  source: 'workspace' | 'connector' | 'risk_default' | 'allow_all';
 }
 
 /**
  * Resolve the effective action across both scopes + the risk-derived default.
- *   1. project `[[policies]]` (first match wins) → if hit, return.
+ *   1. workspace `[[policies]]` (first match wins) → if hit, return.
  *   2. connector `[[connectors.policies]]` (first match wins) → if hit, return.
  *   3. `defaultMode = risk` → action from risk class.
  *   4. `defaultMode = allow_all` → always_run.
  *
- * Project rules are evaluated BEFORE connector rules and CANNOT be overridden
+ * Workspace rules are evaluated BEFORE connector rules and CANNOT be overridden
  * by them — admin trust property.
  */
 export function resolveEffectiveAction(input: EffectiveResolveInput): EffectiveResolveResult {
-  const projectHit = firstMatchOrNull(input.fullPath, input.projectPolicies);
-  if (projectHit) return { action: projectHit, source: 'project' };
+  const workspaceHit = firstMatchOrNull(input.fullPath, input.workspacePolicies);
+  if (workspaceHit) return { action: workspaceHit, source: 'workspace' };
 
   const connectorHit = firstMatchOrNull(input.relPath, input.connectorPolicies);
   if (connectorHit) return { action: connectorHit, source: 'connector' };
 
   // A `sensitive` connector gates EVERYTHING by default — reads included —
   // regardless of default_mode. A per-connector "sensitive" is a deliberate,
-  // targeted admin choice that should beat the coarse project default; an
+  // targeted admin choice that should beat the coarse workspace default; an
   // explicit policy rule above can still open a specific action. This is the
   // "reading a private inbox / files / secrets store is not free" tier.
   if (input.sensitive) return { action: 'require_approval', source: 'risk_default' };

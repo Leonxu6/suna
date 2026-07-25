@@ -96,7 +96,7 @@ export { buildFilters, type AuditFilterInput } from './audit-filters';
 // GET /v1/accounts/:accountId/audit
 //   ?action=iam.       — prefix match on action (e.g. "iam.policy.")
 //   ?actor=<uuid>      — only events performed by this user
-//   ?resource_type=X   — prefix match on resource_type (e.g. "project_session")
+//   ?resource_type=X   — prefix match on resource_type (e.g. "workspace_session")
 //   ?since=ISO         — only events at or after this timestamp
 //   ?until=ISO         — only events at or before this timestamp
 //   ?q=text           — case-insensitive substring on action/resource_type/resource_id

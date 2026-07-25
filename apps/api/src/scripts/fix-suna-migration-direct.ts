@@ -6,7 +6,7 @@
  *
  * Reuses the committed, FIXED phase functions (extract → repo → push → db) with a
  * tiny in-memory context: checkpoint is in-memory, heartbeat is a no-op, and we
- * stamp the row 'completed' atomically only once the project + sessions exist.
+ * stamp the row 'completed' atomically only once the workspace + sessions exist.
  *
  * Usage:
  *   dotenvx run -f .env.prod --quiet -- \
@@ -18,8 +18,8 @@ import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { sunaAccountMigrations } from '@kortix/db';
 import { db } from '../shared/db';
-import { extractStep, repoStep, pushStep, dbStep } from '../projects/suna-migration/suna-migration-phases';
-import { latestSunaMigration, type SunaMigrationContext } from '../projects/suna-migration/suna-migration-runner';
+import { extractStep, repoStep, pushStep, dbStep } from '../workspaces/suna-migration/suna-migration-phases';
+import { latestSunaMigration, type SunaMigrationContext } from '../workspaces/suna-migration/suna-migration-runner';
 
 function arg(flag: string): string | undefined {
   const i = Bun.argv.indexOf(flag);
@@ -64,12 +64,12 @@ async function main() {
 
   await db.update(sunaAccountMigrations).set({
     status: 'completed', phase: 'done', error: null, attempts: 0,
-    projectId: (progress.project_id as string) ?? null,
+    workspaceId: (progress.workspace_id as string) ?? null,
     progress, heartbeatAt: null,
     appliedAt: row.appliedAt ?? new Date(), verifiedAt: new Date(), updatedAt: new Date(),
   }).where(eq(sunaAccountMigrations.migrationId, row.migrationId));
 
-  console.log(`\n✓ completed — project_id ${progress.project_id}, ${(progress.sessions as unknown[])?.length ?? 0} sessions.\n`);
+  console.log(`\n✓ completed — workspace_id ${progress.workspace_id}, ${(progress.sessions as unknown[])?.length ?? 0} sessions.\n`);
 }
 
 await main();

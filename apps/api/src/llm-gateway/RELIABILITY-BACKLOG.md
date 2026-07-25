@@ -127,7 +127,7 @@ managed fallback with tier gating), real unit tests on the core pipeline.
     Both had zero real unit tests despite computing/gating every dollar. Now
     covered: cache read/write discount+premium, upstreamCostHint precedence,
     markup=0/>1, malformed usage (cachedTokens > promptTokens), block vs warn
-    budgets, project vs member scope, mixed budgets, and the new in-flight
+    budgets, workspace vs member scope, mixed budgets, and the new in-flight
     reservation (below).
 
 16. **`checkBudget` now honors `action='warn'`** — `budgets.ts`
@@ -195,7 +195,7 @@ managed fallback with tier gating), real unit tests on the core pipeline.
      silently absorbed pre-hold) behavior, just bounded to (cost − $0.01)
      instead of the full cost. *(tests: unit-billing-gate-atomic-hold.test.ts,
      unit-billing-hold-reconciliation.test.ts, handler.test.ts)*
-   - **Project/member 'block' budgets — pragmatic bound, not a full fix**:
+   - **Workspace/member 'block' budgets — pragmatic bound, not a full fix**:
      `checkBudget` now adds a conservative, self-expiring in-process
      reservation ($0.50 per in-flight admission, 5-minute TTL) to the
      DB-aggregated spend before comparing to the cap — closing the exact "20
@@ -225,7 +225,7 @@ managed fallback with tier gating), real unit tests on the core pipeline.
      usage records and drive routing decisions for any principal it can name,
      but cannot itself exfiltrate provider credentials (those stay resolved
      server-side, never returned over this RPC) or bypass the per-request
-     account/project auth done upstream of these routes.
+     account/workspace auth done upstream of these routes.
    - **Why not tonight:** a real fix is mTLS (both hosts already have a
      private DNS identity + the cluster's own CA — this is provisioning/infra
      work, not app code) or HMAC-signed requests (needs a signing-key
@@ -263,7 +263,7 @@ managed fallback with tier gating), real unit tests on the core pipeline.
   a fix)* — only a global $ spend budget exists; a runaway well-behaved caller
   (e.g. a stuck retry loop on a free/cheap model) has no request-count throttle
   and can collaterally trip the shared per-provider circuit breaker for every
-  other tenant. Needs a lightweight per-principal (project/key) token-bucket
+  other tenant. Needs a lightweight per-principal (workspace/key) token-bucket
   limiter ahead of dispatch, independent of the $ budget. Scoped follow-up, not
   a same-night addition.
 

@@ -1,17 +1,18 @@
 import { executorConnectionProfiles, executorConnectors, executorCredentials } from '@kortix/db';
 import type { OAuth2ClientCredentials } from '@kortix/api-contract';
 /**
- * Connector credentials. A connector is project-wide visible — the only
+ * Connector credentials. A connector is workspace-wide visible — the only
  * ACCESS gate is the agent-side `[[agents]].connectors` grant (iam/agent-scope.ts),
  * not anything stored on the connector itself. Credentials (executor_credentials)
- * are one row per (connector, user) — user NULL is the shared project
+ * are one row per (connector, user) — user NULL is the shared workspace
  * credential, the only mode written today (`per_user` — a set user, each
  * member's own — was removed 2026-07-05; every caller here passes
- * `userId: null`). Values are encrypted with the project key and resolved
+ * `userId: null`). Values are encrypted with the workspace key and resolved
  * server-side only. See docs/specs/executor.md §5–6.
  */
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
-import { decryptProjectSecret, encryptProjectSecret } from '../projects/secrets';
+import { decryptWorkspaceSecret, encryptWorkspaceSecret } from '../workspaces/secrets';
+import { toPersistedConnectorOwnerType } from '../workspaces/lib/persistence';
 import { db } from '../shared/db';
 import {
   acquireOAuth2ClientCredentialsToken,
@@ -31,7 +32,7 @@ interface CredentialRow {
   credentialId: string;
   kind: string;
   valueEnc: string;
-  projectId: string;
+  workspaceId: string;
 }
 
 interface OAuth2CredentialRuntime {
@@ -44,7 +45,7 @@ async function resolveCredentialRow(
 ): Promise<string | null> {
   if (row.kind !== 'oauth2_client_credentials' && row.kind !== 'oauth2_delegated') {
     try {
-      return decryptProjectSecret(row.projectId, row.valueEnc);
+      return decryptWorkspaceSecret(row.workspaceId, row.valueEnc);
     } catch {
       return null;
     }
@@ -64,7 +65,7 @@ async function resolveCredentialRow(
     if (!current) return null;
     let value: string;
     try {
-      value = decryptProjectSecret(row.projectId, current.valueEnc);
+      value = decryptWorkspaceSecret(row.workspaceId, current.valueEnc);
     } catch {
       return null;
     }
@@ -82,7 +83,7 @@ async function resolveCredentialRow(
       await tx
         .update(executorCredentials)
         .set({
-          valueEnc: encryptProjectSecret(row.projectId, resolved.updatedValue),
+          valueEnc: encryptWorkspaceSecret(row.workspaceId, resolved.updatedValue),
           updatedAt: new Date(),
         })
         .where(eq(executorCredentials.credentialId, row.credentialId));
@@ -103,7 +104,7 @@ export async function resolveCredentialValue(
       credentialId: executorCredentials.credentialId,
       kind: executorCredentials.kind,
       valueEnc: executorCredentials.valueEnc,
-      projectId: executorConnectors.projectId,
+      workspaceId: executorConnectors.workspaceId,
     })
     .from(executorCredentials)
     .innerJoin(
@@ -198,7 +199,7 @@ export async function resolveProfileCredentialValue(
       credentialId: executorCredentials.credentialId,
       kind: executorCredentials.kind,
       valueEnc: executorCredentials.valueEnc,
-      projectId: executorConnectors.projectId,
+      workspaceId: executorConnectors.workspaceId,
     })
     .from(executorCredentials)
     .innerJoin(
@@ -234,7 +235,7 @@ export async function profileCredentialExists(input: {
 }
 
 export async function upsertProfileCredential(input: {
-  projectId: string;
+  workspaceId: string;
   connectorId: string;
   profileId: string;
   value: string;
@@ -248,12 +249,12 @@ export async function upsertProfileCredential(input: {
       and(
         eq(executorConnectionProfiles.profileId, input.profileId),
         eq(executorConnectionProfiles.connectorId, input.connectorId),
-        eq(executorConnectionProfiles.projectId, input.projectId),
+        eq(executorConnectionProfiles.workspaceId, input.workspaceId),
       ),
     )
     .limit(1);
   if (!profile) throw new Error('Connector profile not found');
-  const valueEnc = encryptProjectSecret(input.projectId, input.value);
+  const valueEnc = encryptWorkspaceSecret(input.workspaceId, input.value);
   const [existing] = await db
     .select({ credentialId: executorCredentials.credentialId })
     .from(executorCredentials)
@@ -282,7 +283,7 @@ export async function upsertProfileCredential(input: {
 
 export async function upsertProfileOAuth2Credential(
   input: {
-    projectId: string;
+    workspaceId: string;
     connectorId: string;
     profileId: string;
     oauth2: OAuth2ClientCredentials;
@@ -294,7 +295,7 @@ export async function upsertProfileOAuth2Credential(
     ? await runtime.acquire(input.oauth2)
     : await acquireOAuth2ClientCredentialsToken(input.oauth2);
   await upsertProfileCredential({
-    projectId: input.projectId,
+    workspaceId: input.workspaceId,
     connectorId: input.connectorId,
     profileId: input.profileId,
     value: createStoredOAuth2Credential(input.oauth2, token),
@@ -304,7 +305,7 @@ export async function upsertProfileOAuth2Credential(
 }
 
 export async function ensureDefaultProfile(input: {
-  projectId: string;
+  workspaceId: string;
   connectorId: string;
   createdBy?: string | null;
 }): Promise<string> {
@@ -326,7 +327,7 @@ export async function ensureDefaultProfile(input: {
     .where(
       and(
         eq(executorConnectors.connectorId, input.connectorId),
-        eq(executorConnectors.projectId, input.projectId),
+        eq(executorConnectors.workspaceId, input.workspaceId),
       ),
     )
     .limit(1);
@@ -335,9 +336,9 @@ export async function ensureDefaultProfile(input: {
     .insert(executorConnectionProfiles)
     .values({
       accountId: connector.accountId,
-      projectId: connector.projectId,
+      workspaceId: connector.workspaceId,
       connectorId: connector.connectorId,
-      ownerType: 'project',
+      ownerType: toPersistedConnectorOwnerType('workspace'),
       ownerId: null,
       label: connector.name,
       status: 'active',
@@ -364,7 +365,7 @@ export async function ensureDefaultProfile(input: {
 
 /** Store/replace a credential. `userId=null` = shared; set = that member's own. */
 export async function upsertCredential(opts: {
-  projectId: string;
+  workspaceId: string;
   connectorId: string;
   userId: string | null;
   value: string;
@@ -372,7 +373,7 @@ export async function upsertCredential(opts: {
   createdBy?: string | null;
 }): Promise<void> {
   const profileId = await ensureDefaultProfile(opts);
-  const valueEnc = encryptProjectSecret(opts.projectId, opts.value);
+  const valueEnc = encryptWorkspaceSecret(opts.workspaceId, opts.value);
   const [existing] = await db
     .select({ id: executorCredentials.credentialId })
     .from(executorCredentials)
@@ -408,7 +409,7 @@ export async function upsertCredential(opts: {
 
 export async function upsertOAuth2Credential(
   opts: {
-    projectId: string;
+    workspaceId: string;
     connectorId: string;
     userId: string | null;
     oauth2: OAuth2ClientCredentials;
@@ -420,7 +421,7 @@ export async function upsertOAuth2Credential(
     ? await runtime.acquire(opts.oauth2)
     : await acquireOAuth2ClientCredentialsToken(opts.oauth2);
   await upsertCredential({
-    projectId: opts.projectId,
+    workspaceId: opts.workspaceId,
     connectorId: opts.connectorId,
     userId: opts.userId,
     value: createStoredOAuth2Credential(opts.oauth2, token),

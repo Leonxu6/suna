@@ -281,7 +281,7 @@ describe('legacy → per-seat adoption (regression)', () => {
   // A legacy/machine account migrates to per-seat. The new per-seat sub has a
   // different id and carries metadata.billing_model='per_seat' but no tier_key /
   // previous_subscription_id, so the stale-sub guard used to drop it — stranding
-  // the account on the (now cancelled) machine sub: tier=free, project-capped.
+  // the account on the (now cancelled) machine sub: tier=free, workspace-capped.
   test('legacy/machine account adopts an incoming active per-seat sub instead of skipping it', async () => {
     mockRegistry.getCreditAccount = async () =>
       createMockCreditAccount({

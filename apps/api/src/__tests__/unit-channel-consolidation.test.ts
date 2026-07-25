@@ -11,8 +11,8 @@ import {
   extractConnectors,
   SLACK_RESERVED_SLUG,
   RESERVED_CONNECTOR_SLUGS,
-} from '../projects/connectors';
-import { KNOWN_SCHEMA_VERSION, parseManifestString } from '../projects/triggers';
+} from '../workspaces/connectors';
+import { KNOWN_SCHEMA_VERSION, parseManifestString } from '../workspaces/triggers';
 import {
   hideSupersededSlack,
   withChannelDeclaration,
@@ -20,7 +20,7 @@ import {
 } from '../executor/channel-rules';
 
 function parse(body: string) {
-  const src = [`kortix_version: ${KNOWN_SCHEMA_VERSION}`, 'project:\n  name: t', body].join('\n');
+  const src = [`kortix_version: ${KNOWN_SCHEMA_VERSION}`, 'workspace:\n  name: t', body].join('\n');
   return extractConnectors(parseManifestString(src, 'yaml', 'kortix.yaml'));
 }
 

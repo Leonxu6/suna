@@ -6,7 +6,7 @@
  * Steps:
  *   1. Find an existing user/account in the DB.
  *   2. Mint a kortix_pat_... token and insert it into account_tokens.
- *   3. Hit GET /v1/accounts/me + GET /v1/projects with that token.
+ *   3. Hit GET /v1/accounts/me + GET /v1/workspaces with that token.
  *   4. Revoke the token; confirm /me now returns 401.
  *   5. Clean up the test row.
  *
@@ -68,7 +68,7 @@ async function callApi<T>(token: string, path: string): Promise<{ status: number
 }
 
 async function main() {
-  process.stdout.write('\n  \x1b[1mKortix CLI E2E\x1b[0m  (account tokens → /accounts/me → /projects)\n');
+  process.stdout.write('\n  \x1b[1mKortix CLI E2E\x1b[0m  (account tokens → /accounts/me → /workspaces)\n');
   dim('api', API_BASE);
 
   const { user_id, account_id } = await pickUserAndAccount();
@@ -92,10 +92,10 @@ async function main() {
   if (me.body?.user_id !== user_id) die(`/me user_id mismatch: got ${me.body?.user_id}`);
   ok(`GET /v1/accounts/me → 200 (user_id matches, ${me.body.accounts.length} accounts)`);
 
-  // /projects
-  const projects = await callApi<unknown[]>(secretKey, '/projects');
-  if (projects.status !== 200) die(`/projects → ${projects.status} ${JSON.stringify(projects.body)}`);
-  ok(`GET /v1/projects → 200 (${(projects.body ?? []).length} project(s))`);
+  // /workspaces
+  const workspaces = await callApi<unknown[]>(secretKey, '/workspaces');
+  if (workspaces.status !== 200) die(`/workspaces → ${workspaces.status} ${JSON.stringify(workspaces.body)}`);
+  ok(`GET /v1/workspaces → 200 (${(workspaces.body ?? []).length} workspace(s))`);
 
   // /accounts/tokens (list — should include the one we just minted)
   const tokens = await callApi<Array<{ name: string }>>(secretKey, '/accounts/tokens');

@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { createHmac } from 'node:crypto';
 
 let loadSigningSecretCalls = 0;
-let projectSigningSecret: string | null = null;
+let workspaceSigningSecret: string | null = null;
 const handledBlockActions: unknown[] = [];
 
 mock.module('../channels/install-store', () => ({
@@ -14,18 +14,18 @@ mock.module('../channels/install-store', () => ({
   TELEGRAM_BOT_TOKEN: 'TELEGRAM_BOT_TOKEN',
   TELEGRAM_WEBHOOK_SECRET: 'TELEGRAM_WEBHOOK_SECRET',
   deleteSlackInstall: async () => {},
-  listProjectsForWorkspace: async () => ['proj-1'],
+  listWorkspacesForWorkspace: async () => ['proj-1'],
   loadSlackInstall: async () => null,
-  loadSlackBotUserIdForProject: async () => 'B1',
-  loadSlackSigningSecretForProject: async () => {
+  loadSlackBotUserIdForWorkspace: async () => 'B1',
+  loadSlackSigningSecretForWorkspace: async () => {
     loadSigningSecretCalls++;
-    return projectSigningSecret;
+    return workspaceSigningSecret;
   },
-  loadSlackTeamNameForProject: async () => null,
-  loadSlackTokenForProject: async () => 'xoxb-test',
-  loadTelegramWebhookSecretForProject: async () => null,
-  saveSlackInstall: async () => ({ workspaceId: 'T1', workspaceName: 'Test', botUserId: 'B1', installedAt: new Date().toISOString() }),
-  saveSlackOauthInstall: async () => ({ workspaceId: 'T1', workspaceName: 'Test', botUserId: 'B1', installedAt: new Date().toISOString() }),
+  loadSlackTeamNameForWorkspace: async () => null,
+  loadSlackTokenForWorkspace: async () => 'xoxb-test',
+  loadTelegramWebhookSecretForWorkspace: async () => null,
+  saveSlackInstall: async () => ({ providerWorkspaceId: 'T1', providerWorkspaceName: 'Test', botUserId: 'B1', installedAt: new Date().toISOString() }),
+  saveSlackOauthInstall: async () => ({ providerWorkspaceId: 'T1', providerWorkspaceName: 'Test', botUserId: 'B1', installedAt: new Date().toISOString() }),
 }));
 
 mock.module('../channels/slack/interactivity', () => ({
@@ -44,12 +44,12 @@ afterAll(() => {
 
 beforeEach(() => {
   loadSigningSecretCalls = 0;
-  projectSigningSecret = null;
+  workspaceSigningSecret = null;
   handledBlockActions.length = 0;
 });
 
 describe('BYO Slack Events API URL verification', () => {
-  test('answers the verification challenge before a project signing secret exists', async () => {
+  test('answers the verification challenge before a workspace signing secret exists', async () => {
     const res = await slackWebhookApp.request('/proj-1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -64,7 +64,7 @@ describe('BYO Slack Events API URL verification', () => {
     expect(loadSigningSecretCalls).toBe(0);
   });
 
-  test('still requires a project signing secret for real event callbacks', async () => {
+  test('still requires a workspace signing secret for real event callbacks', async () => {
     const res = await slackWebhookApp.request('/proj-1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -82,7 +82,7 @@ describe('BYO Slack Events API URL verification', () => {
   });
 
   test('interactivity acks block actions with an empty body', async () => {
-    projectSigningSecret = 'signing-secret';
+    workspaceSigningSecret = 'signing-secret';
     const timestamp = String(Math.floor(Date.now() / 1000));
     const payload = {
       type: 'block_actions',
@@ -91,7 +91,7 @@ describe('BYO Slack Events API URL verification', () => {
       actions: [{ action_id: 'slack_login_connect', value: '{}' }],
     };
     const body = new URLSearchParams({ payload: JSON.stringify(payload) }).toString();
-    const signature = `v0=${createHmac('sha256', projectSigningSecret)
+    const signature = `v0=${createHmac('sha256', workspaceSigningSecret)
       .update(`v0:${timestamp}:${body}`)
       .digest('hex')}`;
 

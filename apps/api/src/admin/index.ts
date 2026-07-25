@@ -217,22 +217,22 @@ adminApp.openapi(
   },
 );
 
-// ── Account projects ─────────────────────────────────────────────────────────
-// Everything an account owns on the project-first model — the support-desk
-// view: "search a user, see every project they have, click straight in."
-// Pairs with the ADMIN BYPASS button on the project access-request screen
-// (apps/web/.../project-access-boundary.tsx), which lets a platform admin
-// open one of these links even with no account/project membership.
+// ── Account workspaces ─────────────────────────────────────────────────────────
+// Everything an account owns on the workspace-first model — the support-desk
+// view: "search a user, see every workspace they have, click straight in."
+// Pairs with the ADMIN BYPASS button on the workspace access-request screen
+// (apps/web/.../workspace-access-boundary.tsx), which lets a platform admin
+// open one of these links even with no account/workspace membership.
 adminApp.openapi(
   createRoute({
     method: 'get',
-    path: '/api/accounts/{id}/projects',
+    path: '/api/accounts/{id}/workspaces',
     tags: ['admin'],
-    summary: 'List projects owned by an account',
+    summary: 'List workspaces owned by an account',
     ...auth,
     request: { params: z.object({ id: z.string() }) },
     responses: {
-      200: json(z.object({ projects: z.array(z.any()) }), 'Account projects'),
+      200: json(z.object({ workspaces: z.array(z.any()) }), 'Account workspaces'),
       500: json(z.record(z.string(), z.any()), 'Server error'),
       ...errors(401, 403),
     },
@@ -241,45 +241,45 @@ adminApp.openapi(
   try {
     const accountId = c.req.param('id');
     const { db } = await import('../shared/db');
-    const { projects, projectSessions } = await import('@kortix/db');
+    const { workspaces, workspaceSessions } = await import('@kortix/db');
     const { eq, desc, sql } = await import('drizzle-orm');
 
     const sessionCount = sql<number>`(
-      SELECT count(*)::int FROM ${projectSessions} ps WHERE ps.project_id = ${projects.projectId})`;
+      SELECT count(*)::int FROM ${workspaceSessions} ps WHERE ps.workspace_id = ${workspaces.workspaceId})`;
     const activeSessionCount = sql<number>`(
-      SELECT count(*)::int FROM ${projectSessions} ps
-      WHERE ps.project_id = ${projects.projectId}
+      SELECT count(*)::int FROM ${workspaceSessions} ps
+      WHERE ps.workspace_id = ${workspaces.workspaceId}
         AND ps.status IN ('queued', 'branching', 'provisioning', 'running'))`;
     const lastSessionAt = sql<string | null>`(
-      SELECT max(ps.updated_at) FROM ${projectSessions} ps WHERE ps.project_id = ${projects.projectId})`;
+      SELECT max(ps.updated_at) FROM ${workspaceSessions} ps WHERE ps.workspace_id = ${workspaces.workspaceId})`;
 
     const rows = await db
       .select({
-        projectId: projects.projectId,
-        name: projects.name,
-        status: projects.status,
-        repoUrl: projects.repoUrl,
-        defaultBranch: projects.defaultBranch,
-        createdAt: projects.createdAt,
-        updatedAt: projects.updatedAt,
-        lastOpenedAt: projects.lastOpenedAt,
+        workspaceId: workspaces.workspaceId,
+        name: workspaces.name,
+        status: workspaces.status,
+        repoUrl: workspaces.repoUrl,
+        defaultBranch: workspaces.defaultBranch,
+        createdAt: workspaces.createdAt,
+        updatedAt: workspaces.updatedAt,
+        lastOpenedAt: workspaces.lastOpenedAt,
         sessionCount,
         activeSessionCount,
         lastSessionAt,
       })
-      .from(projects)
-      .where(eq(projects.accountId, accountId))
-      .orderBy(desc(projects.updatedAt));
+      .from(workspaces)
+      .where(eq(workspaces.accountId, accountId))
+      .orderBy(desc(workspaces.updatedAt));
 
     return c.json({
-      projects: rows.map((r) => ({
+      workspaces: rows.map((r) => ({
         ...r,
         sessionCount: Number(r.sessionCount ?? 0),
         activeSessionCount: Number(r.activeSessionCount ?? 0),
       })),
     });
   } catch (e: any) {
-    return c.json({ projects: [], error: e?.message || String(e) }, 500);
+    return c.json({ workspaces: [], error: e?.message || String(e) }, 500);
   }
   },
 );
@@ -668,7 +668,7 @@ adminApp.openapi(
     if (st) conds.push(eq(sessionSandboxes.status, st as any));
     const rows = await db.select({
       sandboxId: sessionSandboxes.sandboxId, sessionId: sessionSandboxes.sessionId,
-      accountId: sessionSandboxes.accountId, projectId: sessionSandboxes.projectId,
+      accountId: sessionSandboxes.accountId, workspaceId: sessionSandboxes.workspaceId,
       provider: sessionSandboxes.provider, externalId: sessionSandboxes.externalId,
       status: sessionSandboxes.status, lastUsedAt: sessionSandboxes.lastUsedAt,
     }).from(sessionSandboxes).where(conds.length ? and(...conds) : undefined)
@@ -695,15 +695,15 @@ adminApp.openapi(
     const { config } = await import('../config');
     if (!(config.ALLOWED_SANDBOX_PROVIDERS as readonly string[]).includes(target)) return c.json({ error: 'invalid targetProvider' }, 400);
     const { db } = await import('../shared/db');
-    const { sessionSandboxes, projectSessions, projects } = await import('@kortix/db');
+    const { sessionSandboxes, workspaceSessions, workspaces } = await import('@kortix/db');
     const { eq } = await import('drizzle-orm');
     const [sb] = await db.select().from(sessionSandboxes).where(eq(sessionSandboxes.sessionId, sessionId)).limit(1);
     if (!sb) return c.json({ error: 'sandbox not found' }, 404);
     if (sb.provider === target) return c.json({ error: 'already on target provider' }, 400);
-    const [sess] = await db.select().from(projectSessions).where(eq(projectSessions.sessionId, sessionId)).limit(1);
+    const [sess] = await db.select().from(workspaceSessions).where(eq(workspaceSessions.sessionId, sessionId)).limit(1);
     if (!sess) return c.json({ error: 'session not found' }, 404);
-    const [proj] = await db.select().from(projects).where(eq(projects.projectId, sess.projectId)).limit(1);
-    if (!proj) return c.json({ error: 'project not found' }, 404);
+    const [proj] = await db.select().from(workspaces).where(eq(workspaces.workspaceId, sess.workspaceId)).limit(1);
+    if (!proj) return c.json({ error: 'workspace not found' }, 404);
     const oldProvider = sb.provider;
     if (sb.externalId) {
       return c.json({
@@ -717,11 +717,11 @@ adminApp.openapi(
     // A placeholder that never acquired an external provider object contains no
     // user data and can safely be reassigned.
     await db.delete(sessionSandboxes).where(eq(sessionSandboxes.sessionId, sessionId));
-    const { allocateRuntimeOnOpen } = await import('../projects/routes/shared');
+    const { allocateRuntimeOnOpen } = await import('../workspaces/routes/shared');
     await allocateRuntimeOnOpen(
       { row: proj as any, userId: sess.createdBy ?? '' },
       { sandboxProvider: target, baseRef: sess.baseRef, agentName: sess.agentName },
-      sess.projectId, sessionId,
+      sess.workspaceId, sessionId,
     );
     const { recordProviderEvent } = await import('../platform/services/provider-events');
     recordProviderEvent({

@@ -6,17 +6,17 @@
  * and disconnecting removes it.
  *
  * Best-effort by design: `synthesizeChannelConnectors` still materializes the
- * connector from the install at sync time, so a project whose repo is read-only
+ * connector from the install at sync time, so a workspace whose repo is read-only
  * or unreachable keeps working — this only makes the profile EXPLICIT where one
  * can be written. It also converts a legacy channel entry declared under the old
  * public `slack` slug to the reserved `kortix_slack` slug (the rename that closes
  * the user-connector shadowing bug). See KORTIX-206.
  */
 import { eq } from 'drizzle-orm';
-import { projects } from '@kortix/db';
+import { workspaces } from '@kortix/db';
 import { db } from '../shared/db';
-import { commitManifest, loadManifestForEdit } from '../projects/index';
-import type { ChannelPlatform } from '../projects/connectors';
+import { commitManifest, loadManifestForEdit } from '../workspaces/index';
+import type { ChannelPlatform } from '../workspaces/connectors';
 import { channelDefaultSlug, channelLabel } from './channels';
 import { withChannelDeclaration, withoutChannelDeclaration } from './channel-rules';
 
@@ -32,13 +32,13 @@ function connectorsOf(manifest: { raw: Record<string, unknown> }): Entry[] {
  * whether a commit was made. Never throws.
  */
 export async function ensureChannelConnectorDeclared(
-  projectId: string,
+  workspaceId: string,
   platform: ChannelPlatform,
   slug = channelDefaultSlug(platform),
   name = channelLabel(platform),
 ): Promise<boolean> {
   try {
-    const [row] = await db.select().from(projects).where(eq(projects.projectId, projectId)).limit(1);
+    const [row] = await db.select().from(workspaces).where(eq(workspaces.workspaceId, workspaceId)).limit(1);
     if (!row) return false;
     const manifest = await loadManifestForEdit(row).catch(() => null);
     if (!manifest) return false;
@@ -67,12 +67,12 @@ export async function ensureChannelConnectorDeclared(
  * platform was disconnected. Best-effort; never throws.
  */
 export async function removeChannelConnectorDeclared(
-  projectId: string,
+  workspaceId: string,
   platform: ChannelPlatform,
   slug = channelDefaultSlug(platform),
 ): Promise<boolean> {
   try {
-    const [row] = await db.select().from(projects).where(eq(projects.projectId, projectId)).limit(1);
+    const [row] = await db.select().from(workspaces).where(eq(workspaces.workspaceId, workspaceId)).limit(1);
     if (!row) return false;
     const manifest = await loadManifestForEdit(row).catch(() => null);
     if (!manifest) return false;

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
-import { projectSessions, sessionSandboxes } from '@kortix/db';
+import { workspaceSessions, sessionSandboxes } from '@kortix/db';
 
 const sandboxRows: Array<{ sessionId: string; externalId: string | null }> = [];
 const dbUpdates: Array<Record<string, unknown>> = [];
@@ -24,7 +24,7 @@ mock.module('../shared/db', () => ({
       set: (updates: Record<string, unknown>) => ({
         where: () => ({
           returning: async () => {
-            if (table === projectSessions) dbUpdates.push(updates);
+            if (table === workspaceSessions) dbUpdates.push(updates);
             return [];
           },
         }),
@@ -33,7 +33,7 @@ mock.module('../shared/db', () => ({
   },
 }));
 
-mock.module('../projects/opencode-mapping', () => ({
+mock.module('../workspaces/opencode-mapping', () => ({
   listSandboxOpencodeSessions: async (externalId: string) => {
     if (hangForExternalIds.has(externalId)) {
       return new Promise(() => {});
@@ -59,7 +59,7 @@ mock.module('../projects/opencode-mapping', () => ({
 }));
 
 const { syncOpenCodeTitlesForSessions, isPlaceholderOpencodeTitle } = await import(
-  '../projects/opencode-title-sync'
+  '../workspaces/opencode-title-sync'
 );
 
 afterEach(() => {
@@ -73,7 +73,7 @@ afterEach(() => {
 function row(overrides: Record<string, unknown> = {}) {
   return {
     sessionId: 'session-1',
-    projectId: 'project-1',
+    workspaceId: 'workspace-1',
     accountId: 'account-1',
     opencodeSessionId: null,
     metadata: {},
@@ -106,7 +106,7 @@ describe('syncOpenCodeTitlesForSessions', () => {
 
     const [synced] = await syncOpenCodeTitlesForSessions({
       rows: [row()],
-      projectId: 'project-1',
+      workspaceId: 'workspace-1',
       accountId: 'account-1',
       userId: 'user-1',
     });
@@ -121,7 +121,7 @@ describe('syncOpenCodeTitlesForSessions', () => {
 
     const [synced] = await syncOpenCodeTitlesForSessions({
       rows: [row({ metadata: { name: 'New session - 2026-06-29T10:00:00Z' } })],
-      projectId: 'project-1',
+      workspaceId: 'workspace-1',
       accountId: 'account-1',
       userId: 'user-1',
     });
@@ -144,7 +144,7 @@ describe('syncOpenCodeTitlesForSessions', () => {
 
     const [synced] = await syncOpenCodeTitlesForSessions({
       rows: [row()],
-      projectId: 'project-1',
+      workspaceId: 'workspace-1',
       accountId: 'account-1',
       userId: 'user-1',
     });
@@ -157,7 +157,7 @@ describe('syncOpenCodeTitlesForSessions', () => {
         id: 'child-1',
         title: 'Follow-up',
         parent_id: 'root-1',
-        project_id: null,
+        workspace_id: null,
         created_at: 2,
         updated_at: 20,
         archived_at: null,
@@ -166,7 +166,7 @@ describe('syncOpenCodeTitlesForSessions', () => {
         id: 'root-1',
         title: 'Generated title',
         parent_id: null,
-        project_id: null,
+        workspace_id: null,
         created_at: 1,
         updated_at: 10,
         archived_at: null,
@@ -184,7 +184,7 @@ describe('syncOpenCodeTitlesForSessions', () => {
 
     const [synced] = await syncOpenCodeTitlesForSessions({
       rows: [row({ metadata: { name: 'Previous title' } })],
-      projectId: 'project-1',
+      workspaceId: 'workspace-1',
       accountId: 'account-1',
       userId: 'user-1',
     });
@@ -210,7 +210,7 @@ describe('syncOpenCodeTitlesForSessions', () => {
         row({ sessionId: 'ok-session', metadata: {} }),
         row({ sessionId: 'bad-session', metadata: { name: 'Kept' }, opencodeSessionId: 'pin-bad' }),
       ],
-      projectId: 'project-1',
+      workspaceId: 'workspace-1',
       accountId: 'account-1',
       userId: 'user-1',
     });
@@ -237,7 +237,7 @@ describe('syncOpenCodeTitlesForSessions', () => {
 
     const result = await syncOpenCodeTitlesForSessions({
       rows: [original],
-      projectId: 'project-1',
+      workspaceId: 'workspace-1',
       accountId: 'account-1',
       userId: 'user-1',
       deadlineMs: 10,

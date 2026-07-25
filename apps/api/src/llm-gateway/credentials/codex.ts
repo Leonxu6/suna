@@ -1,7 +1,7 @@
 import { and, eq, isNull, or } from 'drizzle-orm';
-import { projectSecrets } from '@kortix/db';
+import { workspaceSecrets } from '@kortix/db';
 import { db } from '../../shared/db';
-import { decryptProjectSecret, encryptProjectSecret } from '../../projects/secrets';
+import { decryptWorkspaceSecret, encryptWorkspaceSecret } from '../../workspaces/secrets';
 import {
   CodexRefreshError,
   OPENAI_AUTH_BASE,
@@ -27,18 +27,18 @@ interface SecretRow {
   valueEnc: string;
 }
 
-async function loadCodexRow(projectId: string, userId: string): Promise<SecretRow | null> {
+async function loadCodexRow(workspaceId: string, userId: string): Promise<SecretRow | null> {
   const rows = await db
     .select({
-      secretId: projectSecrets.secretId,
-      ownerUserId: projectSecrets.ownerUserId,
-      valueEnc: projectSecrets.valueEnc,
+      secretId: workspaceSecrets.secretId,
+      ownerUserId: workspaceSecrets.ownerUserId,
+      valueEnc: workspaceSecrets.valueEnc,
     })
-    .from(projectSecrets)
+    .from(workspaceSecrets)
     .where(and(
-      eq(projectSecrets.projectId, projectId),
-      eq(projectSecrets.name, CODEX_AUTH_JSON_SECRET_NAME),
-      or(isNull(projectSecrets.ownerUserId), eq(projectSecrets.ownerUserId, userId)),
+      eq(workspaceSecrets.workspaceId, workspaceId),
+      eq(workspaceSecrets.name, CODEX_AUTH_JSON_SECRET_NAME),
+      or(isNull(workspaceSecrets.ownerUserId), eq(workspaceSecrets.ownerUserId, userId)),
     ));
   if (!rows.length) return null;
   return rows.find((r) => r.ownerUserId === userId) ?? rows.find((r) => r.ownerUserId === null) ?? null;
@@ -47,7 +47,7 @@ async function loadCodexRow(projectId: string, userId: string): Promise<SecretRo
 const inflightRefresh = new Map<string, Promise<StoredCodexAuth | null>>();
 
 async function refreshAndPersist(
-  projectId: string,
+  workspaceId: string,
   row: SecretRow,
   current: StoredCodexAuth,
   fetchImpl: FetchImpl,
@@ -73,40 +73,40 @@ async function refreshAndPersist(
   if (!next) throw new CodexRefreshError('refresh response missing access token', response.status);
 
   await db
-    .update(projectSecrets)
-    .set({ valueEnc: encryptProjectSecret(projectId, JSON.stringify({ openai: next })), updatedAt: new Date() })
-    .where(eq(projectSecrets.secretId, row.secretId));
+    .update(workspaceSecrets)
+    .set({ valueEnc: encryptWorkspaceSecret(workspaceId, JSON.stringify({ openai: next })), updatedAt: new Date() })
+    .where(eq(workspaceSecrets.secretId, row.secretId));
 
   return next;
 }
 
 function refreshSingleFlight(
-  projectId: string,
+  workspaceId: string,
   row: SecretRow,
   current: StoredCodexAuth,
   fetchImpl: FetchImpl,
 ): Promise<StoredCodexAuth | null> {
   const existing = inflightRefresh.get(row.secretId);
   if (existing) return existing;
-  const pending = refreshAndPersist(projectId, row, current, fetchImpl).finally(() => inflightRefresh.delete(row.secretId));
+  const pending = refreshAndPersist(workspaceId, row, current, fetchImpl).finally(() => inflightRefresh.delete(row.secretId));
   inflightRefresh.set(row.secretId, pending);
   return pending;
 }
 
 export async function resolveCodexCredential(
-  projectId: string,
+  workspaceId: string,
   userId: string,
   fetchImpl: FetchImpl = (input, init) => fetch(input, init),
 ): Promise<CodexCredential | null> {
-  const row = await loadCodexRow(projectId, userId);
+  const row = await loadCodexRow(workspaceId, userId);
   if (!row) return null;
 
-  let stored = parseCodexAuth(decryptProjectSecret(projectId, row.valueEnc));
+  let stored = parseCodexAuth(decryptWorkspaceSecret(workspaceId, row.valueEnc));
   if (!stored?.access) return null;
 
   if (needsRefresh(stored, Date.now())) {
     try {
-      const refreshed = await refreshSingleFlight(projectId, row, stored, fetchImpl);
+      const refreshed = await refreshSingleFlight(workspaceId, row, stored, fetchImpl);
       if (refreshed?.access) stored = refreshed;
     } catch (err) {
       // Grace period: a refresh blip shouldn't fail every Codex request. If the

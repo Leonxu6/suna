@@ -1,6 +1,6 @@
 /**
  * @kortix/executor-sdk — full unit coverage with an injected fetch (no network).
- * Exercises construction/validation, project-explicit vs flat route selection,
+ * Exercises construction/validation, workspace-explicit vs flat route selection,
  * call/connectors/tools/discover/describe, error mapping (ExecutorError), the
  * URL normalization + path joining, and response-body parsing.
  */
@@ -85,10 +85,10 @@ describe('apiUrl normalization', () => {
   });
 });
 
-/* ─── route selection: project-explicit vs flat ───────────────────────────── */
+/* ─── route selection: workspace-explicit vs flat ─────────────────────────── */
 
 describe('route selection', () => {
-  test('flat routes when no projectId', async () => {
+  test('flat routes when no workspaceId', async () => {
     const { fetchImpl, calls } = harness((url) =>
       url.includes('/call') ? { body: { ok: true, data: 1 } } : { body: { connectors: [] } },
     );
@@ -99,20 +99,26 @@ describe('route selection', () => {
     expect(calls[1]!.url).toBe('http://x/v1/executor/call');
   });
 
-  test('project-explicit routes when projectId set (+ encoded)', async () => {
+  test('workspace-explicit routes when workspaceId set (+ encoded)', async () => {
     const { fetchImpl, calls } = harness((url) =>
       url.includes('/call') ? { body: { ok: true } } : { body: { connectors: [] } },
     );
-    const c = createExecutorClient({ apiUrl: 'http://x', token: 't', projectId: 'p/1', fetchImpl });
+    const c = createExecutorClient({ apiUrl: 'http://x', token: 't', workspaceId: 'w/1', fetchImpl });
     await c.connectors();
     await c.call('slack', 'auth_test');
-    expect(calls[0]!.url).toBe('http://x/v1/executor/projects/p%2F1/catalog');
-    expect(calls[1]!.url).toBe('http://x/v1/executor/projects/p%2F1/call');
+    expect(calls[0]!.url).toBe('http://x/v1/executor/workspaces/w%2F1/catalog');
+    expect(calls[1]!.url).toBe('http://x/v1/executor/workspaces/w%2F1/call');
   });
 
-  test('blank projectId falls back to flat', async () => {
+  test('deprecated projectId selects the canonical workspace route', async () => {
     const { fetchImpl, calls } = harness(() => ({ body: { connectors: [] } }));
-    await createExecutorClient({ apiUrl: 'http://x', token: 't', projectId: '   ', fetchImpl }).connectors();
+    await createExecutorClient({ apiUrl: 'http://x', token: 't', projectId: 'p/1', fetchImpl }).connectors();
+    expect(calls[0]!.url).toBe('http://x/v1/executor/workspaces/p%2F1/catalog');
+  });
+
+  test('blank workspaceId falls back to flat', async () => {
+    const { fetchImpl, calls } = harness(() => ({ body: { connectors: [] } }));
+    await createExecutorClient({ apiUrl: 'http://x', token: 't', workspaceId: '   ', fetchImpl }).connectors();
     expect(calls[0]!.url).toBe('http://x/v1/executor/connectors');
   });
 });

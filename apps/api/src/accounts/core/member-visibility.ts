@@ -6,7 +6,7 @@
  *
  * `canSeeSensitiveMemberColumns` decides who may see the sensitive per-member
  * columns — active PAT count, verified-MFA flag, group memberships, and explicit
- * project grants: only member-managers (owners/admins, or anyone granted
+ * workspace grants: only member-managers (owners/admins, or anyone granted
  * `member.invite`) and the viewer's OWN row.
  *
  * Pure and dependency-free so it can be unit-tested in isolation.

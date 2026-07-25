@@ -136,7 +136,7 @@ describe('selectSnapshotsToReap — safety invariants', () => {
   // evicts idle ppwarm tips these cases expect to survive — covered separately below.
   const UNDER_TARGET = QUOTA_GC_ORG_TARGET - 1;
 
-  it('keeps the freshest ppwarm tip per project and reaps its stragglers', () => {
+  it('keeps the freshest ppwarm tip per workspace and reaps its stragglers', () => {
     const all = padToOrgSize(
       [
         snap('kortix-ppwarm-0945686d-new', { lastUsedAt: ago(1) }),
@@ -150,12 +150,12 @@ describe('selectSnapshotsToReap — safety invariants', () => {
     expect(reaped).not.toContain('kortix-ppwarm-0945686d-new');
     expect(reaped).toContain('kortix-ppwarm-0945686d-old');
     expect(reaped).toContain('kortix-ppwarm-0945686d-older');
-    // A project's only tip is live until proven idle.
+    // A workspace's only tip is live until proven idle.
     expect(reaped).not.toContain('kortix-ppwarm-ffffffff-solo');
   });
 
   // Two concurrently-live code versions produce two live warm names for the SAME
-  // project (different base identities). The freshly-built "superseded" one is
+  // workspace (different base identities). The freshly-built "superseded" one is
   // very likely the other runtime's CURRENT tip — deleting it triggers an
   // immediate full re-bake (churn), and symmetric reaps loop forever.
   it('spares a freshly-built "superseded" ppwarm tip (mixed-version protection)', () => {
@@ -210,8 +210,8 @@ describe('selectSnapshotsToReap — safety invariants', () => {
 
 /**
  * The live shape on 2026-07-08: 69 ppwarm tips for 69 distinct, non-archived
- * projects + 22 stock images + 13 defaults + 3 templates = 107, over the 100 cap.
- * Every liveness rule reclaims nothing (each tip is a live project's only tip), so
+ * workspaces + 22 stock images + 13 defaults + 3 templates = 107, over the 100 cap.
+ * Every liveness rule reclaims nothing (each tip is a live workspace's only tip), so
  * a purely liveness-based GC sat at 100% pressure doing nothing. ppwarm is a pure
  * cache, so it must absorb budget pressure — or say it cannot.
  */
@@ -259,7 +259,7 @@ describe('selectSnapshotsToReap — ppwarm LRU budget', () => {
     expect(reaped).not.toContain('kortix-ppwarm-bbbbbbbb-tip');
   });
 
-  // Evicting a hot project's tip frees a slot it reclaims on its next session:
+  // Evicting a hot workspace's tip frees a slot it reclaims on its next session:
   // churn, not reclamation.
   it('never evicts a recently-used ppwarm tip, even under pressure', () => {
     const res = run(liveOrg(69, 1)); // every tip used an hour ago
@@ -283,8 +283,8 @@ describe('selectSnapshotsToReap — FIX-K-lite pinned-image guard', () => {
   const ppw = (proj: string, hash: string, days: number, extra: Partial<SnapshotLike> = {}) =>
     snap(`kortix-ppwarm-${proj}-${hash}`, { lastUsedAt: ago(days), createdAt: ago(days), ...extra });
 
-  it("never reaps a project's LIVE pinned tip even when a proj8 collision makes it look superseded", () => {
-    // Projects A and B collide on proj8 (both `c0111ab e`). A's superseded-tip
+  it("never reaps a workspace's LIVE pinned tip even when a proj8 collision makes it look superseded", () => {
+    // Workspaces A and B collide on proj8 (both `c0111ab e`). A's superseded-tip
     // selection sweeps up B's LIVE pinned tip over the org-wide list — the bug.
     const current = ppw('c0111abe', 'aaaaaaaaaaaa', 1); // A's freshest tip (kept)
     const aSuperseded = ppw('c0111abe', 'bbbbbbbbbbbb', 3); // A's genuinely stale tip

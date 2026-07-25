@@ -1,5 +1,5 @@
 // IAM V2 routes: super-admin promotion + per-member views (group
-// memberships, effective project access, single + batch permission probes).
+// memberships, effective workspace access, single + batch permission probes).
 
 import { createRoute, z } from '@hono/zod-openapi';
 import { json, errors, auth } from '../../openapi';
@@ -7,9 +7,9 @@ import { and, eq, inArray } from 'drizzle-orm';
 import {
   accountGroupMembers,
   accountMembers,
-  projectGroupGrants,
-  projectMembers,
-  projects,
+  workspaceGroupGrants,
+  workspaceMembers,
+  workspaces,
 } from '@kortix/db';
 import { db } from '../../shared/db';
 import { logger } from '../../lib/logger';
@@ -26,7 +26,7 @@ import {
   iamRouter,
   MemberParams,
   GroupSchema,
-  ProjectAccessSchema,
+  WorkspaceAccessSchema,
   EffectiveResultSchema,
   EffectiveBatchResultSchema,
   isResourceType,
@@ -158,24 +158,24 @@ iamRouter.openapi(
   },
 );
 
-// V2-only: which projects does this member reach, and at what role?
-// Combines three sources, max-role per project:
+// V2-only: which workspaces does this member reach, and at what role?
+// Combines three sources, max-role per workspace:
 //   1. account_members.account_role of 'owner' or 'admin' → implicit
-//      Manager on every active project in the account
-//   2. direct project_members.project_role rows
-//   3. project_group_grants for any group the user belongs to
+//      Manager on every active workspace in the account
+//   2. direct workspace_members.workspace_role rows
+//   3. workspace_group_grants for any group the user belongs to
 // V1 callers can use the route too — the data is real either way — but
 // the V1 UI doesn't surface it (PoliciesTable is the equivalent V1 view).
 iamRouter.openapi(
   createRoute({
     method: 'get',
-    path: '/{accountId}/iam/members/{userId}/project-access',
+    path: '/{accountId}/iam/members/{userId}/workspace-access',
     tags: ['iam'],
-    summary: 'List effective project access for a member',
+    summary: 'List effective workspace access for a member',
     ...auth,
     request: { params: MemberParams },
     responses: {
-      200: json(z.object({ projects: z.array(ProjectAccessSchema) }), 'Projects the member can reach'),
+      200: json(z.object({ workspaces: z.array(WorkspaceAccessSchema) }), 'Workspaces the member can reach'),
       ...errors(401, 403),
     },
   }),
@@ -195,16 +195,16 @@ iamRouter.openapi(
   const asRole = (raw: string): Role =>
     raw === 'viewer' || raw === 'user' ? 'member' : (raw as Role);
 
-  // Project info we'll need for every row in the response.
-  const allProjects = await db
+  // Workspace info we'll need for every row in the response.
+  const allWorkspaces = await db
     .select({
-      projectId: projects.projectId,
-      name: projects.name,
-      status: projects.status,
+      workspaceId: workspaces.workspaceId,
+      name: workspaces.name,
+      status: workspaces.status,
     })
-    .from(projects)
-    .where(eq(projects.accountId, accountId));
-  const projectMeta = new Map(allProjects.map((p) => [p.projectId, p] as const));
+    .from(workspaces)
+    .where(eq(workspaces.accountId, accountId));
+  const workspaceMeta = new Map(allWorkspaces.map((p) => [p.workspaceId, p] as const));
 
   // 1) implicit manager via account_role
   const [membership] = await db
@@ -218,41 +218,41 @@ iamRouter.openapi(
     )
     .limit(1);
   if (!membership) {
-    return c.json({ projects: [] });
+    return c.json({ workspaces: [] });
   }
 
-  const byProject = new Map<
+  const byWorkspace = new Map<
     string,
     { role: Role; sources: ('implicit' | 'direct' | 'group')[] }
   >();
   if (membership.accountRole === 'owner' || membership.accountRole === 'admin') {
-    for (const p of allProjects) {
+    for (const p of allWorkspaces) {
       if (p.status !== 'active') continue;
-      byProject.set(p.projectId, { role: 'manager', sources: ['implicit'] });
+      byWorkspace.set(p.workspaceId, { role: 'manager', sources: ['implicit'] });
     }
   }
 
-  // 2) direct project_members rows
+  // 2) direct workspace_members rows
   const directRows = await db
     .select({
-      projectId: projectMembers.projectId,
-      role: projectMembers.projectRole,
+      workspaceId: workspaceMembers.workspaceId,
+      role: workspaceMembers.workspaceRole,
     })
-    .from(projectMembers)
+    .from(workspaceMembers)
     .where(
       and(
-        eq(projectMembers.accountId, accountId),
-        eq(projectMembers.userId, targetUserId),
+        eq(workspaceMembers.accountId, accountId),
+        eq(workspaceMembers.userId, targetUserId),
       ),
     );
   for (const r of directRows) {
     const role = asRole(r.role);
-    const cur = byProject.get(r.projectId);
+    const cur = byWorkspace.get(r.workspaceId);
     if (cur) {
       cur.role = max(cur.role, role);
       if (!cur.sources.includes('direct')) cur.sources.push('direct');
     } else {
-      byProject.set(r.projectId, { role, sources: ['direct'] });
+      byWorkspace.set(r.workspaceId, { role, sources: ['direct'] });
     }
   }
 
@@ -265,46 +265,46 @@ iamRouter.openapi(
   if (groupIds.length > 0) {
     const grantRows = await db
       .select({
-        projectId: projectGroupGrants.projectId,
-        role: projectGroupGrants.role,
+        workspaceId: workspaceGroupGrants.workspaceId,
+        role: workspaceGroupGrants.role,
       })
-      .from(projectGroupGrants)
+      .from(workspaceGroupGrants)
       .where(
         and(
-          eq(projectGroupGrants.accountId, accountId),
-          inArray(projectGroupGrants.groupId, groupIds),
+          eq(workspaceGroupGrants.accountId, accountId),
+          inArray(workspaceGroupGrants.groupId, groupIds),
         ),
       );
     for (const r of grantRows) {
       const role = asRole(r.role);
-      const cur = byProject.get(r.projectId);
+      const cur = byWorkspace.get(r.workspaceId);
       if (cur) {
         cur.role = max(cur.role, role);
         if (!cur.sources.includes('group')) cur.sources.push('group');
       } else {
-        byProject.set(r.projectId, { role, sources: ['group'] });
+        byWorkspace.set(r.workspaceId, { role, sources: ['group'] });
       }
     }
   }
 
   const out: Array<{
-    project_id: string;
-    project_name: string;
+    workspace_id: string;
+    workspace_name: string;
     role: Role;
     sources: ('implicit' | 'direct' | 'group')[];
   }> = [];
-  for (const [projectId, info] of byProject) {
-    const meta = projectMeta.get(projectId);
+  for (const [workspaceId, info] of byWorkspace) {
+    const meta = workspaceMeta.get(workspaceId);
     if (!meta || meta.status !== 'active') continue;
     out.push({
-      project_id: projectId,
-      project_name: meta.name,
+      workspace_id: workspaceId,
+      workspace_name: meta.name,
       role: info.role,
       sources: info.sources,
     });
   }
-  out.sort((a, b) => a.project_name.localeCompare(b.project_name));
-  return c.json({ projects: out });
+  out.sort((a, b) => a.workspace_name.localeCompare(b.workspace_name));
+  return c.json({ workspaces: out });
   },
 );
 

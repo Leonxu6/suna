@@ -1,5 +1,5 @@
 /**
- * Pure project-secret sharing logic — the 3 dashboard options + group grants.
+ * Pure workspace-secret sharing logic — the 3 dashboard options + group grants.
  */
 import { describe, expect, test } from 'bun:test';
 import {
@@ -26,7 +26,7 @@ describe('parseSharingIntent — untrusted body → intent (HTTP gate)', () => {
     expect(out).toEqual({ mode: 'members', memberIds: ['u1'], groupIds: ['g1', 'g2'] });
   });
 
-  test('department-only body survives (not silently downgraded to project)', () => {
+  test('department-only body survives (not silently downgraded to workspace)', () => {
     expect(parseSharingIntent({ mode: 'members', groupIds: ['g1'] }, ALICE)).toEqual({
       mode: 'members',
       memberIds: [],
@@ -34,15 +34,15 @@ describe('parseSharingIntent — untrusted body → intent (HTTP gate)', () => {
     });
   });
 
-  test('private falls back ownerId to the calling user; project ignores lists', () => {
+  test('private falls back ownerId to the calling user; workspace ignores lists', () => {
     expect(parseSharingIntent({ mode: 'private' }, ALICE)).toEqual({ mode: 'private', ownerId: ALICE });
-    expect(parseSharingIntent({ mode: 'project', memberIds: ['x'] }, ALICE)).toEqual({ mode: 'project' });
+    expect(parseSharingIntent({ mode: 'workspace', memberIds: ['x'] }, ALICE)).toEqual({ mode: 'workspace' });
   });
 });
 
 describe('isSecretUsableBy', () => {
-  test('project scope → everyone', () => {
-    expect(isSecretUsableBy('project', [], { userId: ALICE, groupIds: [] })).toBe(true);
+  test('workspace scope → everyone', () => {
+    expect(isSecretUsableBy('workspace', [], { userId: ALICE, groupIds: [] })).toBe(true);
   });
 
   test('restricted → only listed member', () => {
@@ -63,8 +63,8 @@ describe('isSecretUsableBy', () => {
 });
 
 describe('intentToScope — the 3 options', () => {
-  test('project wide', () => {
-    expect(intentToScope({ mode: 'project' })).toEqual({ shareScope: 'project', grants: [] });
+  test('workspace wide', () => {
+    expect(intentToScope({ mode: 'workspace' })).toEqual({ shareScope: 'workspace', grants: [] });
   });
 
   test('just me → restricted, single member grant', () => {
@@ -85,17 +85,17 @@ describe('intentToScope — the 3 options', () => {
     });
   });
 
-  test('select members with empty allow-list collapses to project-wide', () => {
+  test('select members with empty allow-list collapses to workspace-wide', () => {
     expect(intentToScope({ mode: 'members', memberIds: [], groupIds: [] })).toEqual({
-      shareScope: 'project',
+      shareScope: 'workspace',
       grants: [],
     });
   });
 });
 
 describe('scopeToIntent — round-trip for the dashboard', () => {
-  test('project', () => {
-    expect(scopeToIntent('project', [])).toEqual({ mode: 'project' });
+  test('workspace', () => {
+    expect(scopeToIntent('workspace', [])).toEqual({ mode: 'workspace' });
   });
 
   test('single member → private', () => {
@@ -116,7 +116,7 @@ describe('scopeToIntent — round-trip for the dashboard', () => {
 
   test('intent → scope → intent is stable', () => {
     for (const intent of [
-      { mode: 'project' } as const,
+      { mode: 'workspace' } as const,
       { mode: 'private', ownerId: ALICE } as const,
       { mode: 'members', memberIds: [ALICE, BOB], groupIds: [SALES] } as const,
     ]) {
@@ -132,8 +132,8 @@ describe('session sharing — default private; team-wide or select-members', () 
     expect(isSessionVisibleTo('private', ALICE, [], { userId: BOB, groupIds: [] })).toBe(false);
   });
 
-  test('project visibility → every member', () => {
-    expect(isSessionVisibleTo('project', ALICE, [], { userId: BOB, groupIds: [] })).toBe(true);
+  test('workspace visibility → every member', () => {
+    expect(isSessionVisibleTo('workspace', ALICE, [], { userId: BOB, groupIds: [] })).toBe(true);
   });
 
   test('restricted → owner + member/group grants only', () => {
@@ -147,7 +147,7 @@ describe('session sharing — default private; team-wide or select-members', () 
   });
 
   test('intent ⇄ visibility round-trips', () => {
-    expect(sessionIntentToVisibility({ mode: 'project' })).toEqual({ visibility: 'project', grants: [] });
+    expect(sessionIntentToVisibility({ mode: 'workspace' })).toEqual({ visibility: 'workspace', grants: [] });
     expect(sessionIntentToVisibility({ mode: 'private', ownerId: ALICE })).toEqual({ visibility: 'private', grants: [] });
     // Empty members collapses to private (owner only).
     expect(sessionIntentToVisibility({ mode: 'members', memberIds: [] })).toEqual({ visibility: 'private', grants: [] });
@@ -155,7 +155,7 @@ describe('session sharing — default private; team-wide or select-members', () 
     expect(members.visibility).toBe('restricted');
     expect(members.grants).toHaveLength(2);
 
-    expect(visibilityToIntent('project', [])).toEqual({ mode: 'project' });
+    expect(visibilityToIntent('workspace', [])).toEqual({ mode: 'workspace' });
     expect(visibilityToIntent('private', [])).toEqual({ mode: 'private', ownerId: '' });
     expect(visibilityToIntent('restricted', members.grants)).toEqual({ mode: 'members', memberIds: [BOB], groupIds: [SALES] });
   });

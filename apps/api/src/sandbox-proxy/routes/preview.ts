@@ -3,9 +3,9 @@ import { HTTPException } from 'hono/http-exception';
 import { config } from '../../config';
 import { getTraceHeaders } from '../../lib/request-context';
 import type { ProviderName } from '../../platform/providers';
-import { syncSandboxEnvForPrompt } from '../../projects/lib/sandbox-env-sync';
-import { scheduleTitleCaptureAfterPrompt } from '../../projects/opencode-title-capture';
-import { resumeStoppedSandboxByExternalId } from '../../projects/routes/shared';
+import { syncSandboxEnvForPrompt } from '../../workspaces/lib/sandbox-env-sync';
+import { scheduleTitleCaptureAfterPrompt } from '../../workspaces/opencode-title-capture';
+import { resumeStoppedSandboxByExternalId } from '../../workspaces/routes/shared';
 import { canAccessPreviewSandbox, canAccessSandboxSession } from '../../shared/preview-ownership';
 import { KORTIX_USER_CONTEXT_HEADER } from '../../shared/kortix-user-context';
 import {
@@ -86,8 +86,8 @@ function stripFrameAncestors(csp: string): string | null {
 // embedded in the Kortix session UI via an <iframe>, so any app that ships
 // `X-Frame-Options` or a CSP `frame-ancestors` (Next.js, and most frameworks,
 // default to these) would otherwise refuse to load in the panel. Stripping them
-// at the proxy makes embedding work for ANY project without per-app config —
-// the same project-agnostic approach as the origin/host re-origination above.
+// at the proxy makes embedding work for ANY workspace without per-app config —
+// the same workspace-agnostic approach as the origin/host re-origination above.
 // This is safe for previews: access is already gated by the preview token +
 // ownership check, so they aren't world-framable.
 function clientResponseHeaders(upstreamHeaders: Headers, origin: string): Headers {
@@ -291,9 +291,9 @@ function sanitizeRedirectLocation(
   }
 }
 
-// === Project-env pre-sync (before a prompt reaches opencode) ===
+// === Workspace-env pre-sync (before a prompt reaches opencode) ===
 
-function shouldSyncProjectEnvBeforeProxy(port: number, method: string, path: string): boolean {
+function shouldSyncWorkspaceEnvBeforeProxy(port: number, method: string, path: string): boolean {
   if (port !== 8000) return false;
   if (method.toUpperCase() !== 'POST') return false;
   return /^\/session\/[^/]+\/(?:prompt_async|message)(?:$|[/?#])/.test(path);
@@ -305,7 +305,7 @@ function shouldSyncProjectEnvBeforeProxy(port: number, method: string, path: str
 // message a second time (the 3x-queued bug). This is exactly the set the
 // env-sync-before-prompt gate already recognises, so delegate to it.
 function isPromptDelivery(method: string, port: number, path: string): boolean {
-  return shouldSyncProjectEnvBeforeProxy(port, method, path);
+  return shouldSyncWorkspaceEnvBeforeProxy(port, method, path);
 }
 
 // True only when a fetch failure PROVES nothing reached the box: the upstream
@@ -344,11 +344,11 @@ function agentSwitchConflictResponse(expectedAgent: string, requestedAgent: stri
 }
 
 // The sentinel name a session carries when it isn't bound to a *concrete* agent.
-// `project_sessions.agent_name` defaults to this, and no agent is literally named
+// `workspace_sessions.agent_name` defaults to this, and no agent is literally named
 // "default" — the runtime resolves it to OpenCode's configured `default_agent`
 // (conventionally `kortix`). It is therefore non-binding: a "default" session's
 // executor token carries the least-privileged grant (null = full for ungoverned
-// projects, deny for governed ones — see `grantFromLoadedAgents`), so a prompt
+// workspaces, deny for governed ones — see `grantFromLoadedAgents`), so a prompt
 // can never use it to escalate into another agent's connector / Kortix-CLI grant.
 const DEFAULT_AGENT_SENTINEL = 'default';
 
@@ -476,7 +476,7 @@ export async function forwardToSandbox(
   // The 8000-keyed AUTH/CONTROL guards below (session-visibility gate + /kortix/env
   // block) key on THIS, so rerouted opencode is gated exactly like a direct :8000
   // request (sandbox ownership is already enforced unconditionally above). NOTE:
-  // redirectPrefix/X-Forwarded-Prefix and shouldSyncProjectEnvBeforeProxy stay on
+  // redirectPrefix/X-Forwarded-Prefix and shouldSyncWorkspaceEnvBeforeProxy stay on
   // the client-addressed `port` ON PURPOSE — the prefix must reflect the URL the
   // client actually used (/4096), and env-sync-before-prompt must behave identically
   // to Daytona, which likewise skips it on the direct 4096 opencode path.
@@ -492,7 +492,7 @@ export async function forwardToSandbox(
     upstreamPort === 8000 &&
     !(await canAccessSandboxSession({
       sessionId: record.sessionId,
-      projectId: record.projectId,
+      workspaceId: record.workspaceId,
       accountId: record.accountId,
       userId,
     }))
@@ -581,6 +581,9 @@ export async function forwardToSandbox(
   // stalled connection — see the giveup branch below for why it gets its own
   // response instead of the generic "sandbox unreachable" one.
   let sawLongTurnTimeout = false;
+  // Retry failures that occur before the prompt request reaches `fetch`.
+  // An env-sync or ingress failure cannot enqueue the prompt.
+  let promptReachedUpstream = false;
 
   // Wall-clock budget so a cold/dead sandbox returns our friendly page BEFORE
   // the 60s ALB idle timeout severs the connection (→ Cloudflare's bare 502).
@@ -594,7 +597,7 @@ export async function forwardToSandbox(
       const previewUrl = ingress.url;
       const targetUrl = previewUrl.replace(/\/$/, '') + remainingPath + queryString;
 
-      if (shouldSyncProjectEnvBeforeProxy(port, method, remainingPath)) {
+      if (shouldSyncWorkspaceEnvBeforeProxy(port, method, remainingPath)) {
         const requestedAgent = requestedPromptAgent(body, incomingHeaders);
         const sessionAgent = record.agentName ?? DEFAULT_AGENT_SENTINEL;
         // Agent-lock enforcement is OFF by default — in-session agent switching is
@@ -621,12 +624,12 @@ export async function forwardToSandbox(
         // "New session - <date>" rows). Fire-and-forget; never blocks the prompt.
         scheduleTitleCaptureAfterPrompt({
           sessionId: record.sessionId,
-          projectId: record.projectId,
+          workspaceId: record.workspaceId,
           externalId: record.externalId,
         });
         try {
           await syncSandboxEnvForPrompt({
-            projectId: record.projectId,
+            workspaceId: record.workspaceId,
             sessionId: record.sessionId,
             serviceKey,
             previewUrl,
@@ -634,7 +637,7 @@ export async function forwardToSandbox(
             providerName: record.provider as ProviderName,
           });
         } catch (err) {
-          const message = errorMessage(err, 'project env sync failed');
+          const message = errorMessage(err, 'workspace env sync failed');
           if (isRetryableEnvSyncFailure(message)) {
             // Treat daemon/preview-transient env-sync failures like any other
             // sandbox-port reachability miss: retry/wake in the outer loop, then
@@ -643,7 +646,7 @@ export async function forwardToSandbox(
             // turned expected 502/timeouts from Daytona into Better Stack errors.
             throw new Error(message);
           }
-          console.warn(`[PREVIEW] Project env sync failed for ${sandboxId}:${port}: ${message}`);
+          console.warn(`[PREVIEW] Workspace env sync failed for ${sandboxId}:${port}: ${message}`);
           return jsonProxyError({ error: message }, 502, origin);
         }
       }
@@ -679,7 +682,7 @@ export async function forwardToSandbox(
       // same-origin on mutations (Next.js Server Actions, SvelteKit, Remix, Django CSRF)
       // reject that mismatch as "Invalid Server Actions request." Rewriting Origin (and
       // pinning x-forwarded-host for single-hop upstreams) to the upstream
-      // origin makes this proxy transparent to ANY framework — no per-project config.
+      // origin makes this proxy transparent to ANY framework — no per-workspace config.
       const upstreamUrl = new URL(previewUrl);
       if (headers.has('origin')) {
         headers.set('origin', upstreamUrl.origin);
@@ -737,6 +740,9 @@ export async function forwardToSandbox(
       );
       let upstream: Response;
       try {
+        if (isPromptDelivery(method, port, remainingPath)) {
+          promptReachedUpstream = true;
+        }
         upstream = await fetch(targetUrl, {
           method,
           headers,
@@ -894,6 +900,7 @@ export async function forwardToSandbox(
       // above, which is safe.)
       if (
         isPromptDelivery(method, port, remainingPath) &&
+        promptReachedUpstream &&
         !isConnectionRefusedError(err)
       ) {
         break;
@@ -969,7 +976,7 @@ export async function resolvePreviewWsUpstream(opts: {
     upstreamPort === 8000 &&
     !(await canAccessSandboxSession({
       sessionId: record.sessionId,
-      projectId: record.projectId,
+      workspaceId: record.workspaceId,
       accountId: record.accountId,
       userId,
     }))

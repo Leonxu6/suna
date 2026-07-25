@@ -57,7 +57,7 @@ function app() {
 function happyPathResults(): ResultOrThrow[] {
   return [
     { rows: [{ count: 2 }] }, // accounts
-    { rows: [{ count: 3 }] }, // projects
+    { rows: [{ count: 3 }] }, // workspaces
     { rows: [{ count: 1 }] }, // active legacy sandboxes
     { rows: [{ key: 'running', count: 4 }, { key: 'failed', count: 1 }] }, // sessions
     { rows: [{ key: 'active', count: 3 }, { key: 'error', count: 1 }] }, // sandboxes by status
@@ -82,8 +82,8 @@ function happyPathResults(): ResultOrThrow[] {
           event_id: '00000000-0000-4000-a000-000000000901',
           account_id: '00000000-0000-4000-a000-000000000101',
           actor_user_id: '00000000-0000-4000-a000-000000000001',
-          action: 'POST /v1/projects',
-          resource_type: 'project',
+          action: 'POST /v1/workspaces',
+          resource_type: 'workspace',
           resource_id: '00000000-0000-4000-a000-000000000201',
           occurred_at: new Date('2026-05-15T00:00:00Z'),
         },
@@ -114,7 +114,7 @@ describe('ops overview dashboard API', () => {
     });
     expect(body.totals).toMatchObject({
       accounts: 2,
-      projects: 3,
+      workspaces: 3,
       active_legacy_sandboxes: 1,
     });
     expect(body.sessions.by_status).toMatchObject({ running: 4, failed: 1 });
@@ -123,7 +123,7 @@ describe('ops overview dashboard API', () => {
     expect(body.queues.trigger_events_by_status).toEqual({});
     expect(body.queues.channel_events_by_status).toEqual({});
     expect(body.audit.events_24h).toBe(9);
-    expect(body.audit.recent[0]).toMatchObject({ action: 'POST /v1/projects' });
+    expect(body.audit.recent[0]).toMatchObject({ action: 'POST /v1/workspaces' });
     expect(body.usage).toMatchObject({
       calls_24h: 7,
       cost_usd_24h: 0.123456,
@@ -159,10 +159,10 @@ describe('ops overview dashboard API', () => {
     expect(body.audit.events_24h).toBeNull();
     // Every OTHER metric still populated correctly — the rest of the
     // dashboard is unaffected by the one timed-out query.
-    expect(body.totals).toMatchObject({ accounts: 2, projects: 3, active_legacy_sandboxes: 1 });
+    expect(body.totals).toMatchObject({ accounts: 2, workspaces: 3, active_legacy_sandboxes: 1 });
     expect(body.sessions.by_status).toMatchObject({ running: 4, failed: 1 });
     expect(body.sandboxes.by_provider).toMatchObject({ daytona: 2, platinum: 2 });
-    expect(body.audit.recent[0]).toMatchObject({ action: 'POST /v1/projects' });
+    expect(body.audit.recent[0]).toMatchObject({ action: 'POST /v1/workspaces' });
     expect(body.usage).toMatchObject({ calls_24h: 7, cost_usd_24h: 0.123456 });
     expect(body.migrations.by_status).toMatchObject({ applied: 1 });
   });

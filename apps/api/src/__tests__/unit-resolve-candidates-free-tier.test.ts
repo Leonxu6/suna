@@ -59,23 +59,23 @@ mock.module('../billing/services/entitlements', () => ({
   },
 }));
 
-mock.module('../projects/secrets', () => ({
-  decryptProjectSecret: (_projectId: string, value: string) => value,
-  encryptProjectSecret: (_projectId: string, value: string) => value,
-  getProjectSecretValue: async () => 'user-key',
-  listProjectSecrets: async () => ({}),
-  listProjectSecretsForUser: async () => ({}),
-  listProjectSecretsSnapshot: async () => ({
+mock.module('../workspaces/secrets', () => ({
+  decryptWorkspaceSecret: (_workspaceId: string, value: string) => value,
+  encryptWorkspaceSecret: (_workspaceId: string, value: string) => value,
+  getWorkspaceSecretValue: async () => 'user-key',
+  listWorkspaceSecrets: async () => ({}),
+  listWorkspaceSecretsForUser: async () => ({}),
+  listWorkspaceSecretsSnapshot: async () => ({
     env: {},
     names: [],
     revision: 'empty',
   }),
-  listProjectSecretsSnapshotForUser: async () => ({
+  listWorkspaceSecretsSnapshotForUser: async () => ({
     env: {},
     names: [],
     revision: 'empty',
   }),
-  projectSecretsRevision: () => 'empty',
+  workspaceSecretsRevision: () => 'empty',
 }));
 
 mock.module('../llm-gateway/credentials/codex', () => ({
@@ -123,7 +123,7 @@ function principal(accountId: string) {
   return {
     userId: `user-${accountId}`,
     accountId,
-    projectId: `project-${accountId}`,
+    workspaceId: `workspace-${accountId}`,
   };
 }
 

@@ -7,8 +7,8 @@ import { bootTimelineRouter } from './routes/boot-timeline';
 
 // Platform sub-app. The legacy /v1/platform/sandbox/* lifecycle surface
 // (one-per-account sandbox lifecycle, members, invites, pool admin, backup
-// routes, etc.) has been removed. The new project-session sandbox lifecycle
-// lives under /v1/projects/:id/sessions/:sid/sandbox.
+// routes, etc.) has been removed. The new workspace-session sandbox lifecycle
+// lives under /v1/workspaces/:id/sessions/:sid/sandbox.
 //
 // Kept as a mount point so /v1/platform is reserved if we want to layer
 // admin-only platform routes here later.

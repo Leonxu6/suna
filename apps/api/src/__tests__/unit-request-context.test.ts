@@ -10,7 +10,7 @@ describe('request context observability fields', () => {
   test('normalizes incoming traceparent and exposes downstream trace headers', () => {
     runWithContext(
       'GET',
-      '/v1/projects/project-1/sessions/session-1/start',
+      '/v1/workspaces/workspace-1/sessions/session-1/start',
       () => {
         const headers = getTraceHeaders();
         expect(headers.traceparent).toMatch(/^00-11111111111111111111111111111111-[0-9a-f]{16}-01$/);
@@ -22,10 +22,10 @@ describe('request context observability fields', () => {
   });
 
   test('adds snake_case aliases required by structured log sinks', () => {
-    runWithContext('POST', '/v1/projects/project-1/sessions', () => {
+    runWithContext('POST', '/v1/workspaces/workspace-1/sessions', () => {
       setContextField('userId', 'user-1');
       setContextField('accountId', 'account-1');
-      setContextField('projectId', 'project-1');
+      setContextField('workspaceId', 'workspace-1');
       setContextField('sessionId', 'session-1');
       setContextField('sandboxId', 'sandbox-1');
 
@@ -35,7 +35,7 @@ describe('request context observability fields', () => {
       expect(fields.userId).toBe('user-1');
       expect(fields.user_id).toBe('user-1');
       expect(fields.account_id).toBe('account-1');
-      expect(fields.project_id).toBe('project-1');
+      expect(fields.workspace_id).toBe('workspace-1');
       expect(fields.session_id).toBe('session-1');
       expect(fields.sandbox_id).toBe('sandbox-1');
     });

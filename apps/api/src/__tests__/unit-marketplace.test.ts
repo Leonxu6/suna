@@ -26,12 +26,12 @@ describe('marketplace catalog', () => {
     expect(DEFAULT_MARKETPLACES).not.toContain('anthropics/skills');
   });
 
-  test('surfaces the starter project and its skills through browse; support types stay internal', async () => {
+  test('surfaces the starter workspace and its skills through browse; support types stay internal', async () => {
     const all = await listCatalogItems();
 
-    // The marketplace leads with the "Kortix Starter" project as the hero, but
+    // The marketplace leads with the "Kortix Starter" workspace as the hero, but
     // individual kortix-starter skills are ALSO browseable top-level tiles
-    // (each one also ships inside the project). Support types (bundles/tools/
+    // (each one also ships inside the workspace). Support types (bundles/tools/
     // files) stay internal for dependency handling.
     expect(all.some((i) => i.type === 'registry:bundle')).toBe(false);
     expect(all.some((i) => i.type === 'registry:project')).toBe(true);
@@ -45,7 +45,7 @@ describe('marketplace catalog', () => {
     expect(pdf!.partOfProject).toEqual({ id: 'kortix-projects:starter', title: 'Kortix Starter' });
 
     // …and it's still resolvable by id and shows up typed inside the starter
-    // project's "what's inside" list.
+    // workspace's "what's inside" list.
     const starterDetail = await getCatalogItemDetail('kortix-projects:starter');
     expect(starterDetail).toBeTruthy();
     expect(starterDetail!.dependencyItems.some((d) => d.name === 'pdf')).toBe(true);
@@ -54,7 +54,7 @@ describe('marketplace catalog', () => {
   test('lists optional Kortix skills through the marketplace', async () => {
     // agent-browser is browseable alongside every other kortix-starter skill,
     // and it stays fully resolvable by id and shows up inside the starter
-    // project's dependencyItems.
+    // workspace's dependencyItems.
     const all = await listCatalogItems({ source: 'kortix' });
     expect(all.find((i) => i.name === 'agent-browser')).toBeTruthy();
 
@@ -68,7 +68,7 @@ describe('marketplace catalog', () => {
     expect(agentBrowserDetail!.marketplaceId).toBe('kortix');
     expect(agentBrowserDetail!.type).toBe('registry:skill');
     expect(agentBrowserDetail!.managedBy).toBeUndefined();
-    expect(agentBrowserDetail!.defaultProjectInstall).toBe(true);
+    expect(agentBrowserDetail!.defaultWorkspaceInstall).toBe(true);
 
     const starterDetail = await getCatalogItemDetail('kortix-projects:starter');
     expect(starterDetail!.dependencyItems.some((d) => d.name === 'agent-browser')).toBe(true);
@@ -87,11 +87,11 @@ describe('marketplace catalog', () => {
     expect(await findCatalogEntryByName('kortix-tool-env')).toBeNull();
 
     // The known default-install skills are still marked as such (resolved both
-    // from the browse list directly and from the starter project's dependencyItems).
+    // from the browse list directly and from the starter workspace's dependencyItems).
     const starterDepIds = starterDetail!.dependencyItems.map((d) => d.id);
     const depDetails = await Promise.all(starterDepIds.map((id) => getCatalogItemDetail(id)));
     const defaultInstallNames = new Set(
-      depDetails.filter((d) => d?.defaultProjectInstall).map((d) => d!.name),
+      depDetails.filter((d) => d?.defaultWorkspaceInstall).map((d) => d!.name),
     );
     for (const name of [
       'agent-browser',
@@ -105,13 +105,13 @@ describe('marketplace catalog', () => {
       'xlsx',
     ]) {
       expect(defaultInstallNames.has(name)).toBe(true);
-      expect(all.find((i) => i.name === name)?.defaultProjectInstall).toBe(true);
+      expect(all.find((i) => i.name === name)?.defaultWorkspaceInstall).toBe(true);
     }
   });
 
   test('marks only kortix-* runtime skills as Kortix-managed', async () => {
-    // Managed system skills are excluded from the starter project's
-    // dependencyItems (they're server-injected platform floor, not a project's
+    // Managed system skills are excluded from the starter workspace's
+    // dependencyItems (they're server-injected platform floor, not a workspace's
     // "what's inside" list) and from browse/detail (not browseable) — so managed
     // status is checked by name lookup instead. Non-managed starter skills are
     // browseable again, so their managed status can also be checked directly
@@ -147,18 +147,18 @@ describe('marketplace catalog', () => {
   });
 
   test('filters by type and query', async () => {
-    const projects = await listCatalogItems({ type: 'project' });
-    expect(projects.length).toBeGreaterThan(0); // whole projects are browseable one-click clones
-    expect(projects.every((i) => i.type === 'registry:project')).toBe(true);
+    const workspaces = await listCatalogItems({ type: 'workspace' });
+    expect(workspaces.length).toBeGreaterThan(0); // whole workspaces are browseable one-click clones
+    expect(workspaces.every((i) => i.type === 'registry:project')).toBe(true);
     // `pdf` is browseable again — a query hit on its own tile.
     expect((await listCatalogItems({ query: 'pdf' })).some((i) => i.name === 'pdf')).toBe(true);
     expect((await listCatalogItems({ query: 'starter' })).some((i) => i.id === 'kortix-projects:starter')).toBe(true);
     expect((await listCatalogItems({ query: 'zzzznotathing' })).length).toBe(0);
   });
 
-  test('surfaces SEO Department as a full cloneable project with agents and schedules', async () => {
-    const projects = await listCatalogItems({ type: 'project', source: 'kortix' });
-    const seo = projects.find((i) => i.id === 'kortix-projects:seo-department');
+  test('surfaces SEO Department as a full cloneable workspace with agents and schedules', async () => {
+    const workspaces = await listCatalogItems({ type: 'workspace', source: 'kortix' });
+    const seo = workspaces.find((i) => i.id === 'kortix-projects:seo-department');
     expect(seo).toBeTruthy();
     expect(seo!.title).toBe('SEO Department');
     expect(seo!.categories).toEqual(expect.arrayContaining(['marketing', 'seo', 'automation']));
@@ -186,14 +186,14 @@ describe('marketplace catalog', () => {
         '.kortix/opencode/skills/serp-intelligence/SKILL.md',
       ]),
     );
-    expect(detail!.projectAgents?.map((a) => a.name).sort()).toEqual([
+    expect(detail!.workspaceAgents?.map((a) => a.name).sort()).toEqual([
       'content-strategist',
       'seo-director',
       'seo-repo-watchdog',
       'serp-analyst',
       'technical-seo',
     ]);
-    expect(detail!.projectTriggers?.map((t) => t.slug).sort()).toEqual([
+    expect(detail!.workspaceTriggers?.map((t) => t.slug).sort()).toEqual([
       'daily-repo-seo-sweep',
       'daily-serp-watch',
       'monthly-seo-growth-report',
@@ -224,7 +224,7 @@ describe('marketplace catalog', () => {
     expect(kortix).toBeTruthy();
     expect(kortix.label).toBe('Kortix');
     expect(kortix.external).toBe(false);
-    // Kortix browses as the "Kortix Starter" project PLUS every individual
+    // Kortix browses as the "Kortix Starter" workspace PLUS every individual
     // kortix-starter skill as its own top-level browse tile — so the facet
     // count is back to the full browseable kortix set, not the folded model's
     // single hero tile (1).
@@ -331,7 +331,7 @@ describe('marketplace external registries (skills.sh / GitHub path)', () => {
     _resetExternalCache();
     try {
       const all = await listCatalogItems();
-      // Base intact — the starter project (browse now folds individual
+      // Base intact — the starter workspace (browse now folds individual
       // kortix-starter skills like `pdf` inside it, so check by id/detail).
       expect(all.find((i) => i.id === 'kortix-projects:starter')).toBeTruthy();
       expect((await getCatalogItemDetail('kortix-starter:pdf'))).toBeTruthy();

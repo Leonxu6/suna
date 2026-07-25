@@ -1,14 +1,14 @@
 /**
  * Materialization — map `connectors:` + `policies:` + `policy:` specs
  * (from kortix.yaml) onto the rows the platform stores (executor_connectors,
- * executor_connector_policies, executor_project_policies, executor_project_settings)
+ * executor_connector_policies, executor_workspace_policies, executor_workspace_settings)
  * and onto the gateway's runtime view. Pure mapping + diff here (unit-tested);
  * the DB upsert + network catalog sync (fetch spec/introspection/listTools →
  * normalize → executor_connector_actions) is the integration layer that calls
  * these. See docs/specs/executor.md §3, §7, §8.
  */
-import type { ConnectorSpec } from '../projects/connectors';
-import type { ProjectPolicySpec } from '../projects/policies';
+import type { ConnectorSpec } from '../workspaces/connectors';
+import type { WorkspacePolicySpec } from '../workspaces/policies';
 import { channelApiBase, channelAuth } from './channels';
 
 export interface DesiredPolicy {
@@ -81,7 +81,7 @@ export function toPolicyRows(spec: ConnectorSpec): DesiredPolicy[] {
   return spec.policies.map((p, i) => ({ match: p.match, action: p.action, position: i }));
 }
 
-/** Map project-level [[policies]] → ordered policy rows (same shape as connector). */
-export function toProjectPolicyRows(policies: ProjectPolicySpec[]): DesiredPolicy[] {
+/** Map workspace-level [[policies]] → ordered policy rows (same shape as connector). */
+export function toWorkspacePolicyRows(policies: WorkspacePolicySpec[]): DesiredPolicy[] {
   return policies.map((p, i) => ({ match: p.match, action: p.action, position: i }));
 }

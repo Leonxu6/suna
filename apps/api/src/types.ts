@@ -84,8 +84,8 @@ export interface AuthVariables {
   apiKeyType?: 'user' | 'sandbox';
   keyId?: string;
   sandboxId?: string;
-  /** Set for project-scoped CLI PATs — enforced against the URL :projectId. */
-  tokenProjectId?: string;
+  /** Set for workspace-scoped CLI PATs — enforced against the URL :workspaceId. */
+  tokenWorkspaceId?: string;
   /** Set for session-scoped sandbox executor PATs. */
   sessionId?: string;
   /** PAT token identity for the IAM engine (token-as-principal evaluation). */
@@ -144,7 +144,7 @@ export interface TierConfig {
   models: string[];
   dailyCreditConfig: DailyCreditConfig | null;
   hidden: boolean;
-  /** Max concurrent project sessions allowed for accounts on this tier. */
+  /** Max concurrent workspace sessions allowed for accounts on this tier. */
   concurrentSessionLimit: number;
   /** Enterprise feature gates. Absent ⇒ treated as all-false. */
   entitlements: TierEntitlements;
@@ -249,7 +249,7 @@ export interface AccountStateResponse {
    * be billed for RIGHT NOW (createPerSeatCheckoutSession uses the same
    * countActiveMembers). Always present (unlike `seats`, which only appears once
    * the account is already on per-seat), so the subscribe modal can show the real
-   * projected total (members × price) BEFORE redirecting to Stripe.
+   * workspaceed total (members × price) BEFORE redirecting to Stripe.
    */
   member_count: number;
   /**

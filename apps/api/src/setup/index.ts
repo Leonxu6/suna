@@ -70,7 +70,7 @@ function findRepoRoot(): string | null {
   return null;
 }
 
-function getProjectRoot(): string {
+function getWorkspaceRoot(): string {
   return findRepoRoot() ?? process.cwd();
 }
 
@@ -320,7 +320,7 @@ setupApp.openapi(
           dockerRunning: z.boolean(),
           envExists: z.boolean(),
           sandboxEnvExists: z.boolean(),
-          projectRoot: z.string(),
+          workspaceRoot: z.string(),
         }),
         'System status',
       ),
@@ -328,7 +328,7 @@ setupApp.openapi(
     },
   }),
   async (c: any) => {
-  const root = getProjectRoot();
+  const root = getWorkspaceRoot();
   const envExists = existsSync(resolve(root, '.env'));
 
   let dockerRunning = false;
@@ -343,7 +343,7 @@ setupApp.openapi(
     envExists,
     // The old sandbox-secrets file is gone.
     sandboxEnvExists: false,
-    projectRoot: root,
+    workspaceRoot: root,
   });
   },
 );

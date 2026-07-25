@@ -7,13 +7,13 @@ import {
   type ModelRoutePlan,
 } from '@kortix/llm-gateway';
 import { type CatalogModel, clampGenerationConfig } from '@kortix/llm-catalog';
-import type { ProjectModelGenerationConfig, ProjectRoutingFallback, ProjectRoutingRule } from './project-policy';
+import type { WorkspaceModelGenerationConfig, WorkspaceRoutingFallback, WorkspaceRoutingRule } from './workspace-policy';
 
-export interface ResolvedProjectRoutingPolicy {
+export interface ResolvedWorkspaceRoutingPolicy {
   visionModel: string | null;
-  defaultFallback: ProjectRoutingFallback | null;
-  rules: ProjectRoutingRule[];
-  modelGenerationConfig?: ProjectModelGenerationConfig;
+  defaultFallback: WorkspaceRoutingFallback | null;
+  rules: WorkspaceRoutingRule[];
+  modelGenerationConfig?: WorkspaceModelGenerationConfig;
 }
 
 export interface GatewayRouteResolverOptions {
@@ -21,10 +21,10 @@ export interface GatewayRouteResolverOptions {
   visionModel: string;
   policies: readonly ModelFallbackPolicy[];
   supportsImage: (model: string) => boolean;
-  getProjectPolicy?: (projectId: string) => Promise<ResolvedProjectRoutingPolicy | null>;
+  getWorkspacePolicy?: (workspaceId: string) => Promise<ResolvedWorkspaceRoutingPolicy | null>;
   /**
    * Resolve `model`'s live catalog capability record (reasoning_options,
-   * temperature, limit.output, ...) — used ONLY to clamp a project's
+   * temperature, limit.output, ...) — used ONLY to clamp a workspace's
    * configured generation defaults before they're injected into a request
    * (see `generationDefaultsFor` below). Defaults to
    * `catalogModelForWireModel` (apps/api's models/catalog-models.ts);
@@ -39,13 +39,13 @@ export type GatewayRouteResolver = (
 ) => Promise<ModelRoutePlan>;
 
 // Re-clamped here (NOT just trusted from what was clamped at write time) —
-// the live catalog can change between when a project configured a generation
+// the live catalog can change between when a workspace configured a generation
 // default and when a request actually resolves it (a model losing
 // reasoning_options, a provider changing its temperature support, ...). This
 // is the last, authoritative gate before a value reaches the wire.
 function generationDefaultsFor(
   model: string,
-  config: ProjectModelGenerationConfig | undefined,
+  config: WorkspaceModelGenerationConfig | undefined,
   catalogModelFor: (model: string) => CatalogModel | undefined,
 ): ModelGenerationDefaults | undefined {
   const entry = config?.[model];
@@ -65,15 +65,15 @@ export function createGatewayRouteResolver(
   const catalogModelFor = options.catalogModelFor ?? (() => undefined);
 
   return async (principal, input) => {
-    const projectPolicy = principal.projectId && options.getProjectPolicy
-      ? await options.getProjectPolicy(principal.projectId)
+    const workspacePolicy = principal.workspaceId && options.getWorkspacePolicy
+      ? await options.getWorkspacePolicy(principal.workspaceId)
       : null;
     const concreteDefault = principal.defaultModel || options.defaultModel;
     const isDefaultRequest = input.requestedModel === concreteDefault;
     let primaryModel = input.requestedModel;
 
     if (isDefaultRequest && input.requires.imageInput && !options.supportsImage(primaryModel)) {
-      primaryModel = projectPolicy?.visionModel || options.visionModel;
+      primaryModel = workspacePolicy?.visionModel || options.visionModel;
     }
 
     // Bound once per request (not per candidate) — cheap (a config lookup +
@@ -81,13 +81,13 @@ export function createGatewayRouteResolver(
     // its OWN freshly-clamped defaults instead of trusting the primary
     // model's. See `ModelRoutePlan.generationDefaultsForModel`'s doc comment.
     const generationDefaultsForModel = (model: string): ModelGenerationDefaults | undefined =>
-      generationDefaultsFor(model, projectPolicy?.modelGenerationConfig, catalogModelFor);
+      generationDefaultsFor(model, workspacePolicy?.modelGenerationConfig, catalogModelFor);
     const generationDefaults = generationDefaultsForModel(primaryModel);
 
-    const exactRule = projectPolicy?.rules.find((rule) => rule.model === primaryModel);
+    const exactRule = workspacePolicy?.rules.find((rule) => rule.model === primaryModel);
     if (exactRule) {
       return {
-        policyId: `project:exact:${primaryModel}`,
+        policyId: `workspace:exact:${primaryModel}`,
         primaryModel,
         fallbackModels: exactRule.fallbackModels,
         fallbackOn: exactRule.fallbackOn,
@@ -96,12 +96,12 @@ export function createGatewayRouteResolver(
       };
     }
 
-    if (isDefaultRequest && projectPolicy?.defaultFallback) {
+    if (isDefaultRequest && workspacePolicy?.defaultFallback) {
       return {
-        policyId: 'project:default',
+        policyId: 'workspace:default',
         primaryModel,
-        fallbackModels: projectPolicy.defaultFallback.models,
-        fallbackOn: projectPolicy.defaultFallback.fallbackOn,
+        fallbackModels: workspacePolicy.defaultFallback.models,
+        fallbackOn: workspacePolicy.defaultFallback.fallbackOn,
         generationDefaults,
         generationDefaultsForModel,
       };

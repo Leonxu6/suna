@@ -15,6 +15,10 @@ mock.module('../build-context', () => ({
   DEFAULT_CPU: 2,
   DEFAULT_MEMORY_GB: 6,
   DEFAULT_DISK_GB: 20,
+  stageWarmFromBaseContext: async () => ({
+    dir: '/tmp/context',
+    cleanup: async () => undefined,
+  }),
   KORTIX_ENTRYPOINT: '/usr/local/bin/kortix-entrypoint',
   stageBuildContext: async (snapshotName: string, userDockerfile: string) => {
     stagedContexts.push({ snapshotName, userDockerfile });

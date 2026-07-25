@@ -11,7 +11,7 @@
 //
 // Manual group memberships (added by an admin in the UI) are preserved —
 // we only touch groups that have a claim mapping. That keeps "this user
-// also needs access to project X for a one-off" workable without the
+// also needs access to workspace X for a one-off" workable without the
 // next sign-in stomping it.
 
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
@@ -182,7 +182,7 @@ const GROUP_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
  * Apply SCIM group memberships that were parked on a pending invite for this
  * email (see scim/groups.ts addGroupMembersOrDeferInvites). JIT auto-create
  * bypasses the invite-acceptance flow, so without this the parked entries
- * strand forever. Applies + strips only the `{group_id}` entries; project
+ * strand forever. Applies + strips only the `{group_id}` entries; workspace
  * grants stay on the (still pending) invite for the real accept flow.
  * Best-effort — a failure here must not block sign-in.
  */
@@ -287,7 +287,7 @@ export async function syncSsoMembership(args: {
     memberCreated = true;
     // JIT bypasses invite acceptance, so SCIM group memberships parked on a
     // pending invite for this email (scim/groups.ts) would strand forever —
-    // consume them now. Project grants on the invite stay for the real
+    // consume them now. Workspace grants on the invite stay for the real
     // accept flow; only the {group_id} entries are applied and stripped.
     await consumeInviteGroupGrants(provider.accountId, args.userId, args.email);
   }
@@ -298,7 +298,7 @@ export async function syncSsoMembership(args: {
   // Auto-provision: when enabled, create an IAM group + mapping for every
   // (deduped) group the IdP sent BEFORE reading the mappings below, so the
   // freshly created ones flow through the very same diff — the admin skips
-  // hand-mapping each group and just attaches project roles to the new ones.
+  // hand-mapping each group and just attaches workspace roles to the new ones.
   if (provider.autoProvisionGroups) {
     for (const claimValue of new Set(claims)) {
       await ensureAutoProvisionedGroup({

@@ -15,7 +15,7 @@
  * minting an app JWT with creds a *different* request may have just stored).
  *
  * A cold cache / DB hiccup / missing row resolves to `{}` — every consumer
- * (projects/github.ts, projects/git-backends/github.ts) then falls back to its
+ * (workspaces/github.ts, workspaces/git-backends/github.ts) then falls back to its
  * existing env-var read, so self-host installs that still configure everything
  * via `.env` keep working unchanged.
  */
@@ -31,7 +31,7 @@ export interface ManagedGithubAppConfig {
   clientSecret?: string;
   webhookSecret?: string;
   /** HMAC key backing the install-state token (`buildGitHubAppInstallUrl` /
-   *  `verifyGitHubAppInstallStatePayload` in projects/github.ts). Generated
+   *  `verifyGitHubAppInstallStatePayload` in workspaces/github.ts). Generated
    *  once at manifest-callback time, left alone afterwards. */
   stateSecret?: string;
   /** GitHub login (user or org) the App is installed on. */
@@ -122,7 +122,7 @@ function ensureFresh(): void {
 }
 
 /** Sync accessor — the one every DB-first/env-fallback accessor in
- *  projects/github.ts and projects/git-backends/github.ts reads through. */
+ *  workspaces/github.ts and workspaces/git-backends/github.ts reads through. */
 export function managedGithubAppConfig(): ManagedGithubAppConfig {
   ensureFresh();
   return cache?.config ?? {};

@@ -7,9 +7,9 @@ import {
   isExperimentalFeatureKey,
   resolveExperimentalFeature,
   resolveExperimentalFeatures,
-  resolveProjectRuntimeTransport,
+  resolveWorkspaceRuntimeTransport,
 } from '../experimental/features';
-import { projectLlmGatewayEnabled } from '../llm-gateway/enablement';
+import { workspaceLlmGatewayEnabled } from '../llm-gateway/enablement';
 
 function findCatalogFeature(key: string) {
   const feature = buildExperimentalCatalog({}).find((f) => f.key === key);
@@ -32,7 +32,7 @@ describe('isExperimentalFeatureKey', () => {
 });
 
 describe('resolveExperimentalFeature — explicit override wins', () => {
-  test('per-project experimental map overrides the default', () => {
+  test('per-workspace experimental map overrides the default', () => {
     expect(
       resolveExperimentalFeature({ experimental: { review_center: true } }, 'review_center'),
     ).toBe(true);
@@ -41,7 +41,7 @@ describe('resolveExperimentalFeature — explicit override wins', () => {
     ).toBe(false);
   });
 
-  test('agent_tunnel respects explicit per-project choice', () => {
+  test('agent_tunnel respects explicit per-workspace choice', () => {
     const available = findCatalogFeature('agent_tunnel').available;
     expect(
       resolveExperimentalFeature({ experimental: { agent_tunnel: true } }, 'agent_tunnel'),
@@ -77,14 +77,14 @@ describe('resolveExperimentalFeature — explicit override wins', () => {
     ).toBe(false);
   });
 
-  test('ACP runtime is an explicit per-project client transport', () => {
+  test('ACP runtime is an explicit per-workspace client transport', () => {
     expect(resolveExperimentalFeature({}, 'acp_runtime')).toBe(false);
     expect(resolveExperimentalFeature({ experimental: { acp_runtime: true } }, 'acp_runtime')).toBe(
       true,
     );
-    expect(resolveProjectRuntimeTransport({})).toBe('rest');
+    expect(resolveWorkspaceRuntimeTransport({})).toBe('rest');
     expect(
-      resolveProjectRuntimeTransport({
+      resolveWorkspaceRuntimeTransport({
         experimental: { acp_runtime: true },
       }),
     ).toBe('acp');
@@ -92,7 +92,7 @@ describe('resolveExperimentalFeature — explicit override wins', () => {
 
   test('llm_gateway is platform-gated and defaults on when available', () => {
     const available = findCatalogFeature('llm_gateway').available;
-    // No explicit project choice → inherits the platform: on wherever the
+    // No explicit workspace choice → inherits the platform: on wherever the
     // gateway is available and the fleet default is on (the global default).
     expect(resolveExperimentalFeature({}, 'llm_gateway')).toBe(
       available && config.LLM_GATEWAY_DEFAULT_ENABLED,
@@ -103,17 +103,17 @@ describe('resolveExperimentalFeature — explicit override wins', () => {
     expect(
       resolveExperimentalFeature({ experimental: { llm_gateway: false } }, 'llm_gateway'),
     ).toBe(false);
-    expect(projectLlmGatewayEnabled({ experimental: { llm_gateway: true } })).toBe(available);
+    expect(workspaceLlmGatewayEnabled({ experimental: { llm_gateway: true } })).toBe(available);
   });
 
-  test('llm_gateway fleet default can roll all projects on while preserving kill switch and project off override', () => {
+  test('llm_gateway fleet default can roll all workspaces on while preserving kill switch and workspace off override', () => {
     const previousEnabled = config.LLM_GATEWAY_ENABLED;
     const previousDefault = config.LLM_GATEWAY_DEFAULT_ENABLED;
     try {
       config.LLM_GATEWAY_ENABLED = false;
       config.LLM_GATEWAY_DEFAULT_ENABLED = true;
       expect(resolveExperimentalFeature({}, 'llm_gateway')).toBe(false);
-      expect(projectLlmGatewayEnabled({})).toBe(false);
+      expect(workspaceLlmGatewayEnabled({})).toBe(false);
 
       config.LLM_GATEWAY_ENABLED = true;
       config.LLM_GATEWAY_DEFAULT_ENABLED = false;
@@ -121,11 +121,11 @@ describe('resolveExperimentalFeature — explicit override wins', () => {
 
       config.LLM_GATEWAY_DEFAULT_ENABLED = true;
       expect(resolveExperimentalFeature({}, 'llm_gateway')).toBe(true);
-      expect(projectLlmGatewayEnabled({})).toBe(true);
+      expect(workspaceLlmGatewayEnabled({})).toBe(true);
       expect(
         resolveExperimentalFeature({ experimental: { llm_gateway: false } }, 'llm_gateway'),
       ).toBe(false);
-      expect(projectLlmGatewayEnabled({ experimental: { llm_gateway: false } })).toBe(false);
+      expect(workspaceLlmGatewayEnabled({ experimental: { llm_gateway: false } })).toBe(false);
     } finally {
       config.LLM_GATEWAY_ENABLED = previousEnabled;
       config.LLM_GATEWAY_DEFAULT_ENABLED = previousDefault;

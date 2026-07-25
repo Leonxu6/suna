@@ -218,9 +218,9 @@ class DaytonaAdapter implements SandboxProviderAdapter {
    * (`Snapshot.imageName` in the SDK — Daytona snapshots ARE registry images
    * under the hood: `CreateSnapshotParams.image` accepts a plain string
    * "available on some registry" as an alternative to an `Image` build spec).
-   * Used by the per-project warm fast path to `FROM` the shared default image
+   * Used by the per-workspace warm fast path to `FROM` the shared default image
    * instead of rebuilding its whole toolchain — see builder.ts
-   * `ensurePerProjectWarmImage`. Returns null on ANY failure (not found, no
+   * `ensurePerWorkspaceWarmImage`. Returns null on ANY failure (not found, no
    * imageName, network error, unconfigured) — every caller treats null as
    * "fall back to the full rebuild", never as fatal.
    */

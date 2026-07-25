@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  canonicalizeKortixCliAction,
   validateManifest,
   formatIssues,
   ENV_NAME_RE,
@@ -144,10 +145,22 @@ describe('validateManifest — [[agents]]', () => {
     );
   });
 
-  test('kortix_cli accepts a grantable action', () => {
+  test('kortix_cli accepts a canonical grantable action', () => {
     expect(
-      validateManifest('kortix_version = 1\n[[agents]]\nname = "w"\nkortix_cli = ["project.read"]').valid,
+      validateManifest('kortix_version = 1\n[[agents]]\nname = "w"\nkortix_cli = ["workspace.read"]').valid,
     ).toBe(true);
+  });
+
+  test('kortix_cli accepts a deprecated project action with a migration warning', () => {
+    const result = validateManifest(
+      'kortix_version = 1\n[[agents]]\nname = "w"\nkortix_cli = ["project.read"]',
+    );
+    expect(result.valid).toBe(true);
+    expect(result.issues).toContainEqual({
+      path: 'agents[0].kortix_cli[0]',
+      message: '"project.read" is deprecated. Use "workspace.read".',
+      severity: 'warning',
+    });
   });
 
   test('kortix_cli accepts the wildcard star', () => {
@@ -448,12 +461,23 @@ describe('exported constants', () => {
     expect(ENV_NAME_RE.test('lower')).toBe(false);
   });
 
-  test('GRANTABLE_KORTIX_CLI_ACTIONS includes project actions but not billing or channel.*', () => {
-    expect(GRANTABLE_KORTIX_CLI_ACTIONS).toContain('project.read');
-    expect(GRANTABLE_KORTIX_CLI_ACTIONS).toContain('project.connector.write');
+  test('GRANTABLE_KORTIX_CLI_ACTIONS includes workspace actions but not billing or channel.*', () => {
+    expect(GRANTABLE_KORTIX_CLI_ACTIONS).toContain('workspace.read');
+    expect(GRANTABLE_KORTIX_CLI_ACTIONS).toContain('workspace.connector.write');
+    expect(GRANTABLE_KORTIX_CLI_ACTIONS).not.toContain('project.read');
     expect(GRANTABLE_KORTIX_CLI_ACTIONS).not.toContain('billing.read');
     // channel.* was removed from the catalog — never wired to any route.
     expect(GRANTABLE_KORTIX_CLI_ACTIONS).not.toContain('channel.send');
+  });
+
+  test('canonicalizeKortixCliAction maps deprecated project actions only', () => {
+    expect(canonicalizeKortixCliAction('project.session.start')).toBe(
+      'workspace.session.start',
+    );
+    expect(canonicalizeKortixCliAction('workspace.session.start')).toBe(
+      'workspace.session.start',
+    );
+    expect(canonicalizeKortixCliAction('billing.read')).toBe('billing.read');
   });
 });
 

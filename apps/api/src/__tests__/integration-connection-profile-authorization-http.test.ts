@@ -1,6 +1,6 @@
 /**
  * Real HTTP + Postgres proof for owner-scoped connection profiles. The bearer
- * token, not a submitted owner id or project role, decides which personal
+ * token, not a submitted owner id or workspace role, decides which personal
  * profile may be listed, mutated, bound, or shared.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
@@ -12,14 +12,14 @@ import {
   iamPolicies,
   iamRoleActions,
   iamRoles,
-  projectMembers,
-  projectSessionConnectorBindings,
-  projectSessionPublicShares,
-  projectSessions,
-  projects,
+  workspaceMembers,
+  workspaceSessionConnectorBindings,
+  workspaceSessionPublicShares,
+  workspaceSessions,
+  workspaces,
 } from '@kortix/db';
 import { eq, sql } from 'drizzle-orm';
-import { PROJECT_ACTIONS } from '../iam';
+import { WORKSPACE_ACTIONS } from '../iam';
 import { app } from '../index';
 import { createAccountToken } from '../repositories/account-tokens';
 import { createServiceAccount } from '../repositories/service-accounts';
@@ -31,7 +31,7 @@ import {
 } from '../shared/session-public-shares';
 
 const ACCOUNT = crypto.randomUUID();
-const PROJECT = crypto.randomUUID();
+const WORKSPACE = crypto.randomUUID();
 const MANAGER = crypto.randomUUID();
 const ALICE = crypto.randomUUID();
 const BOB = crypto.randomUUID();
@@ -59,8 +59,8 @@ beforeAll(async () => {
     sql`alter table kortix.account_tokens add column if not exists service_account_id uuid`,
   );
   await db.insert(accounts).values({ accountId: ACCOUNT, name: 'profile-owner-http' });
-  await db.insert(projects).values({
-    projectId: PROJECT,
+  await db.insert(workspaces).values({
+    workspaceId: WORKSPACE,
     accountId: ACCOUNT,
     name: 'profile-owner-http',
     repoUrl: 'https://example.test/profile-owner-http.git',
@@ -70,10 +70,10 @@ beforeAll(async () => {
     { accountId: ACCOUNT, userId: ALICE, accountRole: 'member' },
     { accountId: ACCOUNT, userId: BOB, accountRole: 'member' },
   ]);
-  await db.insert(projectMembers).values([
-    { accountId: ACCOUNT, projectId: PROJECT, userId: MANAGER, projectRole: 'manager' },
-    { accountId: ACCOUNT, projectId: PROJECT, userId: ALICE, projectRole: 'member' },
-    { accountId: ACCOUNT, projectId: PROJECT, userId: BOB, projectRole: 'member' },
+  await db.insert(workspaceMembers).values([
+    { accountId: ACCOUNT, workspaceId: WORKSPACE, userId: MANAGER, workspaceRole: 'manager' },
+    { accountId: ACCOUNT, workspaceId: WORKSPACE, userId: ALICE, workspaceRole: 'member' },
+    { accountId: ACCOUNT, workspaceId: WORKSPACE, userId: BOB, workspaceRole: 'member' },
   ]);
   const serviceAccount = await createServiceAccount({
     accountId: ACCOUNT,
@@ -88,14 +88,14 @@ beforeAll(async () => {
     accountId: ACCOUNT,
     key: `profile-owner-${crypto.randomUUID()}`,
     name: 'Profile owner HTTP test',
-    scopeType: 'project',
+    scopeType: 'workspace',
   });
   await db.insert(iamRoleActions).values(
     [
-      PROJECT_ACTIONS.PROJECT_READ,
-      PROJECT_ACTIONS.PROJECT_SESSION_START,
-      PROJECT_ACTIONS.PROJECT_SESSION_BINDINGS_WRITE,
-      PROJECT_ACTIONS.PROJECT_CONNECTOR_PROFILES_MANAGE,
+      WORKSPACE_ACTIONS.WORKSPACE_READ,
+      WORKSPACE_ACTIONS.WORKSPACE_SESSION_START,
+      WORKSPACE_ACTIONS.WORKSPACE_SESSION_BINDINGS_WRITE,
+      WORKSPACE_ACTIONS.WORKSPACE_CONNECTOR_PROFILES_MANAGE,
     ].map((action) => ({ roleId: serviceAccountRoleId, action })),
   );
   await db.insert(iamPolicies).values({
@@ -103,14 +103,14 @@ beforeAll(async () => {
     principalType: 'token',
     principalId: serviceAccountId,
     roleId: serviceAccountRoleId,
-    scopeType: 'project',
-    scopeId: PROJECT,
+    scopeType: 'workspace',
+    scopeId: WORKSPACE,
   });
   await db.insert(executorConnectors).values([
     {
       connectorId: CONNECTOR,
       accountId: ACCOUNT,
-      projectId: PROJECT,
+      workspaceId: WORKSPACE,
       slug: 'customer_data',
       name: 'Customer data',
       providerType: 'http',
@@ -119,7 +119,7 @@ beforeAll(async () => {
     {
       connectorId: PIPEDREAM_CONNECTOR,
       accountId: ACCOUNT,
-      projectId: PROJECT,
+      workspaceId: WORKSPACE,
       slug: 'google_sheets',
       name: 'Google Sheets',
       providerType: 'pipedream',
@@ -130,15 +130,15 @@ beforeAll(async () => {
     {
       profileId: DEFAULT_PROFILE,
       accountId: ACCOUNT,
-      projectId: PROJECT,
+      workspaceId: WORKSPACE,
       connectorId: CONNECTOR,
-      label: 'Project default',
+      label: 'Workspace default',
       isDefault: true,
     },
     {
       profileId: EXTERNAL_PROFILE,
       accountId: ACCOUNT,
-      projectId: PROJECT,
+      workspaceId: WORKSPACE,
       connectorId: CONNECTOR,
       ownerType: 'external',
       ownerId: 'managed-customer',
@@ -147,7 +147,7 @@ beforeAll(async () => {
     {
       profileId: ALICE_PROFILE,
       accountId: ACCOUNT,
-      projectId: PROJECT,
+      workspaceId: WORKSPACE,
       connectorId: CONNECTOR,
       ownerType: 'member',
       ownerId: ALICE,
@@ -156,7 +156,7 @@ beforeAll(async () => {
     {
       profileId: BOB_PROFILE,
       accountId: ACCOUNT,
-      projectId: PROJECT,
+      workspaceId: WORKSPACE,
       connectorId: CONNECTOR,
       ownerType: 'member',
       ownerId: BOB,
@@ -165,7 +165,7 @@ beforeAll(async () => {
     {
       profileId: SERVICE_ACCOUNT_PROFILE,
       accountId: ACCOUNT,
-      projectId: PROJECT,
+      workspaceId: WORKSPACE,
       connectorId: CONNECTOR,
       ownerType: 'member',
       ownerId: serviceAccountId,
@@ -174,37 +174,37 @@ beforeAll(async () => {
     {
       profileId: SERVICE_ACCOUNT_PIPEDREAM_PROFILE,
       accountId: ACCOUNT,
-      projectId: PROJECT,
+      workspaceId: WORKSPACE,
       connectorId: PIPEDREAM_CONNECTOR,
       ownerType: 'member',
       ownerId: serviceAccountId,
       label: 'Forged service-account OAuth profile',
     },
   ]);
-  await db.insert(projectSessions).values({
+  await db.insert(workspaceSessions).values({
     sessionId: SESSION,
     accountId: ACCOUNT,
-    projectId: PROJECT,
+    workspaceId: WORKSPACE,
     branchName: SESSION,
     createdBy: ALICE,
     visibility: 'private',
   });
-  await db.insert(projectSessionConnectorBindings).values({
+  await db.insert(workspaceSessionConnectorBindings).values({
     sessionId: SESSION,
     accountId: ACCOUNT,
-    projectId: PROJECT,
+    workspaceId: WORKSPACE,
     connectorAlias: 'customer_data',
     connectorId: CONNECTOR,
     profileId: ALICE_PROFILE,
     source: 'request',
     createdBy: ALICE,
   });
-  await db.insert(projectSessionPublicShares).values({
+  await db.insert(workspaceSessionPublicShares).values({
     shareId: PREEXISTING_SHARE,
     tokenHash: publicShareTokenHash(PREEXISTING_SHARE_TOKEN),
     sessionId: SESSION,
     accountId: ACCOUNT,
-    projectId: PROJECT,
+    workspaceId: WORKSPACE,
     createdBy: ALICE,
     port: 3000,
   });
@@ -214,18 +214,18 @@ afterAll(async () => {
   for (const tokenId of minted) {
     await db.execute(sql`delete from kortix.account_tokens where token_id = ${tokenId}`);
   }
-  await db.delete(projectSessions).where(eq(projectSessions.projectId, PROJECT));
+  await db.delete(workspaceSessions).where(eq(workspaceSessions.workspaceId, WORKSPACE));
   await db
     .delete(executorConnectionProfiles)
-    .where(eq(executorConnectionProfiles.projectId, PROJECT));
-  await db.delete(projects).where(eq(projects.projectId, PROJECT));
+    .where(eq(executorConnectionProfiles.workspaceId, WORKSPACE));
+  await db.delete(workspaces).where(eq(workspaces.workspaceId, WORKSPACE));
   await db.delete(accounts).where(eq(accounts.accountId, ACCOUNT));
 });
 
 async function mint(userId: string): Promise<string> {
   const token = await createAccountToken({
     accountId: ACCOUNT,
-    projectId: PROJECT,
+    workspaceId: WORKSPACE,
     userId,
     name: 'profile-owner-http',
     agentGrant: null,
@@ -246,10 +246,10 @@ function request(method: string, path: string, token: string, body?: unknown) {
 }
 
 describe('connection profile owner authorization over HTTP', () => {
-  test('members list the project default and only their own personal profile', async () => {
+  test('members list the workspace default and only their own personal profile', async () => {
     const response = await request(
       'GET',
-      `/v1/projects/${PROJECT}/connector-profiles`,
+      `/v1/workspaces/${WORKSPACE}/connector-profiles`,
       await mint(ALICE),
     );
     expect(response.status).toBe(200);
@@ -262,7 +262,7 @@ describe('connection profile owner authorization over HTTP', () => {
   test('managers administer system profiles but cannot enumerate personal profiles', async () => {
     const response = await request(
       'GET',
-      `/v1/projects/${PROJECT}/connector-profiles`,
+      `/v1/workspaces/${WORKSPACE}/connector-profiles`,
       await mint(MANAGER),
     );
     expect(response.status).toBe(200);
@@ -275,7 +275,7 @@ describe('connection profile owner authorization over HTTP', () => {
   test('member reconciliation forces ownership to the bearer-token user', async () => {
     const response = await request(
       'POST',
-      `/v1/projects/${PROJECT}/connector-profiles/me`,
+      `/v1/workspaces/${WORKSPACE}/connector-profiles/me`,
       await mint(ALICE),
       { connector_alias: 'customer_data', label: 'Alice renamed' },
     );
@@ -291,7 +291,7 @@ describe('connection profile owner authorization over HTTP', () => {
   test('generic manager reconciliation rewrites a submitted member owner to the bearer', async () => {
     const response = await request(
       'POST',
-      `/v1/projects/${PROJECT}/connector-profiles`,
+      `/v1/workspaces/${WORKSPACE}/connector-profiles`,
       await mint(MANAGER),
       {
         connector_alias: 'customer_data',
@@ -311,7 +311,7 @@ describe('connection profile owner authorization over HTTP', () => {
   test('service accounts cannot mint member profiles through either reconciliation route', async () => {
     const self = await request(
       'POST',
-      `/v1/projects/${PROJECT}/connector-profiles/me`,
+      `/v1/workspaces/${WORKSPACE}/connector-profiles/me`,
       serviceAccountToken,
       { connector_alias: 'customer_data', label: 'Service account personal profile' },
     );
@@ -319,7 +319,7 @@ describe('connection profile owner authorization over HTTP', () => {
 
     const generic = await request(
       'POST',
-      `/v1/projects/${PROJECT}/connector-profiles`,
+      `/v1/workspaces/${WORKSPACE}/connector-profiles`,
       serviceAccountToken,
       {
         connector_alias: 'customer_data',
@@ -334,7 +334,7 @@ describe('connection profile owner authorization over HTTP', () => {
   test('service accounts cannot list or mutate pre-existing service-account-owned member rows', async () => {
     const listed = await request(
       'GET',
-      `/v1/projects/${PROJECT}/connector-profiles`,
+      `/v1/workspaces/${WORKSPACE}/connector-profiles`,
       serviceAccountToken,
     );
     expect(listed.status).toBe(200);
@@ -350,7 +350,7 @@ describe('connection profile owner authorization over HTTP', () => {
     ] as const) {
       const response = await request(
         'PUT',
-        `/v1/projects/${PROJECT}/connector-profiles/${SERVICE_ACCOUNT_PROFILE}/${operation}`,
+        `/v1/workspaces/${WORKSPACE}/connector-profiles/${SERVICE_ACCOUNT_PROFILE}/${operation}`,
         serviceAccountToken,
         body,
       );
@@ -396,7 +396,7 @@ describe('connection profile owner authorization over HTTP', () => {
       for (const operation of ['connect', 'connect/finalize'] as const) {
         const response = await request(
           'POST',
-          `/v1/projects/${PROJECT}/connector-profiles/${SERVICE_ACCOUNT_PIPEDREAM_PROFILE}/${operation}`,
+          `/v1/workspaces/${WORKSPACE}/connector-profiles/${SERVICE_ACCOUNT_PIPEDREAM_PROFILE}/${operation}`,
           serviceAccountToken,
           {},
         );
@@ -411,7 +411,7 @@ describe('connection profile owner authorization over HTTP', () => {
     const alice = await mint(ALICE);
     const self = await request(
       'PUT',
-      `/v1/projects/${PROJECT}/connector-profiles/${ALICE_PROFILE}/credential`,
+      `/v1/workspaces/${WORKSPACE}/connector-profiles/${ALICE_PROFILE}/credential`,
       alice,
       { value: 'alice-capability' },
     );
@@ -419,7 +419,7 @@ describe('connection profile owner authorization over HTTP', () => {
 
     const manager = await request(
       'PUT',
-      `/v1/projects/${PROJECT}/connector-profiles/${ALICE_PROFILE}/credential`,
+      `/v1/workspaces/${WORKSPACE}/connector-profiles/${ALICE_PROFILE}/credential`,
       await mint(MANAGER),
       { value: 'manager-impersonation' },
     );
@@ -427,20 +427,20 @@ describe('connection profile owner authorization over HTTP', () => {
 
     const managed = await request(
       'PUT',
-      `/v1/projects/${PROJECT}/connector-profiles/${EXTERNAL_PROFILE}/credential`,
+      `/v1/workspaces/${WORKSPACE}/connector-profiles/${EXTERNAL_PROFILE}/credential`,
       await mint(MANAGER),
       { value: 'operator-capability' },
     );
     expect(managed.status).toBe(200);
   });
 
-  test('personal-profile sessions reject project sharing and public links', async () => {
+  test('personal-profile sessions reject workspace sharing and public links', async () => {
     const alice = await mint(ALICE);
     const shared = await request(
       'PUT',
-      `/v1/projects/${PROJECT}/sessions/${SESSION}/sharing`,
+      `/v1/workspaces/${WORKSPACE}/sessions/${SESSION}/sharing`,
       alice,
-      { mode: 'project' },
+      { mode: 'workspace' },
     );
     expect(shared.status).toBe(409);
     expect(await shared.json()).toMatchObject({
@@ -449,7 +449,7 @@ describe('connection profile owner authorization over HTTP', () => {
 
     const publicLink = await request(
       'POST',
-      `/v1/projects/${PROJECT}/sessions/${SESSION}/public-shares`,
+      `/v1/workspaces/${WORKSPACE}/sessions/${SESSION}/public-shares`,
       alice,
       {},
     );

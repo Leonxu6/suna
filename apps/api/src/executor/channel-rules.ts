@@ -4,7 +4,7 @@
  *   - db-deps.ts      → hide a superseded user `slack` connector from listings
  *   - channel-manifest.ts → declare/undeclare the channel connector in kortix.yaml
  */
-import { SLACK_RESERVED_SLUG, type ChannelPlatform } from '../projects/connectors';
+import { SLACK_RESERVED_SLUG, type ChannelPlatform } from '../workspaces/connectors';
 
 type Entry = Record<string, unknown>;
 
@@ -19,10 +19,10 @@ function isChannelFor(e: Entry, platform: ChannelPlatform): boolean {
 }
 
 /**
- * Slack is a first-class channel connector. When a project has BOTH the
+ * Slack is a first-class channel connector. When a workspace has BOTH the
  * platform-owned Slack channel (`kortix_slack`) AND a legacy user-defined
  * `slack` connector (e.g. a Pipedream Slack added before the picker hid it, like
- * older projects still carry), hide the legacy one so there's exactly one
+ * older workspaces still carry), hide the legacy one so there's exactly one
  * "Slack". Native Slack actions already route to the channel (gateway
  * `resolveConnectorForCall`), so nothing is lost. Non-destructive — the row
  * stays; it's just not listed in the dashboard or offered to the agent.

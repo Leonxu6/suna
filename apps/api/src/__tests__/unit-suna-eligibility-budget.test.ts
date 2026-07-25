@@ -1,17 +1,17 @@
 /**
- * Regression coverage for the `/projects/suna-migration/eligibility` GET's
+ * Regression coverage for the `/workspaces/suna-migration/eligibility` GET's
  * whole-handler wall-clock budget.
  *
  * Incident: the frontend (Kortix Frontend, prod) reported
- *   "ApiError — Request timed out after 30s: /projects/suna-migration/eligibility"
+ *   "ApiError — Request timed out after 30s: /workspaces/suna-migration/eligibility"
  * (Better Stack error a60262aa384c136ac6fcca845cabe89756ed46b9c12c26ab1adfb6fc7217ef04).
  *
  * The frontend client (apps/web/src/lib/api-client.ts) explicitly distinguishes
  * a genuine timeout (its 30s timer fired) from an external abort, so this was a
  * real server-side hang — the handler took >30s to answer. The eligibility
  * handler awaits two UNBOUNDED DB ops: `latestSunaMigration` and, the likely
- * culprit, `countSunaProjects`, an un-LIMITed `count(*)` over the legacy
- * `public.projects` table (the OG Suna dataset, which can be large). It is polled
+ * culprit, `countSunaWorkspaces`, an un-LIMITed `count(*)` over the legacy
+ * `public.workspaces` table (the OG Suna dataset, which can be large). It is polled
  * frequently by the Migrate button / suna-migration banner
  * (apps/web/src/hooks/legacy/use-suna-migration.ts: staleTime 15s, plus 2.5s
  * polling while a migration is in flight), so a slow/contended DB let the request
@@ -25,7 +25,7 @@
  *      hanging — the exact failure mode that paged us.
  *
  * Mirrors unit-sandbox-health-budget.test.ts (the same fix shipped for
- * /projects/:id/sandbox-health). Re-declared hermetically rather than importing
+ * /workspaces/:id/sandbox-health). Re-declared hermetically rather than importing
  * the route module, which pulls in @hono/zod-openapi + validates server env at
  * load time. If the route's values change, update these and the assertions keep
  * the contract honest.
@@ -40,7 +40,7 @@ interface SunaEligibilityPayload {
 }
 
 // Kept in sync with
-// apps/api/src/projects/suna-migration/suna-migration-routes.ts.
+// apps/api/src/workspaces/suna-migration/suna-migration-routes.ts.
 const SUNA_ELIGIBILITY_BUDGET_MS = 12_000;
 const SUNA_ELIGIBILITY_DEGRADED: SunaEligibilityPayload = {
   eligible: false,
@@ -81,7 +81,7 @@ describe('suna-migration eligibility budget', () => {
 
   test('a never-settling DB query degrades promptly instead of hanging', async () => {
     // This is the incident: a hung DB op inside the handler body (the
-    // un-LIMITed count(*) over legacy public.projects, or latestSunaMigration).
+    // un-LIMITed count(*) over legacy public.workspaces, or latestSunaMigration).
     // With the budget it must resolve to the safe payload well before the
     // client's 30s abort — not pend forever.
     const start = Date.now();

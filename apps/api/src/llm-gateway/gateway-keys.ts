@@ -12,7 +12,7 @@ export interface CreatedGatewayKey {
 
 export async function createGatewayKey(params: {
   accountId: string;
-  projectId: string;
+  workspaceId: string;
   name: string;
   createdBy: string;
 }): Promise<CreatedGatewayKey> {
@@ -24,7 +24,7 @@ export async function createGatewayKey(params: {
     .insert(gatewayApiKeys)
     .values({
       accountId: params.accountId,
-      projectId: params.projectId,
+      workspaceId: params.workspaceId,
       name: params.name,
       keyPrefix,
       secretKeyHash,
@@ -35,7 +35,7 @@ export async function createGatewayKey(params: {
   return { key_id: row!.keyId, name: params.name, key_prefix: keyPrefix, secret_key: secretKey };
 }
 
-export async function listGatewayKeys(projectId: string) {
+export async function listGatewayKeys(workspaceId: string) {
   return db
     .select({
       keyId: gatewayApiKeys.keyId,
@@ -46,28 +46,28 @@ export async function listGatewayKeys(projectId: string) {
       createdAt: gatewayApiKeys.createdAt,
     })
     .from(gatewayApiKeys)
-    .where(eq(gatewayApiKeys.projectId, projectId))
+    .where(eq(gatewayApiKeys.workspaceId, workspaceId))
     .orderBy(desc(gatewayApiKeys.createdAt));
 }
 
-export async function revokeGatewayKey(projectId: string, keyId: string): Promise<boolean> {
+export async function revokeGatewayKey(workspaceId: string, keyId: string): Promise<boolean> {
   const rows = await db
     .update(gatewayApiKeys)
     .set({ status: 'revoked', revokedAt: new Date() })
-    .where(and(eq(gatewayApiKeys.keyId, keyId), eq(gatewayApiKeys.projectId, projectId)))
+    .where(and(eq(gatewayApiKeys.keyId, keyId), eq(gatewayApiKeys.workspaceId, workspaceId)))
     .returning({ keyId: gatewayApiKeys.keyId });
   return rows.length > 0;
 }
 
 export async function validateGatewayKey(
   secretKey: string,
-): Promise<{ accountId: string; projectId: string; userId: string; keyId: string } | null> {
+): Promise<{ accountId: string; workspaceId: string; userId: string; keyId: string } | null> {
   const hash = hashSecretKey(secretKey);
   const [row] = await db
     .select({
       keyId: gatewayApiKeys.keyId,
       accountId: gatewayApiKeys.accountId,
-      projectId: gatewayApiKeys.projectId,
+      workspaceId: gatewayApiKeys.workspaceId,
       createdBy: gatewayApiKeys.createdBy,
       status: gatewayApiKeys.status,
       expiresAt: gatewayApiKeys.expiresAt,
@@ -87,7 +87,7 @@ export async function validateGatewayKey(
 
   return {
     accountId: row.accountId,
-    projectId: row.projectId,
+    workspaceId: row.workspaceId,
     userId: row.createdBy ?? row.accountId,
     keyId: row.keyId,
   };

@@ -168,12 +168,12 @@ describe('buildLayeredDockerfile', () => {
     expect(merged).toContain('&& test -n "$pw_chrome"');
   });
 
-  test('the Chromium layer sits BEFORE the per-project warm-repo COPY', () => {
+  test('the Chromium layer sits BEFORE the per-workspace warm-repo COPY', () => {
     // Cache-order invariant: the warm-repo COPY (and, downstream of it, the
-    // opencode instance re-warm) is per-project and never cache-stable, so
+    // opencode instance re-warm) is per-workspace and never cache-stable, so
     // Chromium must sit ahead of it — keeping Chromium's own content-addressed
-    // cache key independent of any per-project step and identical across every
-    // per-project bake AND the shared default image. (PHASE 1 moved the
+    // cache key independent of any per-workspace step and identical across every
+    // per-workspace bake AND the shared default image. (PHASE 1 moved the
     // credential-bearing clone API-side; the image now only COPYs sanitized
     // bytes, but the ordering guarantee is unchanged.)
     const merged = buildLayeredDockerfile({
@@ -189,7 +189,7 @@ describe('buildLayeredDockerfile', () => {
     const chromiumIdx = merged.indexOf(
       `playwright@${PLAYWRIGHT_VERSION} install --with-deps chromium`,
     );
-    const cloneIdx = merged.indexOf('Per-project COLD warm: bake repo checkout into /workspace');
+    const cloneIdx = merged.indexOf('Per-workspace COLD warm: bake repo checkout into /workspace');
     const opencodeWarmupIdx = merged.indexOf('kortix-opencode-warmup instance keep');
     expect(chromiumIdx).toBeGreaterThanOrEqual(0);
     expect(cloneIdx).toBeGreaterThanOrEqual(0);
@@ -243,10 +243,10 @@ describe('buildLayeredDockerfile', () => {
     );
   });
 
-  test('does NOT bake the project workspace into the image', () => {
+  test('does NOT bake the workspace workspace into the image', () => {
     const merged = buildLayeredDockerfile({ userDockerfile: 'FROM scratch', ...COMMON });
     expect(merged).not.toContain('kortix-workspace.tar.gz');
-    // The daemon clones at boot via KORTIX_PROJECT_AUTO_CLONE; the layer just
+    // The daemon clones at boot via KORTIX_WORKSPACE_AUTO_CLONE; the layer just
     // creates an empty /workspace.
     expect(merged).toContain('mkdir -p /workspace');
   });

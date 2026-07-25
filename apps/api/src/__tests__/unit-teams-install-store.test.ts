@@ -24,10 +24,10 @@ mock.module('../shared/db', () => ({
   },
 }));
 
-mock.module('../projects/secrets', () => ({
-  listProjectSecrets: async () => ({}),
-  decryptProjectSecret: (_projectId: string, value: string) => value.replace(/^enc:/, ''),
-  encryptProjectSecret: (_projectId: string, value: string) => `enc:${value}`,
+mock.module('../workspaces/secrets', () => ({
+  listWorkspaceSecrets: async () => ({}),
+  decryptWorkspaceSecret: (_workspaceId: string, value: string) => value.replace(/^enc:/, ''),
+  encryptWorkspaceSecret: (_workspaceId: string, value: string) => `enc:${value}`,
 }));
 
 const { loadTeamsInstall } = await import('../channels/install-store');
@@ -37,7 +37,7 @@ afterAll(() => {
 });
 
 describe('loadTeamsInstall — connector-scoped Teams secrets', () => {
-  test('resolves the install by reading secrets directly, not via listProjectSecrets (which strips connector scope)', async () => {
+  test('resolves the install by reading secrets directly, not via listWorkspaceSecrets (which strips connector scope)', async () => {
     const install = await loadTeamsInstall('proj-teams');
     expect(install).not.toBeNull();
     expect(install?.tenantId).toBe('435431f6-fc5c-4d3e-8d99-9ff939fec417');

@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import { teamsWebhookApp } from './app';
 import { teamsChannelEnabled, teamsConfigured } from '../teams-auth';
-import { loadTeamsAppIdForProject } from '../install-store';
+import { loadTeamsAppIdForWorkspace } from '../install-store';
 import { validateInboundActivityJwt } from './jwt';
 import { handleTeamsActivity } from './dispatch';
 import { handleFileConsentInvoke } from './file-proxy';
@@ -54,9 +54,9 @@ teamsWebhookApp.post('/messages', async (c) => {
   return processActivity(c);
 });
 
-teamsWebhookApp.post('/:projectId/messages', async (c) => {
+teamsWebhookApp.post('/:workspaceId/messages', async (c) => {
   if (!teamsChannelEnabled()) return c.json({ error: 'teams channel disabled' }, 404);
-  const appId = await loadTeamsAppIdForProject(c.req.param('projectId'));
-  if (!appId) return c.json({ error: 'teams not configured for this project' }, 503);
+  const appId = await loadTeamsAppIdForWorkspace(c.req.param('workspaceId'));
+  if (!appId) return c.json({ error: 'teams not configured for this workspace' }, 503);
   return processActivity(c, appId);
 });

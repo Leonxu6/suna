@@ -1,6 +1,6 @@
 /**
  * Tool-call policy engine — glob match, first-match-wins, single-scope action
- * resolution, layered (project → connector → risk-default) resolution, and
+ * resolution, layered (workspace → connector → risk-default) resolution, and
  * visibility (blocked tools hidden). Mirrors executor's model.
  */
 import { describe, expect, test } from 'bun:test';
@@ -14,7 +14,7 @@ function resolveWithConnector(path: string, policies: Policy[]) {
   return resolveEffectiveAction({
     fullPath: `connector.${path}`,
     relPath: path,
-    projectPolicies: [],
+    workspacePolicies: [],
     connectorPolicies: policies,
     risk: 'write',
     defaultMode: 'risk',
@@ -80,7 +80,7 @@ describe('policy position resolution', () => {
       resolveEffectiveAction({
         fullPath: 'connector.anything',
         relPath: 'anything',
-        projectPolicies: [],
+        workspacePolicies: [],
         connectorPolicies: [],
         risk: 'write',
         defaultMode: 'allow_all',
@@ -104,8 +104,8 @@ describe('visibility', () => {
   });
 });
 
-describe('resolveEffectiveAction — layered (project → connector → default)', () => {
-  const projectPolicies: Policy[] = [
+describe('resolveEffectiveAction — layered (workspace → connector → default)', () => {
+  const workspacePolicies: Policy[] = [
     { match: '*.delete*', action: 'block', position: 0 },
     { match: 'stripe.*', action: 'require_approval', position: 1 },
   ];
@@ -114,43 +114,43 @@ describe('resolveEffectiveAction — layered (project → connector → default)
     { match: '*', action: 'block', position: 1 },
   ];
 
-  test('project block wins over connector always_run (admin trust)', () => {
-    // pets.deletePet hits project `*.delete*` block FIRST — connector rules
+  test('workspace block wins over connector always_run (admin trust)', () => {
+    // pets.deletePet hits workspace `*.delete*` block FIRST — connector rules
     // cannot override.
     expect(
       resolveEffectiveAction({
         fullPath: 'pets.deletePet',
         relPath: 'deletePet',
-        projectPolicies,
+        workspacePolicies,
         connectorPolicies,
         risk: 'destructive',
         defaultMode: 'risk',
       }),
-    ).toEqual({ action: 'block', source: 'project' });
+    ).toEqual({ action: 'block', source: 'workspace' });
   });
 
-  test('project require_approval wins over connector always_run', () => {
-    // stripe.charges.create — project rule says require_approval, even though
-    // connector rule says always_run. Project wins.
+  test('workspace require_approval wins over connector always_run', () => {
+    // stripe.charges.create — workspace rule says require_approval, even though
+    // connector rule says always_run. Workspace wins.
     expect(
       resolveEffectiveAction({
         fullPath: 'stripe.charges.create',
         relPath: 'charges.create',
-        projectPolicies,
+        workspacePolicies,
         connectorPolicies,
         risk: 'write',
         defaultMode: 'risk',
       }),
-    ).toEqual({ action: 'require_approval', source: 'project' });
+    ).toEqual({ action: 'require_approval', source: 'workspace' });
   });
 
-  test('falls through to connector when project has no match', () => {
-    // pets.list — no project rule matches → connector `*` catch-all = block.
+  test('falls through to connector when workspace has no match', () => {
+    // pets.list — no workspace rule matches → connector `*` catch-all = block.
     expect(
       resolveEffectiveAction({
         fullPath: 'pets.list',
         relPath: 'list',
-        projectPolicies,
+        workspacePolicies,
         connectorPolicies,
         risk: 'read',
         defaultMode: 'risk',
@@ -163,7 +163,7 @@ describe('resolveEffectiveAction — layered (project → connector → default)
       resolveEffectiveAction({
         fullPath: 'gmail.send',
         relPath: 'send',
-        projectPolicies: [],
+        workspacePolicies: [],
         connectorPolicies: [],
         risk: 'write',
         defaultMode: 'risk',
@@ -173,7 +173,7 @@ describe('resolveEffectiveAction — layered (project → connector → default)
       resolveEffectiveAction({
         fullPath: 'gmail.read',
         relPath: 'read',
-        projectPolicies: [],
+        workspacePolicies: [],
         connectorPolicies: [],
         risk: 'read',
         defaultMode: 'risk',
@@ -186,7 +186,7 @@ describe('resolveEffectiveAction — layered (project → connector → default)
       resolveEffectiveAction({
         fullPath: 'stripe.charges.create',
         relPath: 'charges.create',
-        projectPolicies: [],
+        workspacePolicies: [],
         connectorPolicies: [],
         risk: 'destructive',
         defaultMode: 'allow_all',
@@ -194,28 +194,28 @@ describe('resolveEffectiveAction — layered (project → connector → default)
     ).toEqual({ action: 'always_run', source: 'allow_all' });
   });
 
-  test('project full-qualified match vs connector relative — patterns are different scopes', () => {
-    // Project pattern is `vercel.dns.*` — only fires for vercel.dns.* paths.
-    const project: Policy[] = [{ match: 'vercel.dns.*', action: 'block', position: 0 }];
+  test('workspace full-qualified match vs connector relative — patterns are different scopes', () => {
+    // Workspace pattern is `vercel.dns.*` — only fires for vercel.dns.* paths.
+    const workspace: Policy[] = [{ match: 'vercel.dns.*', action: 'block', position: 0 }];
     const conn: Policy[] = []; // no connector rules
 
-    // vercel.dns.create → project blocks.
+    // vercel.dns.create → workspace blocks.
     expect(
       resolveEffectiveAction({
         fullPath: 'vercel.dns.create',
         relPath: 'dns.create',
-        projectPolicies: project,
+        workspacePolicies: workspace,
         connectorPolicies: conn,
         risk: 'write',
         defaultMode: 'risk',
       }).action,
     ).toBe('block');
-    // vercel.projects.list → project doesn't match → risk-default for read = always_run.
+    // vercel.workspaces.list → workspace doesn't match → risk-default for read = always_run.
     expect(
       resolveEffectiveAction({
-        fullPath: 'vercel.projects.list',
-        relPath: 'projects.list',
-        projectPolicies: project,
+        fullPath: 'vercel.workspaces.list',
+        relPath: 'workspaces.list',
+        workspacePolicies: workspace,
         connectorPolicies: conn,
         risk: 'read',
         defaultMode: 'risk',
@@ -225,12 +225,12 @@ describe('resolveEffectiveAction — layered (project → connector → default)
 });
 
 describe('blocked-from-search behavior', () => {
-  test('project block hides the tool from search', () => {
+  test('workspace block hides the tool from search', () => {
     expect(
       resolveEffectiveAction({
         fullPath: 'pets.deletePet',
         relPath: 'deletePet',
-        projectPolicies: [{ match: '*.delete*', action: 'block', position: 0 }],
+        workspacePolicies: [{ match: '*.delete*', action: 'block', position: 0 }],
         connectorPolicies: [],
         risk: 'destructive',
         defaultMode: 'risk',
@@ -242,7 +242,7 @@ describe('blocked-from-search behavior', () => {
       resolveEffectiveAction({
         fullPath: 'pets.create',
         relPath: 'create',
-        projectPolicies: [],
+        workspacePolicies: [],
         connectorPolicies: [{ match: '*', action: 'require_approval' }],
         risk: 'write',
         defaultMode: 'risk',
@@ -261,7 +261,7 @@ describe('sensitive connector — reads gate too', () => {
     resolveEffectiveAction({
       fullPath: 'gmail.messages.list',
       relPath: 'messages.list',
-      projectPolicies: [],
+      workspacePolicies: [],
       connectorPolicies: opts.connectorPolicies ?? [],
       risk: opts.risk,
       defaultMode: opts.defaultMode,

@@ -2,7 +2,7 @@
  * Parser-level tests for the per-agent scoping overlay (name + connectors +
  * kortix_cli): the legacy v1 `[[agents]]` TOML array (kortix.toml) and the v2
  * `agents:` name-keyed map (kortix.yaml). Covers happy paths, the kortix_cli
- * enum validation (grantable project actions pass; account-scoped + unknown
+ * enum validation (grantable workspace actions pass; account-scoped + unknown
  * rejected), the grant-set forms ("all"/"none"/[]/"*"), the round-trip, and the
  * rejection paths.
  */
@@ -14,17 +14,17 @@ import {
   GRANTABLE_KORTIX_CLI,
   sandboxFromLoadedAgents,
   type AgentSpec,
-} from '../projects/agents';
-import { KNOWN_SCHEMA_VERSION, parseManifestString } from '../projects/triggers';
+} from '../workspaces/agents';
+import { KNOWN_SCHEMA_VERSION, parseManifestString } from '../workspaces/triggers';
 import { GRANTABLE_KORTIX_CLI_ACTIONS } from '@kortix/manifest-schema';
 
-const MIN_PROJECT = `
-[project]
+const MIN_WORKSPACE = `
+[workspace]
 name = "test"
 `;
 
 function manifestWith(body: string): string {
-  return [`kortix_version = ${KNOWN_SCHEMA_VERSION}`, MIN_PROJECT, body].join('\n');
+  return [`kortix_version = ${KNOWN_SCHEMA_VERSION}`, MIN_WORKSPACE, body].join('\n');
 }
 
 function parse(body: string) {
@@ -42,21 +42,21 @@ describe('[[agents]] — grantable enum drift guard', () => {
   // either side is caught even if it happens to keep the two sides equal to
   // EACH OTHER but wrong in absolute terms (both sides sourced from the same
   // stale copy-paste, say).
-  test('41 grantable project actions (all of PROJECT_ACTIONS)', () => {
+  test('41 grantable workspace actions (all of WORKSPACE_ACTIONS)', () => {
     expect(GRANTABLE_KORTIX_CLI.size).toBe(41);
   });
 
-  // The three manager-tier project leaves are reachable via a project's
+  // The three manager-tier workspace leaves are reachable via a workspace's
   // `manager` role, so they're grantable to an agent too.
-  test('the three manager-tier project leaves are included in the grantable set', () => {
-    expect(GRANTABLE_KORTIX_CLI.has('project.delete')).toBe(true);
-    expect(GRANTABLE_KORTIX_CLI.has('project.members.manage')).toBe(true);
-    expect(GRANTABLE_KORTIX_CLI.has('project.gateway.keys.manage')).toBe(true);
+  test('the three manager-tier workspace leaves are included in the grantable set', () => {
+    expect(GRANTABLE_KORTIX_CLI.has('workspace.delete')).toBe(true);
+    expect(GRANTABLE_KORTIX_CLI.has('workspace.members.manage')).toBe(true);
+    expect(GRANTABLE_KORTIX_CLI.has('workspace.gateway.keys.manage')).toBe(true);
   });
 });
 
-describe('[[agents]] — the 3 manager-tier project leaves are grantable, not rejected', () => {
-  for (const action of ['project.delete', 'project.members.manage', 'project.gateway.keys.manage']) {
+describe('[[agents]] — the 3 manager-tier workspace leaves are grantable, not rejected', () => {
+  for (const action of ['workspace.delete', 'workspace.members.manage', 'workspace.gateway.keys.manage']) {
     test(`kortix_cli = ["${action}"] is accepted`, () => {
       const { specs, errors } = parse(`\n[[agents]]\nname = "a"\nkortix_cli = ["${action}"]\n`);
       expect(errors).toEqual([]);
@@ -83,16 +83,16 @@ name = "release-bot"
     });
   });
 
-  test('connectors list + kortix_cli list of grantable project actions', () => {
+  test('connectors list + kortix_cli list of grantable workspace actions', () => {
     const { specs, errors } = parse(`
 [[agents]]
 name = "release-bot"
 connectors = ["github", "stripe-readonly"]
-kortix_cli = ["project.trigger.create", "project.cr.open"]
+kortix_cli = ["workspace.trigger.create", "workspace.cr.open"]
 `);
     expect(errors).toEqual([]);
     expect(specs[0].connectors).toEqual(['github', 'stripe-readonly']);
-    expect(specs[0].kortixCli).toEqual(['project.trigger.create', 'project.cr.open']);
+    expect(specs[0].kortixCli).toEqual(['workspace.trigger.create', 'workspace.cr.open']);
   });
 
   test('"all" grants everything; default kortix agent shape', () => {
@@ -145,21 +145,21 @@ file = ".claude/agents/triage.md"
     const { specs } = parse(`
 [[agents]]
 name = "a"
-kortix_cli = ["project.read", "project.read", "project.trigger.create"]
+kortix_cli = ["workspace.read", "workspace.read", "workspace.trigger.create"]
 `);
-    expect(specs[0].kortixCli).toEqual(['project.read', 'project.trigger.create']);
+    expect(specs[0].kortixCli).toEqual(['workspace.read', 'workspace.trigger.create']);
   });
 });
 
 describe('[[agents]] — kortix_cli enum enforcement', () => {
-  test('every project connector action is grantable', () => {
+  test('every workspace connector action is grantable', () => {
     const { specs, errors } = parse(`
 [[agents]]
 name = "a"
-kortix_cli = ["project.connector.write", "project.connector.read"]
+kortix_cli = ["workspace.connector.write", "workspace.connector.read"]
 `);
     expect(errors).toEqual([]);
-    expect(specs[0].kortixCli).toEqual(['project.connector.write', 'project.connector.read']);
+    expect(specs[0].kortixCli).toEqual(['workspace.connector.write', 'workspace.connector.read']);
   });
 
   test('channel.* actions are no longer grantable (removed dead catalog leaves)', () => {
@@ -184,11 +184,11 @@ kortix_cli = ["member.invite"]
     expect(errors[0].error).toContain('account-scoped');
   });
 
-  test('project.create (account-scoped) is rejected', () => {
+  test('workspace.create (account-scoped) is rejected', () => {
     const { errors } = parse(`
 [[agents]]
 name = "a"
-kortix_cli = ["project.create"]
+kortix_cli = ["workspace.create"]
 `);
     expect(errors[0].error).toContain('account-scoped');
   });
@@ -197,21 +197,21 @@ kortix_cli = ["project.create"]
     const { errors } = parse(`
 [[agents]]
 name = "a"
-kortix_cli = ["project.frobnicate"]
+kortix_cli = ["workspace.frobnicate"]
 `);
     expect(errors).toHaveLength(1);
     expect(errors[0].error).toContain('unknown action');
   });
 
   test('the new CR actions are grantable', () => {
-    expect(GRANTABLE_KORTIX_CLI.has('project.cr.open')).toBe(true);
-    expect(GRANTABLE_KORTIX_CLI.has('project.cr.merge')).toBe(true);
+    expect(GRANTABLE_KORTIX_CLI.has('workspace.cr.open')).toBe(true);
+    expect(GRANTABLE_KORTIX_CLI.has('workspace.cr.merge')).toBe(true);
   });
 
   test('account actions are NOT in the grantable set', () => {
     expect(GRANTABLE_KORTIX_CLI.has('member.invite')).toBe(false);
     expect(GRANTABLE_KORTIX_CLI.has('billing.write')).toBe(false);
-    expect(GRANTABLE_KORTIX_CLI.has('project.create')).toBe(false);
+    expect(GRANTABLE_KORTIX_CLI.has('workspace.create')).toBe(false);
   });
 });
 
@@ -222,7 +222,7 @@ describe('[[agents]] — round-trip', () => {
       path: 'kortix.toml#agents.release-bot',
       enabled: true,
       connectors: ['github'],
-      kortixCli: ['project.trigger.create'],
+      kortixCli: ['workspace.trigger.create'],
       env: 'all',
       file: null,
       model: 'anthropic/claude-sonnet-4-6',
@@ -236,7 +236,7 @@ kortix_cli = ${JSON.stringify(entry.kortix_cli)}
 model = "${entry.model}"
 `);
     expect(errors).toEqual([]);
-    expect(specs[0]).toMatchObject({ name: 'release-bot', connectors: ['github'], kortixCli: ['project.trigger.create'], model: 'anthropic/claude-sonnet-4-6' });
+    expect(specs[0]).toMatchObject({ name: 'release-bot', connectors: ['github'], kortixCli: ['workspace.trigger.create'], model: 'anthropic/claude-sonnet-4-6' });
   });
 
   test('minimal spec emits only name', () => {
@@ -314,7 +314,7 @@ connectors = "github"
 
 describe('applyAgentScope — the dashboard scope editor write step', () => {
   const base = () => [
-    { name: 'release-bot', model: 'anthropic/claude', kortix_cli: ['project.cr.open'] },
+    { name: 'release-bot', model: 'anthropic/claude', kortix_cli: ['workspace.cr.open'] },
     { name: 'kortix', connectors: 'all' },
   ];
 
@@ -330,7 +330,7 @@ describe('applyAgentScope — the dashboard scope editor write step', () => {
     expect(entry.connectors).toEqual(['github']);
     // Untouched fields survive.
     expect(entry.model).toBe('anthropic/claude');
-    expect(entry.kortix_cli).toEqual(['project.cr.open']);
+    expect(entry.kortix_cli).toEqual(['workspace.cr.open']);
     // The other agent is untouched.
     expect(r.agents.find((a) => a.name === 'kortix')!.connectors).toBe('all');
   });
@@ -383,13 +383,13 @@ describe('applyAgentScope — the dashboard scope editor write step', () => {
 // Regression guard: agent spec/error `path` breadcrumbs used to hard-code
 // `kortix.toml` regardless of which file the manifest actually came from.
 // They now derive the filename from the parsed manifest's own `path` (set by
-// `parseManifestString`), so a `kortix.yaml` project's spec/error paths say
+// `parseManifestString`), so a `kortix.yaml` workspace's spec/error paths say
 // `kortix.yaml`.
 describe('[[agents]] — spec/error `path` derives from the manifest\'s own filename', () => {
   function parseYaml(body: string) {
     return extractAgents(
       parseManifestString(
-        `kortix_version: ${KNOWN_SCHEMA_VERSION}\nproject:\n  name: test\n${body}`,
+        `kortix_version: ${KNOWN_SCHEMA_VERSION}\nworkspace:\n  name: test\n${body}`,
         'yaml',
         'kortix.yaml',
       ),
@@ -426,7 +426,7 @@ describe('kortix_version 2 — `agents:` map', () => {
     const text = [
       'kortix_version: 2',
       `default_agent: ${opts.defaultAgent ?? 'support'}`,
-      'project:',
+      'workspace:',
       '  name: test',
       'agents:',
       agentsBody,
@@ -457,12 +457,12 @@ describe('kortix_version 2 — `agents:` map', () => {
     const { specs, errors } = parseV2(`
   support:
     connectors: [github, slack]
-    kortix_cli: [project.trigger.create, project.cr.open]
+    kortix_cli: [workspace.trigger.create, workspace.cr.open]
     secrets: [STRIPE_KEY, GH_TOKEN]
 `);
     expect(errors).toEqual([]);
     expect(specs[0].connectors).toEqual(['github', 'slack']);
-    expect(specs[0].kortixCli).toEqual(['project.trigger.create', 'project.cr.open']);
+    expect(specs[0].kortixCli).toEqual(['workspace.trigger.create', 'workspace.cr.open']);
     expect(specs[0].env).toEqual(['STRIPE_KEY', 'GH_TOKEN']);
   });
 
@@ -542,7 +542,7 @@ describe('kortix_version 2 — `agents:` map', () => {
     const text = [
       'kortix_version: 2',
       'default_agent: support',
-      'project:',
+      'workspace:',
       '  name: test',
       'agents:',
       '  - name: support',

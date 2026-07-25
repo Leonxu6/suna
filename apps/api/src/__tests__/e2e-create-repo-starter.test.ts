@@ -6,20 +6,20 @@ import {
   accountGithubInstallations,
   accountGithubInstallationStates,
   accountMembers,
-  projectGitConnections,
-  projectMembers,
-  projects,
+  workspaceGitConnections,
+  workspaceMembers,
+  workspaces,
 } from '@kortix/db';
 
 const USER_ID = '00000000-0000-4000-a000-000000000001';
 const ACCOUNT_ID = '00000000-0000-4000-a000-000000000101';
-const PROJECT_ID = '00000000-0000-4000-a000-000000000201';
+const WORKSPACE_ID = '00000000-0000-4000-a000-000000000201';
 const TEST_AUTH_KEY = '__KORTIX_E2E_AUTH__';
 
 // The starter is a folder under `packages/starter/templates/base/` —
 // `getStarterFiles()` walks it and returns the files sorted by path
 // (case-insensitive, via localeCompare). This list is the contract:
-// "every project ships with these, in this order."
+// "every workspace ships with these, in this order."
 // The minimal starter == the shared `templates/base` tree (no general-knowledge
 // -worker skill pack). Ordered by `path.localeCompare` to match getStarterFiles'
 // stable sort. Regenerate from `packages/starter/templates/base` when the base
@@ -85,10 +85,10 @@ const BASE_STARTER_PATHS = [
 let repoCreateCalls: any[];
 let fileShaCalls: any[];
 let commitCalls: any[];
-let insertedProject: any | null;
-let grantedProjectRole: any | null;
+let insertedWorkspace: any | null;
+let grantedWorkspaceRole: any | null;
 let installationRows: Array<typeof accountGithubInstallations.$inferSelect>;
-let gitConnectionRows: Array<typeof projectGitConnections.$inferSelect>;
+let gitConnectionRows: Array<typeof workspaceGitConnections.$inferSelect>;
 let githubInstallationStateConsumed: boolean;
 let ownerRepoListCalls: any[];
 let installationRepoListCalls: any[];
@@ -122,8 +122,8 @@ function resetState() {
   repoCreateCalls = [];
   fileShaCalls = [];
   commitCalls = [];
-  insertedProject = null;
-  grantedProjectRole = null;
+  insertedWorkspace = null;
+  grantedWorkspaceRole = null;
   gitConnectionRows = [];
   githubInstallationStateConsumed = false;
   ownerRepoListCalls = [];
@@ -164,22 +164,22 @@ mock.module('../middleware/auth', () => ({
   },
 }));
 
-mock.module('../projects/git', () => ({
+mock.module('../workspaces/git', () => ({
   grepRepoFiles: async () => [],
   searchRepoFileNames: async () => [],
   createRemoteSessionBranch: async () => undefined,
   archiveRepoSubtree: async () => undefined,
   listRepoFiles: async () => [],
-  loadProjectConfig: async () => ({ env: { required: [], optional: [] } }),
+  loadWorkspaceConfig: async () => ({ env: { required: [], optional: [] } }),
   readRepoFile: async () => '',
   readManifestFromRepo: async () => null,
-  invalidateProjectMirror: () => {},
+  invalidateWorkspaceMirror: () => {},
   listBranches: async () => [],
   listCommits: async () => ({ entries: [], nextCursor: null }),
   getCommit: async () => null,
   getCommitDiff: async () => null,
   getFileHistory: async () => ({ entries: [], nextCursor: null }),
-  // Used by snapshots/builder + the snapshots HTTP surface in projects/index.
+  // Used by snapshots/builder + the snapshots HTTP surface in workspaces/index.
   resolveCommitSha: async () => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   resolveTreeOid: async () => 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
   materializeRepoContext: async () => '/tmp/fake-snapshot-context',
@@ -196,8 +196,8 @@ mock.module('../projects/git', () => ({
   getMergeBase: async () => 'a'.repeat(40),
 }));
 
-// snapshots/builder imports from projects/git — once mocked, builder.ts
-// resolves cleanly. We stub the helpers projects/index calls so the
+// snapshots/builder imports from workspaces/git — once mocked, builder.ts
+// resolves cleanly. We stub the helpers workspaces/index calls so the
 // fire-and-forget snapshot kickoff in the create paths is a no-op here.
 mock.module("../snapshots/builder", () => ({
   ensureSandboxImage: async () => ({ snapshotName: "kortix-default-test", slug: "default", contentHash: "a".repeat(64), built: false, isDefault: true }),
@@ -208,11 +208,11 @@ mock.module("../snapshots/builder", () => ({
   kickPreBuild: () => {},
   kickRoutedPreBuild: () => {},
   templateBuildProviders: () => ['daytona', 'platinum', 'e2b'],
-  kickProjectTemplatePrebuilds: () => {},
+  kickWorkspaceTemplatePrebuilds: () => {},
   reconcileStaleBuilds: async () => ({ healed: 0 }),
-  reconcileProjectTemplates: async () => {},
+  reconcileWorkspaceTemplates: async () => {},
   resolveCommitSha: async () => "a".repeat(40),
-  ensurePerProjectWarmImage: async () => ({
+  ensurePerWorkspaceWarmImage: async () => ({
     snapshotName: "kortix-ppwarm-test",
     tip: "a".repeat(40),
     built: false,
@@ -221,7 +221,7 @@ mock.module("../snapshots/builder", () => ({
   DEFAULT_SANDBOX_SLUG: "default",
 }));
 
-mock.module('../projects/github', () => ({
+mock.module('../workspaces/github', () => ({
   buildGitHubAppInstallUrl: () => 'https://github.com/apps/kortix-test/installations/new',
   verifyGitHubAppInstallState: (state: string) => state === 'valid-install-state' ? ACCOUNT_ID : null,
   verifyGitHubAppInstallStatePayload: (state: string) => state === 'valid-install-state'
@@ -267,6 +267,7 @@ mock.module('../projects/github', () => ({
     repository_selection: 'all',
     permissions: { contents: 'write' },
   }),
+  listLinkableGitHubAppInstallations: async () => [],
   verifyGitHubInstallationAdmin: async (token: string) => {
     expect(token).toBe('github-user-token');
     return { login: 'github-admin' };
@@ -362,9 +363,9 @@ async function selectRowsForTable(table: unknown) {
         }]
       : [];
   }
-  if (table === projects) {
+  if (table === workspaces) {
     return [{
-      projectId: PROJECT_ID,
+      workspaceId: WORKSPACE_ID,
       accountId: ACCOUNT_ID,
       name: 'Company OS',
       repoUrl: 'https://github.com/kortix-org/company-os.git',
@@ -377,16 +378,16 @@ async function selectRowsForTable(table: unknown) {
       updatedAt: new Date('2026-01-01T00:00:00Z'),
     }];
   }
-  if (table === projectGitConnections) {
+  if (table === workspaceGitConnections) {
     return gitConnectionRows;
   }
   return [];
 }
 
-function storedProject(values: any) {
-  insertedProject = values;
+function storedWorkspace(values: any) {
+  insertedWorkspace = values;
   return {
-    projectId: PROJECT_ID,
+    workspaceId: WORKSPACE_ID,
     accountId: values.accountId,
     name: values.name,
     repoUrl: values.repoUrl,
@@ -421,12 +422,12 @@ const starterDbMock: any = {
     insert: (table: unknown) => ({
       values: (values: any) => ({
         onConflictDoNothing: () => ({
-          returning: async () => table === projects ? [storedProject(values)] : [],
+          returning: async () => table === workspaces ? [storedWorkspace(values)] : [],
         }),
         onConflictDoUpdate: () => {
-          if (table === projectMembers) {
+          if (table === workspaceMembers) {
             const persist = () => {
-              grantedProjectRole = values;
+              grantedWorkspaceRole = values;
               return [values];
             };
             return {
@@ -462,14 +463,14 @@ const starterDbMock: any = {
                 else installationRows.push(row);
                 return [row];
               }
-              if (table === projectGitConnections) {
-                const existingIndex = gitConnectionRows.findIndex((row) => row.projectId === values.projectId);
+              if (table === workspaceGitConnections) {
+                const existingIndex = gitConnectionRows.findIndex((row) => row.workspaceId === values.workspaceId);
                 const row = {
                   connectionId: existingIndex >= 0
                     ? gitConnectionRows[existingIndex]!.connectionId
                     : '00000000-0000-4000-a000-000000000501',
                   accountId: values.accountId,
-                  projectId: values.projectId,
+                  workspaceId: values.workspaceId,
                   provider: values.provider,
                   repoUrl: values.repoUrl,
                 upstreamUrl: values.upstreamUrl ?? null,
@@ -491,26 +492,26 @@ const starterDbMock: any = {
                   metadata: values.metadata ?? {},
                   createdAt: existingIndex >= 0 ? gitConnectionRows[existingIndex]!.createdAt : new Date('2026-01-01T00:00:00Z'),
                   updatedAt: values.updatedAt ?? new Date('2026-01-01T00:00:00Z'),
-                } as typeof projectGitConnections.$inferSelect;
+                } as typeof workspaceGitConnections.$inferSelect;
                 if (existingIndex >= 0) gitConnectionRows[existingIndex] = row;
                 else gitConnectionRows.push(row);
                 return [row];
               }
-              if (table !== projects) return [];
-              return [storedProject(values)];
+              if (table !== workspaces) return [];
+              return [storedWorkspace(values)];
             },
           };
         },
         returning: async () => {
-          if (table === projectGitConnections) {
+          if (table === workspaceGitConnections) {
             return starterDbMock.insert(table).values(values).onConflictDoUpdate({}).returning();
           }
-          if (table === projectMembers) {
-            grantedProjectRole = values;
+          if (table === workspaceMembers) {
+            grantedWorkspaceRole = values;
             return [values];
           }
-          if (table !== projects) return [];
-          return [storedProject(values)];
+          if (table !== workspaces) return [];
+          return [storedWorkspace(values)];
         },
       }),
     }),
@@ -541,12 +542,12 @@ mock.module('../shared/db', () => ({
   db: starterDbMock,
 }));
 
-const { projectsApp } = await import('../projects/index');
-const { buildStarterFiles } = await import('../projects/starter');
+const { workspacesApp } = await import('../workspaces/index');
+const { buildStarterFiles } = await import('../workspaces/starter');
 
 function createApp() {
   const app = new Hono();
-  app.route('/v1/projects', projectsApp);
+  app.route('/v1/workspaces', workspacesApp);
   app.onError((err, c) => {
     if (err instanceof HTTPException) {
       return c.json({ error: true, message: err.message, status: err.status }, err.status);
@@ -561,7 +562,7 @@ describe('create-repo starter scaffold contract', () => {
 
   test('builds exactly the minimal starter scaffold', () => {
     const files = buildStarterFiles({
-      projectName: 'Company OS',
+      workspaceName: 'Company OS',
       repoFullName: 'kortix-org/company-os',
       template: 'minimal',
     });
@@ -574,7 +575,7 @@ describe('create-repo starter scaffold contract', () => {
     expect(files.find((file) => file.path === '.kortix/opencode/tools/show.ts')).toBeDefined();
     expect(files.find((file) => file.path === '.kortix/opencode/skills/kortix-system/SKILL.md')).toBeDefined();
     expect(files.find((file) => file.path === '.kortix/opencode/agents/kortix.md')).toBeDefined();
-    // The manifest IS shipped and names the project.
+    // The manifest IS shipped and names the workspace.
     const manifest = files.find((file) => file.path === 'kortix.yaml');
     expect(manifest?.content).toContain('name: "Company OS"');
     expect(files.some((file) => file.path.includes('/agent-tunnel/'))).toBe(false);
@@ -582,12 +583,12 @@ describe('create-repo starter scaffold contract', () => {
 
   test('defaults to the general knowledge worker starter', () => {
     const files = buildStarterFiles({
-      projectName: 'Company OS',
+      workspaceName: 'Company OS',
       repoFullName: 'kortix-org/company-os',
     });
     const paths = files.map((file) => file.path);
     const explicitPaths = buildStarterFiles({
-      projectName: 'Company OS',
+      workspaceName: 'Company OS',
       repoFullName: 'kortix-org/company-os',
       template: 'general-knowledge-worker',
     }).map((file) => file.path);
@@ -602,7 +603,7 @@ describe('create-repo starter scaffold contract', () => {
 
   test('minimal starter remains an explicit internal option', () => {
     const files = buildStarterFiles({
-      projectName: 'Company OS',
+      workspaceName: 'Company OS',
       repoFullName: 'kortix-org/company-os',
       template: 'minimal',
     });
@@ -614,10 +615,10 @@ describe('create-repo starter scaffold contract', () => {
     expect(new Set(paths).size).toBe(paths.length);
   });
 
-  test('manages account GitHub App installation metadata through the project API', async () => {
+  test('manages account GitHub App installation metadata through the workspace API', async () => {
     const app = createApp();
 
-    const installed = await app.request(`/v1/projects/github/installation?account_id=${ACCOUNT_ID}`);
+    const installed = await app.request(`/v1/workspaces/github/installation?account_id=${ACCOUNT_ID}`);
     expect(installed.status).toBe(200);
     expect(await installed.json()).toMatchObject({
       account_id: ACCOUNT_ID,
@@ -629,7 +630,7 @@ describe('create-repo starter scaffold contract', () => {
       owner_type: 'Organization',
     });
 
-    const upsert = await app.request('/v1/projects/github/installation', {
+    const upsert = await app.request('/v1/workspaces/github/installation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -646,7 +647,7 @@ describe('create-repo starter scaffold contract', () => {
       permissions: { contents: 'write' },
     });
 
-    const replay = await app.request('/v1/projects/github/installation', {
+    const replay = await app.request('/v1/workspaces/github/installation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -662,14 +663,14 @@ describe('create-repo starter scaffold contract', () => {
       owner_login: 'kortix-org',
     });
 
-    const disconnect = await app.request(`/v1/projects/github/installation?account_id=${ACCOUNT_ID}`, {
+    const disconnect = await app.request(`/v1/workspaces/github/installation?account_id=${ACCOUNT_ID}`, {
       method: 'DELETE',
     });
     expect(disconnect.status).toBe(200);
     expect(await disconnect.json()).toEqual({ ok: true });
     expect(installationRows).toEqual([]);
 
-    const uninstalled = await app.request(`/v1/projects/github/installation?account_id=${ACCOUNT_ID}`);
+    const uninstalled = await app.request(`/v1/workspaces/github/installation?account_id=${ACCOUNT_ID}`);
     expect(uninstalled.status).toBe(200);
     expect(await uninstalled.json()).toMatchObject({
       account_id: ACCOUNT_ID,
@@ -695,7 +696,7 @@ describe('create-repo starter scaffold contract', () => {
     });
 
     const app = createApp();
-    const installations = await app.request(`/v1/projects/github/installations?account_id=${ACCOUNT_ID}`);
+    const installations = await app.request(`/v1/workspaces/github/installations?account_id=${ACCOUNT_ID}`);
     expect(installations.status).toBe(200);
     const installationsBody = await installations.json();
     expect(installationsBody).toMatchObject({
@@ -708,7 +709,7 @@ describe('create-repo starter scaffold contract', () => {
     ]));
 
     const repos = await app.request(
-      `/v1/projects/github/repositories?account_id=${ACCOUNT_ID}` +
+      `/v1/workspaces/github/repositories?account_id=${ACCOUNT_ID}` +
         '&installation_id=84&search=portal&limit=25',
     );
     expect(repos.status).toBe(200);
@@ -729,7 +730,7 @@ describe('create-repo starter scaffold contract', () => {
     });
 
     const branches = await app.request(
-      `/v1/projects/github/repository-branches?account_id=${ACCOUNT_ID}` +
+      `/v1/workspaces/github/repository-branches?account_id=${ACCOUNT_ID}` +
         '&installation_id=84&repo_full_name=acme%2Fportal',
     );
     expect(branches.status).toBe(200);
@@ -745,7 +746,7 @@ describe('create-repo starter scaffold contract', () => {
       ],
     });
 
-    const linked = await app.request('/v1/projects/link-repository', {
+    const linked = await app.request('/v1/workspaces/link-repository', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -756,11 +757,11 @@ describe('create-repo starter scaffold contract', () => {
     });
     expect(linked.status).toBe(201);
     expect(await linked.json()).toMatchObject({
-      project: {
+      workspace: {
         repo_url: 'https://github.com/acme/portal.git',
         default_branch: 'trunk',
-        project_role: 'manager',
-        effective_project_role: 'manager',
+        workspace_role: 'manager',
+        effective_workspace_role: 'manager',
       },
       git_connection: {
         provider: 'github',
@@ -771,7 +772,7 @@ describe('create-repo starter scaffold contract', () => {
     });
     expect(gitConnectionRows).toContainEqual(
       expect.objectContaining({
-        projectId: PROJECT_ID,
+        workspaceId: WORKSPACE_ID,
         provider: "github",
         managed: false,
       }),
@@ -785,7 +786,7 @@ describe('create-repo starter scaffold contract', () => {
 
     const app = createApp();
     const response = await app.request(
-      `/v1/projects/github/repositories?account_id=${ACCOUNT_ID}` +
+      `/v1/workspaces/github/repositories?account_id=${ACCOUNT_ID}` +
         '&installation_id=pat&search=customer%20portal&limit=25',
     );
 
@@ -806,7 +807,7 @@ describe('create-repo starter scaffold contract', () => {
 
     const app = createApp();
     const installations = await app.request(
-      `/v1/projects/github/installations?account_id=${ACCOUNT_ID}`,
+      `/v1/workspaces/github/installations?account_id=${ACCOUNT_ID}`,
     );
     expect(installations.status).toBe(200);
     expect(await installations.json()).toMatchObject({
@@ -815,7 +816,7 @@ describe('create-repo starter scaffold contract', () => {
     });
 
     const repositories = await app.request(
-      `/v1/projects/github/repositories?account_id=${ACCOUNT_ID}&installation_id=pat`,
+      `/v1/workspaces/github/repositories?account_id=${ACCOUNT_ID}&installation_id=pat`,
     );
     expect(repositories.status).toBe(403);
     expect(await repositories.json()).toEqual({
@@ -823,7 +824,7 @@ describe('create-repo starter scaffold contract', () => {
     });
     expect(ownerRepoListCalls).toEqual([]);
 
-    const linked = await app.request('/v1/projects/link-repository', {
+    const linked = await app.request('/v1/workspaces/link-repository', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -838,22 +839,22 @@ describe('create-repo starter scaffold contract', () => {
     });
   });
 
-  test('commits the default starter scaffold with the account GitHub App token before registering the project', async () => {
+  test('commits the default starter scaffold with the account GitHub App token before registering the workspace', async () => {
     const app = createApp();
-    const res = await app.request('/v1/projects/create-repo', {
+    const res = await app.request('/v1/workspaces/create-repo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         account_id: ACCOUNT_ID,
         name: 'company-os',
-        project_name: 'Company OS',
+        workspace_name: 'Company OS',
         private: true,
       }),
     });
 
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.project_id).toBe(PROJECT_ID);
+    expect(body.workspace_id).toBe(WORKSPACE_ID);
     expect(body.repo_url).toBe('https://github.com/kortix-org/company-os.git');
     expect(body.metadata.github.auth_source).toBe('app_installation');
 
@@ -893,7 +894,7 @@ describe('create-repo starter scaffold contract', () => {
     expect(commitCalls[readmeIdx]!.existingSha).toBe('existing-readme-sha');
     expect(commitCalls.filter((_, i) => i !== readmeIdx).every((call) => call.existingSha === undefined)).toBe(true);
 
-    expect(insertedProject).toMatchObject({
+    expect(insertedWorkspace).toMatchObject({
       accountId: ACCOUNT_ID,
       name: 'Company OS',
       repoUrl: 'https://github.com/kortix-org/company-os.git',
@@ -910,7 +911,7 @@ describe('create-repo starter scaffold contract', () => {
       },
     });
     expect(gitConnectionRows).toContainEqual(expect.objectContaining({
-      projectId: PROJECT_ID,
+      workspaceId: WORKSPACE_ID,
       provider: 'github',
       repoUrl: 'https://github.com/kortix-org/company-os.git',
       repoOwner: 'kortix-org',
@@ -922,24 +923,24 @@ describe('create-repo starter scaffold contract', () => {
       visibility: 'private',
       status: 'connected',
     }));
-    expect(grantedProjectRole).toMatchObject({
+    expect(grantedWorkspaceRole).toMatchObject({
       accountId: ACCOUNT_ID,
-      projectId: PROJECT_ID,
+      workspaceId: WORKSPACE_ID,
       userId: USER_ID,
-      projectRole: 'manager',
+      workspaceRole: 'manager',
       grantedBy: USER_ID,
     });
   });
 
-  test("commits a selected marketplace project template into the new GitHub repository", async () => {
+  test("commits a selected marketplace workspace template into the new GitHub repository", async () => {
     const app = createApp();
-    const res = await app.request("/v1/projects/create-repo", {
+    const res = await app.request("/v1/workspaces/create-repo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         account_id: ACCOUNT_ID,
         name: "company-os",
-        project_name: "Company OS",
+        workspace_name: "Company OS",
         private: true,
         source_item_id: "kortix-projects:starter",
       }),
@@ -954,22 +955,22 @@ describe('create-repo starter scaffold contract', () => {
     ).toContain('name: "Company OS"');
     expect(gitConnectionRows).toContainEqual(
       expect.objectContaining({
-        projectId: PROJECT_ID,
+        workspaceId: WORKSPACE_ID,
         provider: "github",
         managed: true,
       }),
     );
   });
 
-  test("commits the SEO Department marketplace project into the new GitHub repository", async () => {
+  test("commits the SEO Department marketplace workspace into the new GitHub repository", async () => {
     const app = createApp();
-    const res = await app.request("/v1/projects/create-repo", {
+    const res = await app.request("/v1/workspaces/create-repo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         account_id: ACCOUNT_ID,
         name: "seo-team",
-        project_name: "Acme SEO",
+        workspace_name: "Acme SEO",
         private: true,
         source_item_id: "kortix-projects:seo-department",
       }),
@@ -1003,28 +1004,28 @@ describe('create-repo starter scaffold contract', () => {
     expect(manifest).toContain("monthly-seo-growth-report");
     expect(gitConnectionRows).toContainEqual(
       expect.objectContaining({
-        projectId: PROJECT_ID,
+        workspaceId: WORKSPACE_ID,
         provider: "github",
         managed: true,
       }),
     );
   });
 
-  test('rejects hidden marketplace projects before creating a GitHub repository', async () => {
+  test('rejects hidden marketplace workspaces before creating a GitHub repository', async () => {
     const app = createApp();
-    const res = await app.request('/v1/projects/create-repo', {
+    const res = await app.request('/v1/workspaces/create-repo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         account_id: ACCOUNT_ID,
-        name: 'internal-project',
+        name: 'internal-workspace',
         source_item_id: 'kortix-projects:web-studio',
       }),
     });
 
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({
-      error: 'Unknown or non-cloneable project item "kortix-projects:web-studio"',
+      error: 'Unknown or non-cloneable workspace item "kortix-projects:web-studio"',
     });
     expect(repoCreateCalls).toHaveLength(0);
   });

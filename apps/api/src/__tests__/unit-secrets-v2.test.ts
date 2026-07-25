@@ -12,8 +12,8 @@ import {
   identifierKeyConflicts,
   isValidIdentifier,
   resolveGrantedSecretEnv,
-  type ResolvedProjectSecret,
-} from '../projects/secrets';
+  type ResolvedWorkspaceSecret,
+} from '../workspaces/secrets';
 import { agentMayUseEnv } from '../iam/agent-scope';
 import type { AgentGrant } from '@kortix/db';
 
@@ -48,7 +48,7 @@ describe('identifierKeyConflicts', () => {
   });
 });
 
-const row = (identifier: string, key: string, value: string): ResolvedProjectSecret => ({
+const row = (identifier: string, key: string, value: string): ResolvedWorkspaceSecret => ({
   identifier,
   key,
   value,
@@ -86,7 +86,7 @@ describe('resolveGrantedSecretEnv', () => {
     expect(env).toEqual({});
   });
 
-  test('a granted identifier not present in the project is simply absent (no error)', () => {
+  test('a granted identifier not present in the workspace is simply absent (no error)', () => {
     const { env } = resolveGrantedSecretEnv(
       [row('OPENAI_API_KEY', 'OPENAI_API_KEY', 'sk-1')],
       ['DELETED_IDENTIFIER'],

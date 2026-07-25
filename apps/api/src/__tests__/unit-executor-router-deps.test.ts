@@ -21,8 +21,8 @@ const REQUIRED_DEP_KEYS = [
   'getDiscoverIntegration',
   'discoverConnectorAuth',
   'listPipedreamApps',
-  'getProjectPolicies',
-  'setProjectPolicies',
+  'getWorkspacePolicies',
+  'setWorkspacePolicies',
 ];
 
 describe('dbExecutorRouterDeps wiring', () => {

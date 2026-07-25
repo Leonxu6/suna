@@ -7,7 +7,7 @@
  *
  * ── Why the old pressure gate could never fire ──────────────────────────────
  * The Daytona quota (100) counts EVERY snapshot in the org: our templates, our
- * per-project warm images, and Daytona's own stock/bench images. The old gate
+ * per-workspace warm images, and Daytona's own stock/bench images. The old gate
  * counted only `kortix-default-` / `kortix-tpl-` / `kortix-wproj-`. Measured live
  * (2026-07-08): 120 snapshots tripped the cap while that namespace held 98 — and
  * after a manual reclaim, 68 total against a GC-visible 15. With ~46 ppwarm + 22
@@ -28,18 +28,18 @@
  *
  * ── Cross-environment safety ────────────────────────────────────────────────
  * dev / staging / prod / laptops share ONE Daytona org but have SEPARATE databases.
- * This process can only see its own DB. So "no project row for this proj8" does NOT
- * mean the project is gone — it may be another environment's. `lastUsedAt` is the
+ * This process can only see its own DB. So "no workspace row for this proj8" does NOT
+ * mean the workspace is gone — it may be another environment's. `lastUsedAt` is the
  * only cross-env liveness signal we have, and it is the sole basis on which a
  * ppwarm tip belonging to nobody-we-know is reclaimed.
  *
  * ── Why ppwarm needs an LRU budget, not just a liveness rule ────────────────
  * `kortix-ppwarm-<proj8>-<hash>` is minted unconditionally on session-start of the
- * shared default (builder.ts), one live tip per project. So the cache's floor is the
- * number of projects that have ever started a session. Measured 2026-07-08: 69 tips
- * for 69 distinct, non-archived projects — 69 of the org's 100 slots, before a single
+ * shared default (builder.ts), one live tip per workspace. So the cache's floor is the
+ * number of workspaces that have ever started a session. Measured 2026-07-08: 69 tips
+ * for 69 distinct, non-archived workspaces — 69 of the org's 100 slots, before a single
  * default or user template. Liveness rules reclaim NOTHING there (every tip is a live
- * project's only tip), so a purely liveness-based GC sits at 100% pressure doing
+ * workspace's only tip), so a purely liveness-based GC sits at 100% pressure doing
  * nothing, which is exactly the outage we hit.
  *
  * ppwarm is a pure CACHE — evicting a tip costs one cold boot plus a re-bake, never
@@ -51,7 +51,7 @@
  * gating the warm bake; GC can only buy time.
  *
  * ── Template scoping (ppwarm-names.ts FORMAT MIGRATION) ─────────────────────
- * A ppwarm name is scoped to (project, template): `kortix-ppwarm-<proj8>-<tpl8>-
+ * A ppwarm name is scoped to (workspace, template): `kortix-ppwarm-<proj8>-<tpl8>-
  * <hash12>` for names minted after that migration, `kortix-ppwarm-<proj8>-
  * <hash12>` (no tpl8) for names minted before it. `ppwarmProj8` matches both
  * shapes (every rule below that only needs "is this a ppwarm tip" is unaffected);
@@ -79,14 +79,14 @@ export const QUOTA_GC_KEEP_FRESHEST_DEFAULTS = 12;
 export const QUOTA_GC_MIN_IDLE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * A ppwarm tip unused this long is reclaimed even though we can't see whose project
+ * A ppwarm tip unused this long is reclaimed even though we can't see whose workspace
  * it is. Cross-env safe: any environment still booting from it keeps lastUsedAt fresh.
  */
 export const QUOTA_GC_PPWARM_MAX_IDLE_MS = 14 * 24 * 60 * 60 * 1000;
 
 /**
  * Under budget pressure, ppwarm tips are evicted LRU — but never one used this
- * recently. An actively-used project would simply re-bake on its next session, so
+ * recently. An actively-used workspace would simply re-bake on its next session, so
  * evicting it is churn (a slot freed and immediately reclaimed), not reclamation.
  */
 export const QUOTA_GC_PPWARM_EVICT_PROTECT_MS = 6 * 60 * 60 * 1000;
@@ -137,9 +137,9 @@ export interface SelectInput {
   referenced: ReadonlySet<string>;
   /**
    * FIX-K-lite: image identifiers (ppwarm NAME or provider external id) that are
-   * the ACTIVE routing pin of SOME project. Never reaped — a proj8 prefix
-   * collision must not let one project's superseded-tip selection delete another
-   * project's LIVE pinned image. Injected by the IO layer (it reads the projects
+   * the ACTIVE routing pin of SOME workspace. Never reaped — a proj8 prefix
+   * collision must not let one workspace's superseded-tip selection delete another
+   * workspace's LIVE pinned image. Injected by the IO layer (it reads the workspaces
    * table); defaults to empty so pure-unit callers keep the prior behavior.
    */
   pinnedImages?: ReadonlySet<string>;
@@ -159,7 +159,7 @@ export interface SelectResult {
   deferred: number;
   /**
    * True when, even after evicting every eligible ppwarm tip, the org still can't
-   * reach QUOTA_GC_ORG_TARGET. The cache floor (one tip per active project) has
+   * reach QUOTA_GC_ORG_TARGET. The cache floor (one tip per active workspace) has
    * outgrown the quota: GC cannot fix this, only capacity or a warm-bake gate can.
    * Callers MUST surface this rather than log a quiet no-op.
    */
@@ -174,7 +174,7 @@ export function isManaged(name: string): boolean {
  * proj8 scope key of a ppwarm name. Matches BOTH shapes — old
  * `kortix-ppwarm-<proj8>-<hash12>` and new (template-scoped)
  * `kortix-ppwarm-<proj8>-<tpl8>-<hash12>` — proj8 is always the first segment
- * regardless of format, so every rule keyed only on "is this project's ppwarm
+ * regardless of format, so every rule keyed only on "is this workspace's ppwarm
  * cache" (idle sweep, LRU budget) is unaffected by the format migration.
  */
 export function ppwarmProj8(name: string): string | null {
@@ -237,8 +237,8 @@ export function selectSnapshotsToReap(input: SelectInput): SelectResult {
   if (!underPressure) return result;
 
   // Reapable universe: ours, not referenced by a local template row, not mid-build,
-  // and NEVER a live pinned image of any project (FIX-K-lite: guards a proj8
-  // collision from deleting another project's active cache; matched by name OR id).
+  // and NEVER a live pinned image of any workspace (FIX-K-lite: guards a proj8
+  // collision from deleting another workspace's active cache; matched by name OR id).
   const pool = managed.filter(
     (s) => !referenced.has(s.name) && !IN_FLIGHT_STATES.has(s.state) && !pinned.has(s.name) && !pinned.has(s.id),
   );
@@ -259,7 +259,7 @@ export function selectSnapshotsToReap(input: SelectInput): SelectResult {
     claim(s, `state=${s.state}`);
   }
 
-  // 2. Superseded ppwarm tips: exactly one tip per (project, template) is live.
+  // 2. Superseded ppwarm tips: exactly one tip per (workspace, template) is live.
   //    The on-bake reaper already does this, but it misses stragglers when a
   //    bake fails midway. Grouped by (proj8, tpl8) — NOT proj8 alone — so a
   //    second template's tip is never compared against, and never "supersedes",
@@ -284,20 +284,20 @@ export function selectSnapshotsToReap(input: SelectInput): SelectResult {
     for (const s of superseded) {
       // A "superseded" tip that was created/used minutes ago is very likely
       // another live runtime's CURRENT tip (two code versions → two base
-      // identities → two live warm names for the same project). Deleting it
+      // identities → two live warm names for the same workspace). Deleting it
       // triggers an immediate full re-bake — churn, not reclamation. See
       // PPWARM_REAP_PROTECT_MS (ppwarm-names.ts) for the incident writeup.
       const t = lastTouch(s);
       if (Number.isFinite(t) && now - t < QUOTA_GC_PPWARM_FRESH_PROTECT_MS) continue;
       const proj8 = ppwarmProj8(s.name);
       const tpl8 = ppwarmTpl8(s.name);
-      claim(s, `superseded ppwarm tip for project ${proj8}${tpl8 ? ` (template ${tpl8})` : ''}`);
+      claim(s, `superseded ppwarm tip for workspace ${proj8}${tpl8 ? ` (template ${tpl8})` : ''}`);
     }
   }
 
   // 3. ppwarm tips nobody has booted in a long time. We cannot see other envs' DBs,
   //    so idle time is the only safe liveness proof. Purely a cache — a wrongly
-  //    reaped tip re-bakes on the project's next background sync.
+  //    reaped tip re-bakes on the workspace's next background sync.
   for (const s of pool) {
     const t = lastTouch(s);
     if (!ppwarmProj8(s.name)) continue;
@@ -328,7 +328,7 @@ export function selectSnapshotsToReap(input: SelectInput): SelectResult {
 
   // 6. BUDGET. Everything above is "provably unneeded". If the org is still over
   //    target after all of it, the shortfall is live cache: one ppwarm tip per active
-  //    project, which no liveness rule can touch (see the header). ppwarm is a pure
+  //    workspace, which no liveness rule can touch (see the header). ppwarm is a pure
   //    cache, so it is what gives. Evict LRU until we reach target, skipping tips used
   //    recently enough that they'd just re-bake.
   const stillOver = () => orgTotal - candidates.length - QUOTA_GC_ORG_TARGET;

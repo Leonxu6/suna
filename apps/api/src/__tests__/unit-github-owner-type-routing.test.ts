@@ -2,7 +2,7 @@
  * Regression coverage for the self-host personal-owner incident: a managed GitHub
  * App installed on a PERSONAL (User) account instead of an Organization made
  * every managed-git repo create/list 404 on `/orgs/{owner}/repos`, because
- * `managedAdminAuth()` (projects/git-backends/github.ts) used to hardcode
+ * `managedAdminAuth()` (workspaces/git-backends/github.ts) used to hardcode
  * `ownerType: 'Organization'` for the App-installation path (and gated the
  * PAT path's live detection behind `INTERNAL_KORTIX_ENV !== 'prod'`, which is
  * also wrong — a self-host box runs the "prod" build but is not the hosted
@@ -41,7 +41,7 @@ mock.module('../platform/services/managed-github-app', () => ({
   },
 }));
 
-const { githubBackend } = await import('../projects/git-backends/github');
+const { githubBackend } = await import('../workspaces/git-backends/github');
 
 // This repo's local `.env` (loaded automatically by `bun test`) sets real
 // MANAGED_GIT_GITHUB_*/KORTIX_GITHUB_APP_* values for interactive dev use —
@@ -138,7 +138,7 @@ describe('managed GitHub App createRepo — owner-type routing', () => {
 
     const repo = await githubBackend.createRepo({
       accountId: 'acct-1',
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       slug: 'demo',
       defaultBranch: 'main',
       isPrivate: true,
@@ -163,7 +163,7 @@ describe('managed GitHub App createRepo — owner-type routing', () => {
 
     const repo = await githubBackend.createRepo({
       accountId: 'acct-1',
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       slug: 'demo',
       defaultBranch: 'main',
       isPrivate: true,
@@ -184,7 +184,7 @@ describe('managed GitHub App createRepo — owner-type routing', () => {
 
     const repo = await githubBackend.createRepo({
       accountId: 'acct-1',
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       slug: 'demo',
       defaultBranch: 'main',
       isPrivate: true,
@@ -204,7 +204,7 @@ describe('managed GitHub App createRepo — owner-type routing', () => {
 
     const repo = await githubBackend.createRepo({
       accountId: 'acct-1',
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       slug: 'demo',
       defaultBranch: 'main',
       isPrivate: true,
@@ -219,7 +219,7 @@ describe('managed GitHub App createRepo — owner-type routing', () => {
 
     const repo = await githubBackend.createRepo({
       accountId: 'acct-1',
-      projectId: 'proj-1',
+      workspaceId: 'proj-1',
       slug: 'demo',
       defaultBranch: 'main',
       isPrivate: true,
