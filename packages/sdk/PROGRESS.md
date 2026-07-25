@@ -192,7 +192,26 @@ Also stop if the same failure survives three different fixes (use
 
 ---
 
-## NOW — active plan: OpenCode ACP canary
+## NOW — active plan: Workspace domain refactor
+
+- **Plan:** `docs/superpowers/plans/2026-07-25-workspace-domain-refactor.md`
+- **Spec:** `docs/superpowers/specs/2026-07-25-workspace-domain-refactor-design.md`
+
+| # | Task | Status | Session | Last touched | Commit |
+|---|---|---|---|---|---|
+| 1 | Contract inventory and RED tests | IN PROGRESS | `019f9afd` | 2026-07-25 | — |
+| 2 | Database domain | NOT STARTED | — | — | — |
+| 3 | API domain | NOT STARTED | — | — | — |
+| 4 | SDK domain | NOT STARTED | — | — | — |
+| 5 | CLI domain | NOT STARTED | — | — | — |
+| 6 | Web domain and default routing | NOT STARTED | — | — | — |
+| 7 | Mobile, tests, and documentation | NOT STARTED | — | — | — |
+| 8 | Full local verification | NOT STARTED | — | — | — |
+| 9 | Pull request | NOT STARTED | — | — | — |
+
+---
+
+## COMPLETED PLAN — OpenCode ACP canary
 
 - **Plan:** `docs/superpowers/plans/2026-07-25-opencode-acp-canary.md`
 - **Spec:** `docs/superpowers/specs/2026-07-25-opencode-acp-canary-design.md`
