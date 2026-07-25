@@ -203,7 +203,7 @@ Also stop if the same failure survives three different fixes (use
 | 2 | Database domain | DONE | `019f9afd` | 2026-07-25 | `981431967` |
 | 3 | API domain | DONE | `019f9afd` | 2026-07-25 | `7f08bc5cc` |
 | 4 | SDK domain | DONE | `019f9afd` | 2026-07-25 | `344a4a294` |
-| 5 | CLI domain | NOT STARTED | — | — | — |
+| 5 | CLI domain | IN PROGRESS | `019f9afd` | 2026-07-25 | — |
 | 6 | Web domain and default routing | NOT STARTED | — | — | — |
 | 7 | Mobile, tests, and documentation | NOT STARTED | — | — | — |
 | 8 | Full local verification | NOT STARTED | — | — | — |
