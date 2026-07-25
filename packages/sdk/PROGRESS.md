@@ -202,7 +202,7 @@ Also stop if the same failure survives three different fixes (use
 | 1 | Contract inventory and RED tests | DONE | `019f9afd` | 2026-07-25 | `adb74756a` |
 | 2 | Database domain | DONE | `019f9afd` | 2026-07-25 | `981431967` |
 | 3 | API domain | DONE | `019f9afd` | 2026-07-25 | `7f08bc5cc` |
-| 4 | SDK domain | IN PROGRESS | `019f9afd` | 2026-07-25 | — |
+| 4 | SDK domain | DONE | `019f9afd` | 2026-07-25 | `344a4a294` |
 | 5 | CLI domain | NOT STARTED | — | — | — |
 | 6 | Web domain and default routing | NOT STARTED | — | — | — |
 | 7 | Mobile, tests, and documentation | NOT STARTED | — | — | — |
@@ -3147,3 +3147,5 @@ Post-rebase live ACP and REST presentation plus question parity:
 **Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
 and deployed ACP plus REST parity remain.
 ||||||| parent of f571c3b92 (chore(sdk): complete Workspace API task)
+||||||| parent of 2967a40d8 (chore(sdk): mark Workspace domain task complete)
+**Shippable to production: NOT YET.** Tasks 4 through 9 remain.
