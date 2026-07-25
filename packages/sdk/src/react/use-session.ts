@@ -16,7 +16,7 @@
  * client health poller, and the first turn streams immediately.
  *
  * Call this ONCE per session view (like a provider): it owns the SSE subscription
- * and the `/start` poll for `(projectId, sessionId)`.
+ * and the `/start` poll for `(workspaceId, sessionId)`.
  */
 
 import { useQuery } from '@tanstack/react-query';
@@ -38,8 +38,8 @@ import {
   isSessionStartError,
   type SessionStartResult,
   sessionStartKey,
-  startProjectSession,
-} from '../core/rest/projects-client';
+  startWorkspaceSession,
+} from '../core/rest/workspaces-client';
 import { isSessionFresh } from '../core/http/fresh-sessions';
 import { BillingError, parseBillingError } from '../core/http/api/errors';
 import { formatOpenCodeRuntimeError } from '../core/http/opencode-errors';
@@ -50,8 +50,8 @@ import { resolveSessionBusy } from './session-busy';
 import { useOpenCodeEventStream } from './use-opencode-events';
 import type { ModelKey } from './use-model-store';
 import { formatModelString } from './use-opencode-local';
-import { useProjectConfig } from './use-project-config';
-import { useProjectModels } from './use-project-models';
+import { useWorkspaceConfig } from './use-workspace-config';
+import { useWorkspaceModels } from './use-workspace-models';
 import { usePermissionSelfHeal } from './use-permission-self-heal';
 import { useQuestionSelfHeal } from './use-question-self-heal';
 import { useRuntimePhase } from './use-runtime-phase';
@@ -318,7 +318,7 @@ export interface UseSessionOptions {
    * machinery every host needs. Default true.
    *
    * Set this false when the host mounts its OWN chat surface for the same
-   * `(projectId, sessionId)` (e.g. apps/web's `SessionChat`, which has its own
+   * `(workspaceId, sessionId)` (e.g. apps/web's `SessionChat`, which has its own
    * `useSessionSync` + `useQuestionSelfHeal`): with two callers of `useSession`
    * alive for the same session — this hook (for boot/lifecycle) and the host's
    * chat component — leaving it `true` would double-mount both pollers, running
@@ -352,14 +352,14 @@ const DISABLED_CHAT_ENGINE_SYNC = {
   loadOlder: async () => {},
 };
 
-export function useSession(projectId: string, sessionId: string, options: UseSessionOptions = {}) {
+export function useSession(workspaceId: string, sessionId: string, options: UseSessionOptions = {}) {
   const { waitMs = 15_000, replayStartStash = true, enabled = true, chatEngine = true } = options;
 
   // 1. Drive /start until the runtime is ready (the server long-polls each tick).
   const start = useQuery({
-    queryKey: sessionStartKey(projectId, sessionId),
-    queryFn: () => startProjectSession(projectId, sessionId, waitMs),
-    enabled: enabled && !!projectId && !!sessionId,
+    queryKey: sessionStartKey(workspaceId, sessionId),
+    queryFn: () => startWorkspaceSession(workspaceId, sessionId, waitMs),
+    enabled: enabled && !!workspaceId && !!sessionId,
     retry: (failureCount, error) => shouldRetrySessionStart(failureCount, error, sessionId),
     retryDelay: (failureCount, error) =>
       isSessionStartError(error) && error.status === 404
@@ -424,7 +424,7 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
   // 5. Resolve the canonical OpenCode root id (server-owned; /start hands it over)
   // and sync messages off it.
   const canonicalSession = useCanonicalOpenCodeSession({
-    projectId,
+    workspaceId,
     sessionId,
     pinFromStart: startData?.opencode_session_id ?? null,
     listRuntimeSessions: runtimePolicy.listOpenCodeSessions,
@@ -500,9 +500,9 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
   );
 
   // 7. Server-side capabilities + per-session picks (all pre-runtime — no sandbox).
-  const models = useProjectModels(projectId);
-  const agents = useVisibleAgents({ projectId });
-  const config = useProjectConfig(projectId);
+  const models = useWorkspaceModels(workspaceId);
+  const agents = useVisibleAgents({ workspaceId });
+  const config = useWorkspaceConfig(workspaceId);
   const picks = useSessionPicks(sessionId);
 
   // 8. Mutations.
@@ -599,7 +599,7 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
     });
   };
 
-  // Run a project slash-command (server-side `/command`), distinct from a prompt.
+  // Run a workspace slash-command (server-side `/command`), distinct from a prompt.
   const runCommand = (
     command: string,
     args: string,
@@ -691,7 +691,7 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
   }, [phase, sync.isLoading, sync.messages.length, sessionId, replayStartStash, chatEngine]);
 
   return {
-    projectId,
+    workspaceId,
     sessionId,
     /** Canonical OpenCode root id, or null while resolving. */
     opencodeSessionId: rootSessionId ?? null,

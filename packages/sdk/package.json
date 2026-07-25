@@ -1,7 +1,7 @@
 {
   "name": "@kortix/sdk",
   "version": "0.3.0",
-  "description": "Official Kortix frontend TypeScript SDK — one typed client for the Kortix agent platform. Unifies project/session lifecycle and live agent streaming behind a single ergonomic Session handle, so web, mobile, and white-label apps never touch the raw HTTP API or OpenCode semantics.",
+  "description": "Official Kortix frontend TypeScript SDK — one typed client for the Kortix agent platform. Unifies workspace/session lifecycle and live agent streaming behind a single ergonomic Session handle, so web, mobile, and white-label apps never touch the raw HTTP API or OpenCode semantics.",
   "type": "module",
   "license": "Elastic-2.0",
   "homepage": "https://github.com/kortix-ai/suna/tree/main/packages/sdk",
@@ -40,6 +40,7 @@
     "./config": "./src/deprecated/config.ts",
     "./auth": "./src/deprecated/auth.ts",
     "./api-client": "./src/deprecated/api-client.ts",
+    "./workspaces-client": "./src/deprecated/workspaces-client.ts",
     "./projects-client": "./src/deprecated/projects-client.ts",
     "./feature-flags": "./src/deprecated/feature-flags.ts",
     "./fresh-sessions": "./src/deprecated/fresh-sessions.ts",
@@ -94,6 +95,10 @@
       "./api-client": {
         "types": "./dist/deprecated/api-client.d.ts",
         "import": "./dist/deprecated/api-client.js"
+      },
+      "./workspaces-client": {
+        "types": "./dist/deprecated/workspaces-client.d.ts",
+        "import": "./dist/deprecated/workspaces-client.js"
       },
       "./projects-client": {
         "types": "./dist/deprecated/projects-client.d.ts",

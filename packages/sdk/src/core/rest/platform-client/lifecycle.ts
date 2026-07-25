@@ -4,13 +4,13 @@
  */
 
 import {
-  createProjectSession,
-  deleteProjectSession,
-  startProjectSession,
-  listProjects,
-  restartProjectSession,
-  stopProjectSession,
-} from '../projects-client';
+  createWorkspaceSession,
+  deleteWorkspaceSession,
+  startWorkspaceSession,
+  listWorkspaces,
+  restartWorkspaceSession,
+  stopWorkspaceSession,
+} from '../workspaces-client';
 import type {
   SandboxInfo,
   SandboxProviderName,
@@ -19,9 +19,9 @@ import type {
 } from './types';
 import { backendApi } from '../../http/api-client';
 import {
-  findProjectSessionSandbox,
-  listProjectSessionSandboxes,
-  projectSessionToSandboxInfo,
+  findWorkspaceSessionSandbox,
+  listWorkspaceSessionSandboxes,
+  workspaceSessionToSandboxInfo,
   normalizeSandboxId,
   getPlatformUrl,
   getLocalBridgeStatusUrl,
@@ -48,20 +48,20 @@ export async function ensureSandbox(opts?: {
   provider?: SandboxProviderName;
   serverType?: ServerTypeOption;
 }): Promise<{ sandbox: SandboxInfo; created: boolean }> {
-  const existing = await findProjectSessionSandbox();
+  const existing = await findWorkspaceSessionSandbox();
   if (existing) return { sandbox: existing.sandbox, created: false };
 
-  const projects = await listProjects();
-  const project = projects[0];
-  if (!project) {
-    throw new Error('Create a project before starting a sandbox');
+  const workspaces = await listWorkspaces();
+  const workspace = workspaces[0];
+  if (!workspace) {
+    throw new Error('Create a workspace before starting a sandbox');
   }
 
-  const session = await createProjectSession(project.project_id, {
+  const session = await createWorkspaceSession(workspace.workspace_id, {
     ...(opts?.provider ? { provider: opts.provider } : {}),
   });
-  const runtime = (await startProjectSession(project.project_id, session.session_id))?.sandbox ?? null;
-  return { sandbox: projectSessionToSandboxInfo(project, session, runtime), created: true };
+  const runtime = (await startWorkspaceSession(workspace.workspace_id, session.session_id))?.sandbox ?? null;
+  return { sandbox: workspaceSessionToSandboxInfo(workspace, session, runtime), created: true };
 }
 
 /**
@@ -69,7 +69,7 @@ export async function ensureSandbox(opts?: {
  * Returns null if no sandbox exists (call ensureSandbox first).
  */
 export async function getSandbox(): Promise<SandboxInfo | null> {
-  const row = await findProjectSessionSandbox().catch(() => null);
+  const row = await findWorkspaceSessionSandbox().catch(() => null);
   return row?.sandbox ?? null;
 }
 
@@ -96,14 +96,14 @@ export async function getSandboxById(sandboxId: unknown): Promise<SandboxInfo | 
   const normalizedSandboxId = normalizeSandboxId(sandboxId);
   if (!normalizedSandboxId) return null;
 
-  const row = await findProjectSessionSandbox(normalizedSandboxId).catch(() => null);
+  const row = await findWorkspaceSessionSandbox(normalizedSandboxId).catch(() => null);
   return row?.sandbox ?? null;
 }
 
 export async function renameSandbox(sandboxId: string, _name: string): Promise<SandboxInfo> {
-  const row = await findProjectSessionSandbox(sandboxId);
-  if (!row) throw new Error('Project session sandbox not found');
-  throw new Error('Renaming project-session sandboxes is not exposed by the current API');
+  const row = await findWorkspaceSessionSandbox(sandboxId);
+  if (!row) throw new Error('Workspace session sandbox not found');
+  throw new Error('Renaming workspace-session sandboxes is not exposed by the current API');
 }
 
 /**
@@ -112,7 +112,7 @@ export async function renameSandbox(sandboxId: string, _name: string): Promise<S
 export async function listSandboxes(sandboxId?: unknown): Promise<SandboxInfo[]> {
   const normalizedSandboxId = normalizeSandboxId(sandboxId);
 
-  const rows = await listProjectSessionSandboxes().catch(() => []);
+  const rows = await listWorkspaceSessionSandboxes().catch(() => []);
   return rows
     .map((row) => row.sandbox)
     .filter((sandbox) =>
@@ -163,9 +163,9 @@ export async function restartSandbox(sandboxId?: string): Promise<void> {
   if (!sandboxId) {
     throw new Error('No sandbox selected for workload restart');
   }
-  const row = await findProjectSessionSandbox(sandboxId);
-  if (!row) throw new Error('Project session sandbox not found');
-  await restartProjectSession(row.project.project_id, row.session.session_id);
+  const row = await findWorkspaceSessionSandbox(sandboxId);
+  if (!row) throw new Error('Workspace session sandbox not found');
+  await restartWorkspaceSession(row.workspace.workspace_id, row.session.session_id);
 }
 
 /**
@@ -173,14 +173,14 @@ export async function restartSandbox(sandboxId?: string): Promise<void> {
  * via restart/start) without deleting the session. Pass `sandboxId` to target
  * a specific instance; omit to stop the user's active sandbox.
  *
- * Previously this called deleteProjectSession, which destroys the session
+ * Previously this called deleteWorkspaceSession, which destroys the session
  * instead of pausing it — fixed to use the dedicated stop endpoint.
  */
 export async function stopSandbox(sandboxId?: string): Promise<void> {
   if (!sandboxId) throw new Error('No sandbox selected to stop');
-  const row = await findProjectSessionSandbox(sandboxId);
-  if (!row) throw new Error('Project session sandbox not found');
-  await stopProjectSession(row.project.project_id, row.session.session_id);
+  const row = await findWorkspaceSessionSandbox(sandboxId);
+  if (!row) throw new Error('Workspace session sandbox not found');
+  await stopWorkspaceSession(row.workspace.workspace_id, row.session.session_id);
 }
 
 /**
@@ -188,12 +188,12 @@ export async function stopSandbox(sandboxId?: string): Promise<void> {
  * The instance keeps running until then; reactivate to reverse.
  */
 export async function cancelSandbox(sandboxId?: string): Promise<{ cancel_at: string | null }> {
-  throw new Error('Cancellation is not exposed for project-session sandboxes');
+  throw new Error('Cancellation is not exposed for workspace-session sandboxes');
 }
 
 /**
  * Reverse a scheduled cancellation — subscription continues as normal.
  */
 export async function reactivateSandbox(sandboxId?: string): Promise<void> {
-  throw new Error('Reactivation is not exposed for project-session sandboxes');
+  throw new Error('Reactivation is not exposed for workspace-session sandboxes');
 }

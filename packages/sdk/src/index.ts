@@ -13,7 +13,7 @@
  *   @kortix/sdk/server      — imports node:async_hooks (Node-only)
  *   @kortix/sdk/internal/*  — apps/web's zustand stores; outside semver
  *
- * The 20 legacy subpaths (`/projects-client`, `/turns`, …) still resolve as
+ * The 20 legacy subpaths (`/workspaces-client`, `/turns`, …) still resolve as
  * `@deprecated` aliases under `src/deprecated/` and are removed only on a
  * major.
  *
@@ -211,35 +211,35 @@ export {
 } from './core/stream/chat-events';
 
 /**
- * Domain result types from the REST facade (`kortix.project(id).*` /
+ * Domain result types from the REST facade (`kortix.workspace(id).*` /
  * `kortix.session(...)` / `kortix.accounts.*` / `kortix.billing.*`), re-exported
  * type-only so a consumer can name what a facade call returns without a
- * second import from `@kortix/sdk/projects-client`. Additive — no runtime
- * cost, and every name here already lives in `./platform/projects-client`
+ * second import from `@kortix/sdk/workspaces-client`. Additive — no runtime
+ * cost, and every name here already lives in `./platform/workspaces-client`
  * (this is a convenience re-export, not a new surface).
  */
 export type {
-  // Projects
-  KortixProject,
-  ProjectConfigSummary,
-  ProjectDetail,
+  // Workspaces
+  KortixWorkspace,
+  WorkspaceConfigSummary,
+  WorkspaceDetail,
   GatewayCatalogModel,
-  ProjectLlmCatalogResponse,
+  WorkspaceLlmCatalogResponse,
   // Accounts / IAM
   KortixAccount,
   AccountDetail,
   AccountMember,
   AccountRole,
-  ProjectRole,
-  ProjectAccessMember,
-  ProjectAccessRequest,
-  ProjectGroupGrant,
-  ProjectResourceGrant,
-  PendingProjectInvite,
+  WorkspaceRole,
+  WorkspaceAccessMember,
+  WorkspaceAccessRequest,
+  WorkspaceGroupGrant,
+  WorkspaceResourceGrant,
+  PendingWorkspaceInvite,
   PendingApproval,
   // Secrets / connectors
-  ProjectSecret,
-  ProjectGitConnection,
+  WorkspaceSecret,
+  WorkspaceGitConnection,
   ConnectorSharing,
   AdminConnector,
   ConnectorConfig,
@@ -249,8 +249,8 @@ export type {
   ExecutableConnectorAuth,
   DiscoveredAuthScheme,
   // Sessions
-  ProjectSession,
-  ProjectOpenCodeSession,
+  WorkspaceSession,
+  WorkspaceOpenCodeSession,
   SessionPublicShare,
   SessionAudit,
   SessionTranscript,
@@ -259,17 +259,17 @@ export type {
   ChangeRequest,
   ChangeRequestDiffResponse,
   ChangeRequestMergePreview,
-  ProjectCommit,
-  ProjectCommitDetail,
-  ProjectCommitFile,
-  ProjectBranch,
+  WorkspaceCommit,
+  WorkspaceCommitDetail,
+  WorkspaceCommitFile,
+  WorkspaceBranch,
   // Triggers
-  ProjectTrigger,
-  ProjectTriggerListing,
+  WorkspaceTrigger,
+  WorkspaceTriggerListing,
   // Sandbox
   SandboxTemplate,
-  ProjectSandboxHealth,
-  ProjectSnapshotBuild,
+  WorkspaceSandboxHealth,
+  WorkspaceSnapshotBuild,
   // Gateway (LLM observability / budgets)
   GatewayLogRow,
   GatewayLogDetail,
@@ -279,8 +279,8 @@ export type {
   // Tokens (CLI PATs)
   AccountToken,
   CreatedAccountToken,
-  ProjectCliToken,
-  CreatedProjectCliToken,
+  WorkspaceCliToken,
+  CreatedWorkspaceCliToken,
   // Billing
   AccountState,
   BillingTransaction,
@@ -297,7 +297,7 @@ export type {
   ConnectorRequestLink,
   // Manifest validate / git token
   ManifestValidationResult,
-  ProjectGitToken,
+  WorkspaceGitToken,
   // Gateway playground
   GatewayPlaygroundResponse,
   // Billing mutations
@@ -312,7 +312,7 @@ export type {
   // Auth validate helper
   AccountIdentity,
   ValidateTokenResult,
-} from './core/rest/projects-client';
+} from './core/rest/workspaces-client';
 
 /**
  * Linear-time trailing-slash strip shared with hosts — see
@@ -359,7 +359,8 @@ export {
   type PermissionAction,
   type PermissionConfig,
   type PermissionRule,
-} from './core/rest/projects-client/agent-config';
+} from './core/rest/workspaces-client/agent-config';
+export type { KortixProject } from './core/rest/projects-client';
 
 export * from './core/client/kortix';
 export * from './core/acp';
@@ -371,6 +372,7 @@ export * from './core/http/fresh-sessions';
 export * from './core/http/instance-routes';
 export * from './core/http/opencode-errors';
 export * from './core/rest/platform-client';
+export * from './core/rest/workspaces-client';
 export * from './core/rest/projects-client';
 export * from './core/runtime/client';
 export * from './core/session';
@@ -389,8 +391,10 @@ export * from './transcript';
 // OpenCode-named exports remain public for backward compatibility.
 export { formatOpenCodeRuntimeError as formatRuntimeError } from './core/http/opencode-errors';
 export type {
-  ProjectOpenCodeSession as ProjectRuntimeSession,
-} from './core/rest/projects-client/sessions';
+  WorkspaceOpenCodeSession as WorkspaceRuntimeSession,
+  /** @deprecated Use `WorkspaceRuntimeSession`. */
+  WorkspaceOpenCodeSession as ProjectRuntimeSession,
+} from './core/rest/workspaces-client/sessions';
 export type {
   OpencodeAgentConfig as RuntimeAgentConfig,
-} from './core/rest/projects-client/agent-config';
+} from './core/rest/workspaces-client/agent-config';

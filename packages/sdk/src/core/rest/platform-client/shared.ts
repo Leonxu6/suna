@@ -11,12 +11,12 @@ import { platformConfig } from '../../http/config';
 import { ApiError, parseBillingError } from '../../http/api/errors';
 import { safeEnv } from '../../http/env';
 import {
-  listProjectSessions,
-  listProjects,
-  type KortixProject,
-  type ProjectSession,
-  type ProjectSessionSandbox,
-} from '../projects-client';
+  listWorkspaceSessions,
+  listWorkspaces,
+  type KortixWorkspace,
+  type WorkspaceSession,
+  type WorkspaceSessionSandbox,
+} from '../workspaces-client';
 import { SANDBOX_PORTS, type SandboxInfo, type SandboxProviderName } from './types';
 
 /**
@@ -97,24 +97,24 @@ function normalizeSessionStatus(status: string | undefined): string {
   return status || 'unknown';
 }
 
-export function projectSessionToSandboxInfo(
-  project: KortixProject,
-  session: ProjectSession,
-  runtime?: ProjectSessionSandbox | null,
+export function workspaceSessionToSandboxInfo(
+  workspace: KortixWorkspace,
+  session: WorkspaceSession,
+  runtime?: WorkspaceSessionSandbox | null,
 ): SandboxInfo {
   const externalId = runtime?.external_id || session.sandbox_url?.match(/\/p\/([^/]+)\//)?.[1] || session.sandbox_id;
   return {
     sandbox_id: runtime?.sandbox_id || session.sandbox_id || session.session_id,
     external_id: externalId,
-    name: session.name || `${project.name} session`,
+    name: session.name || `${workspace.name} session`,
     provider: (runtime?.provider as SandboxProviderName | null) || (session.sandbox_provider as SandboxProviderName | null) || 'daytona',
     base_url: runtime?.base_url || session.sandbox_url || (runtime?.external_id ? `${getPlatformUrl()}/p/${runtime.external_id}/${SANDBOX_PORTS.KORTIX_MASTER}` : ''),
     status: normalizeSessionStatus(runtime?.status || session.status),
     metadata: {
       ...(session.metadata ?? {}),
-      project_id: project.project_id,
+      workspace_id: workspace.workspace_id,
       session_id: session.session_id,
-      project_name: project.name,
+      workspace_name: workspace.name,
       runtime_status: runtime?.status,
       error: session.error,
     },
@@ -123,32 +123,32 @@ export function projectSessionToSandboxInfo(
   };
 }
 
-export async function listProjectSessionSandboxes(): Promise<Array<{
-  project: KortixProject;
-  session: ProjectSession;
-  runtime: ProjectSessionSandbox | null;
+export async function listWorkspaceSessionSandboxes(): Promise<Array<{
+  workspace: KortixWorkspace;
+  session: WorkspaceSession;
+  runtime: WorkspaceSessionSandbox | null;
   sandbox: SandboxInfo;
 }>> {
-  const projects = await listProjects();
+  const workspaces = await listWorkspaces();
   const rows: Array<{
-    project: KortixProject;
-    session: ProjectSession;
-    runtime: ProjectSessionSandbox | null;
+    workspace: KortixWorkspace;
+    session: WorkspaceSession;
+    runtime: WorkspaceSessionSandbox | null;
     sandbox: SandboxInfo;
   }> = [];
 
-  for (const project of projects) {
-    const sessions = await listProjectSessions(project.project_id).catch(() => []);
+  for (const workspace of workspaces) {
+    const sessions = await listWorkspaceSessions(workspace.workspace_id).catch(() => []);
     for (const session of sessions) {
       // Derive runtime info from the session row — do NOT call /start here, or
-      // listing would wake every sandbox across every project. The single-session
+      // listing would wake every sandbox across every workspace. The single-session
       // open/create paths below use /start; a passive list must not.
       const runtime = null;
       rows.push({
-        project,
+        workspace,
         session,
         runtime,
-        sandbox: projectSessionToSandboxInfo(project, session, runtime),
+        sandbox: workspaceSessionToSandboxInfo(workspace, session, runtime),
       });
     }
   }
@@ -161,13 +161,13 @@ export async function listProjectSessionSandboxes(): Promise<Array<{
   });
 }
 
-export async function findProjectSessionSandbox(sandboxId?: string): Promise<{
-  project: KortixProject;
-  session: ProjectSession;
-  runtime: ProjectSessionSandbox | null;
+export async function findWorkspaceSessionSandbox(sandboxId?: string): Promise<{
+  workspace: KortixWorkspace;
+  session: WorkspaceSession;
+  runtime: WorkspaceSessionSandbox | null;
   sandbox: SandboxInfo;
 } | null> {
-  const rows = await listProjectSessionSandboxes();
+  const rows = await listWorkspaceSessionSandboxes();
   if (!sandboxId) return rows[0] ?? null;
   return rows.find((row) =>
     row.sandbox.sandbox_id === sandboxId ||

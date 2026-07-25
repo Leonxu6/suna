@@ -2,23 +2,23 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 
-import { sessionStartKey, startProjectSession } from '../core/rest/projects-client';
+import { sessionStartKey, startWorkspaceSession } from '../core/rest/workspaces-client';
 
 /**
  * Begin the session runtime boot DURING the route transition (before the session
  * page mounts), so provisioning overlaps navigation instead of starting after the
  * page paints. Idempotent + fire-and-forget: React Query dedupes against the
  * session page's own query (same key), and `/start` is idempotent server-side.
- * Also warms the route bundle. Use at every createProjectSession→navigate site.
+ * Also warms the route bundle. Use at every createWorkspaceSession→navigate site.
  */
 export function prefetchSessionStart(
   queryClient: QueryClient,
-  projectId: string,
+  workspaceId: string,
   sessionId: string,
 ): void {
   void queryClient.prefetchQuery({
-    queryKey: sessionStartKey(projectId, sessionId),
-    queryFn: () => startProjectSession(projectId, sessionId),
+    queryKey: sessionStartKey(workspaceId, sessionId),
+    queryFn: () => startWorkspaceSession(workspaceId, sessionId),
     staleTime: 0,
   });
 }

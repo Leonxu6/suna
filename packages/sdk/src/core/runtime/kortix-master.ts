@@ -577,7 +577,7 @@ export async function getProjectActivity(baseUrl: string, projectId: string, lim
 /**
  * A project inside the sandbox's kortix-master daemon — the `/kortix/projects`
  * board surface (tasks, tickets, milestones), NOT the Kortix platform project.
- * The platform's project is `KortixProject` in `core/rest/projects-client`.
+ * The platform's project is `KortixProject` in `core/rest/workspaces-client`.
  */
 export interface KortixMasterProject {
   id: string;

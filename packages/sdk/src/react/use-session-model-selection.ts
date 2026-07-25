@@ -9,7 +9,7 @@ import {
   useModelDefaults,
   type UseModelDefaults,
 } from './use-model-defaults';
-import { useKortixRouteProjectId } from './route-project';
+import { useKortixRouteWorkspaceId } from './route-workspace';
 
 export interface SessionModelSelection extends OpenCodeLocal {
   model: OpenCodeLocal['model'] & {
@@ -18,7 +18,7 @@ export interface SessionModelSelection extends OpenCodeLocal {
 }
 
 /**
- * Project-aware model and agent selection.
+ * Workspace-aware model and agent selection.
  *
  * The SDK owns the server default and free-tier resolution. Hosts supply only
  * the runtime capabilities and optional explicit overrides.
@@ -26,8 +26,8 @@ export interface SessionModelSelection extends OpenCodeLocal {
 export function useSessionModelSelection(
   options: UseOpenCodeLocalOptions,
 ): SessionModelSelection {
-  const projectId = useKortixRouteProjectId();
-  const defaults = useModelDefaults(projectId);
+  const workspaceId = useKortixRouteWorkspaceId();
+  const defaults = useModelDefaults(workspaceId);
   const base = useOpenCodeLocal({
     ...options,
     freeTier: options.freeTier ?? defaults.freeTier,

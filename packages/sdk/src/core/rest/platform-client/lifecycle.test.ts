@@ -1,6 +1,6 @@
 import { test, expect, beforeEach, mock } from 'bun:test';
 import { configureKortix } from '../../http/config';
-import type { KortixProject, ProjectSession, ProjectSessionSandbox, SessionStartResult } from '../projects-client';
+import type { KortixWorkspace, WorkspaceSession, WorkspaceSessionSandbox, SessionStartResult } from '../workspaces-client';
 import {
   getProviders,
   ensureSandbox,
@@ -16,10 +16,10 @@ import {
   reactivateSandbox,
 } from './lifecycle';
 
-// This module composes `../projects-client` functions on top of `backendApi`,
+// This module composes `../workspaces-client` functions on top of `backendApi`,
 // which ultimately goes through `globalThis.fetch` — so we mock fetch directly
-// (branching on URL + method) the same way `../projects-client/*.test.ts`
-// files do, rather than `mock.module`-ing `../projects-client` or `./shared`.
+// (branching on URL + method) the same way `../workspaces-client/*.test.ts`
+// files do, rather than `mock.module`-ing `../workspaces-client` or `./shared`.
 // `mock.module` registrations are process-wide/permanent for the whole `bun
 // test` sweep, and this codebase has already hit (and fixed) a real collision
 // hazard from doing that across files (see `state/server-store/active`) — real
@@ -52,10 +52,10 @@ const callsMatching = (re: RegExp) => calls.filter((c) => re.test(c.url));
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
-const project1: KortixProject = {
-  project_id: 'proj-1',
+const workspace1: KortixWorkspace = {
+  workspace_id: 'proj-1',
   account_id: 'acc-1',
-  name: 'Project One',
+  name: 'Workspace One',
   repo_url: 'https://github.com/acme/one',
   default_branch: 'main',
   manifest_path: 'kortix.yaml',
@@ -66,17 +66,17 @@ const project1: KortixProject = {
   updated_at: '2026-01-01T00:00:00Z',
 };
 
-const project2: KortixProject = {
-  ...project1,
-  project_id: 'proj-2',
-  name: 'Project Two',
+const workspace2: KortixWorkspace = {
+  ...workspace1,
+  workspace_id: 'proj-2',
+  name: 'Workspace Two',
 };
 
 // An already-running session with a sandbox — the "existing" fixture for ensureSandbox/getSandbox/etc.
-const existingSession: ProjectSession = {
+const existingSession: WorkspaceSession = {
   session_id: 'sess-1',
   account_id: 'acc-1',
-  project_id: 'proj-1',
+  workspace_id: 'proj-1',
   branch_name: 'sess-1',
   base_ref: 'main',
   sandbox_provider: 'daytona',
@@ -94,19 +94,19 @@ const existingSession: ProjectSession = {
   updated_at: '2026-01-02T00:00:00Z',
 };
 
-const secondProjectSession: ProjectSession = {
+const secondWorkspaceSession: WorkspaceSession = {
   ...existingSession,
   session_id: 'sess-3',
-  project_id: 'proj-2',
+  workspace_id: 'proj-2',
   sandbox_id: 'sbx-3',
   sandbox_url: 'http://backend.local/v1/p/ext-3/8000',
   branch_name: 'sess-3',
 };
 
-const newSession: ProjectSession = {
+const newSession: WorkspaceSession = {
   session_id: 'sess-2',
   account_id: 'acc-1',
-  project_id: 'proj-1',
+  workspace_id: 'proj-1',
   branch_name: 'sess-2',
   base_ref: 'main',
   sandbox_provider: null,
@@ -124,10 +124,10 @@ const newSession: ProjectSession = {
   updated_at: '2026-01-03T00:00:00Z',
 };
 
-const runtimeSandbox: ProjectSessionSandbox = {
+const runtimeSandbox: WorkspaceSessionSandbox = {
   sandbox_id: 'sbx-2',
   session_id: 'sess-2',
-  project_id: 'proj-1',
+  workspace_id: 'proj-1',
   account_id: 'acc-1',
   provider: 'daytona',
   external_id: 'ext-2',
@@ -149,32 +149,32 @@ const startResult: SessionStartResult = {
   runtime_url: null,
 };
 
-/** GET /projects -> [project1]; GET /projects/proj-1/sessions -> [existingSession]. Nothing else wired. */
+/** GET /workspaces -> [workspace1]; GET /workspaces/proj-1/sessions -> [existingSession]. Nothing else wired. */
 function wireExistingSandbox() {
   handler = (url, method) => {
-    if (method === 'GET' && /\/projects$/.test(url)) return { status: 200, body: [project1] };
-    if (method === 'GET' && /\/projects\/proj-1\/sessions$/.test(url)) return { status: 200, body: [existingSession] };
+    if (method === 'GET' && /\/workspaces$/.test(url)) return { status: 200, body: [workspace1] };
+    if (method === 'GET' && /\/workspaces\/proj-1\/sessions$/.test(url)) return { status: 200, body: [existingSession] };
     throw new Error(`unmocked ${method} ${url}`);
   };
 }
 
-/** GET /projects -> [project1]; sessions empty; POST create -> newSession; POST start -> startResult. */
+/** GET /workspaces -> [workspace1]; sessions empty; POST create -> newSession; POST start -> startResult. */
 function wireCreateFlow() {
   handler = (url, method) => {
-    if (method === 'GET' && /\/projects$/.test(url)) return { status: 200, body: [project1] };
-    if (method === 'GET' && /\/projects\/proj-1\/sessions$/.test(url)) return { status: 200, body: [] };
-    if (method === 'POST' && /\/projects\/proj-1\/sessions$/.test(url)) return { status: 200, body: newSession };
-    if (method === 'POST' && /\/projects\/proj-1\/sessions\/sess-2\/start/.test(url)) {
+    if (method === 'GET' && /\/workspaces$/.test(url)) return { status: 200, body: [workspace1] };
+    if (method === 'GET' && /\/workspaces\/proj-1\/sessions$/.test(url)) return { status: 200, body: [] };
+    if (method === 'POST' && /\/workspaces\/proj-1\/sessions$/.test(url)) return { status: 200, body: newSession };
+    if (method === 'POST' && /\/workspaces\/proj-1\/sessions\/sess-2\/start/.test(url)) {
       return { status: 200, body: startResult };
     }
     throw new Error(`unmocked ${method} ${url}`);
   };
 }
 
-/** GET /projects -> [] — no projects at all. */
-function wireNoProjects() {
+/** GET /workspaces -> [] — no workspaces at all. */
+function wireNoWorkspaces() {
   handler = (url, method) => {
-    if (method === 'GET' && /\/projects$/.test(url)) return { status: 200, body: [] };
+    if (method === 'GET' && /\/workspaces$/.test(url)) return { status: 200, body: [] };
     throw new Error(`unmocked ${method} ${url}`);
   };
 }
@@ -212,7 +212,7 @@ test('ensureSandbox returns an existing sandbox untouched when one is found', as
   expect(callsMatching(/\/start/).length).toBe(0);
 });
 
-test('ensureSandbox creates + starts a session when a project exists but has no sandbox', async () => {
+test('ensureSandbox creates + starts a session when a workspace exists but has no sandbox', async () => {
   wireCreateFlow();
 
   const result = await ensureSandbox();
@@ -220,8 +220,8 @@ test('ensureSandbox creates + starts a session when a project exists but has no 
   expect(result.created).toBe(true);
   expect(result.sandbox.sandbox_id).toBe('sbx-2');
   expect(result.sandbox.external_id).toBe('ext-2');
-  expect(callsMatching(/\/projects\/proj-1\/sessions$/).some((c) => c.method === 'POST')).toBe(true);
-  expect(callsMatching(/\/projects\/proj-1\/sessions\/sess-2\/start/).length).toBe(1);
+  expect(callsMatching(/\/workspaces\/proj-1\/sessions$/).some((c) => c.method === 'POST')).toBe(true);
+  expect(callsMatching(/\/workspaces\/proj-1\/sessions\/sess-2\/start/).length).toBe(1);
 });
 
 test('ensureSandbox sends an explicit E2B selection in the provider field', async () => {
@@ -229,16 +229,16 @@ test('ensureSandbox sends an explicit E2B selection in the provider field', asyn
 
   await ensureSandbox({ provider: 'e2b' });
 
-  const create = callsMatching(/\/projects\/proj-1\/sessions$/).find(
+  const create = callsMatching(/\/workspaces\/proj-1\/sessions$/).find(
     (call) => call.method === 'POST',
   );
   expect(create?.body).toMatchObject({ provider: 'e2b' });
   expect(create?.body).not.toHaveProperty('agent_name');
 });
 
-test('ensureSandbox throws when there are no projects at all', async () => {
-  wireNoProjects();
-  await expect(ensureSandbox()).rejects.toThrow('Create a project before starting a sandbox');
+test('ensureSandbox throws when there are no workspaces at all', async () => {
+  wireNoWorkspaces();
+  await expect(ensureSandbox()).rejects.toThrow('Create a workspace before starting a sandbox');
 });
 
 // ─── createSandbox ───────────────────────────────────────────────────────────
@@ -263,7 +263,7 @@ test('getSandbox returns the row sandbox when one exists', async () => {
 
 test('getSandbox resolves to null (not a rejection) when the lookup fails', async () => {
   handler = (url, method) => {
-    if (method === 'GET' && /\/projects$/.test(url)) return { status: 500, body: { message: 'boom' } };
+    if (method === 'GET' && /\/workspaces$/.test(url)) return { status: 500, body: { message: 'boom' } };
     throw new Error(`unmocked ${method} ${url}`);
   };
   const result = await getSandbox();
@@ -279,7 +279,7 @@ test('getSandboxById returns null immediately (no network) for undefined/empty/n
   expect(calls.length).toBe(0);
 });
 
-test('getSandboxById resolves through findProjectSessionSandbox for a real id', async () => {
+test('getSandboxById resolves through findWorkspaceSessionSandbox for a real id', async () => {
   wireExistingSandbox();
   const result = await getSandboxById('sbx-1');
   expect(result?.sandbox_id).toBe('sbx-1');
@@ -291,41 +291,41 @@ test('getSandboxById resolves through findProjectSessionSandbox for a real id', 
 test('renameSandbox throws "not exposed" when the sandbox exists', async () => {
   wireExistingSandbox();
   await expect(renameSandbox('sbx-1', 'new name')).rejects.toThrow(
-    'Renaming project-session sandboxes is not exposed by the current API',
+    'Renaming workspace-session sandboxes is not exposed by the current API',
   );
 });
 
 test('renameSandbox throws "not found" when the sandbox does not resolve', async () => {
   wireExistingSandbox();
-  await expect(renameSandbox('no-such-sandbox', 'new name')).rejects.toThrow('Project session sandbox not found');
+  await expect(renameSandbox('no-such-sandbox', 'new name')).rejects.toThrow('Workspace session sandbox not found');
 });
 
 // ─── listSandboxes ───────────────────────────────────────────────────────────
 
-function wireTwoProjectsTwoSessions() {
+function wireTwoWorkspacesTwoSessions() {
   handler = (url, method) => {
-    if (method === 'GET' && /\/projects$/.test(url)) return { status: 200, body: [project1, project2] };
-    if (method === 'GET' && /\/projects\/proj-1\/sessions$/.test(url)) return { status: 200, body: [existingSession] };
-    if (method === 'GET' && /\/projects\/proj-2\/sessions$/.test(url)) return { status: 200, body: [secondProjectSession] };
+    if (method === 'GET' && /\/workspaces$/.test(url)) return { status: 200, body: [workspace1, workspace2] };
+    if (method === 'GET' && /\/workspaces\/proj-1\/sessions$/.test(url)) return { status: 200, body: [existingSession] };
+    if (method === 'GET' && /\/workspaces\/proj-2\/sessions$/.test(url)) return { status: 200, body: [secondWorkspaceSession] };
     throw new Error(`unmocked ${method} ${url}`);
   };
 }
 
-test('listSandboxes lists every session-backed sandbox across every project when no filter is given', async () => {
-  wireTwoProjectsTwoSessions();
+test('listSandboxes lists every session-backed sandbox across every workspace when no filter is given', async () => {
+  wireTwoWorkspacesTwoSessions();
   const result = await listSandboxes();
   expect(result.map((s) => s.sandbox_id).sort()).toEqual(['sbx-1', 'sbx-3']);
 });
 
 test('listSandboxes filters by sandbox_id or external_id', async () => {
-  wireTwoProjectsTwoSessions();
+  wireTwoWorkspacesTwoSessions();
   expect((await listSandboxes('sbx-1')).map((s) => s.sandbox_id)).toEqual(['sbx-1']);
   expect((await listSandboxes('ext-3')).map((s) => s.sandbox_id)).toEqual(['sbx-3']);
 });
 
-test('listSandboxes degrades to [] when listProjectSessionSandboxes rejects', async () => {
+test('listSandboxes degrades to [] when listWorkspaceSessionSandboxes rejects', async () => {
   handler = (url, method) => {
-    if (method === 'GET' && /\/projects$/.test(url)) return { status: 500, body: { message: 'boom' } };
+    if (method === 'GET' && /\/workspaces$/.test(url)) return { status: 500, body: { message: 'boom' } };
     throw new Error(`unmocked ${method} ${url}`);
   };
   expect(await listSandboxes()).toEqual([]);
@@ -349,14 +349,14 @@ test('restartSandbox throws when no sandboxId is given', async () => {
 
 test('restartSandbox throws "not found" when the id does not resolve to a row', async () => {
   wireExistingSandbox();
-  await expect(restartSandbox('no-such-sandbox')).rejects.toThrow('Project session sandbox not found');
+  await expect(restartSandbox('no-such-sandbox')).rejects.toThrow('Workspace session sandbox not found');
 });
 
-test('restartSandbox POSTs to the restart endpoint for the resolved project/session', async () => {
+test('restartSandbox POSTs to the restart endpoint for the resolved workspace/session', async () => {
   handler = (url, method) => {
-    if (method === 'GET' && /\/projects$/.test(url)) return { status: 200, body: [project1] };
-    if (method === 'GET' && /\/projects\/proj-1\/sessions$/.test(url)) return { status: 200, body: [existingSession] };
-    if (method === 'POST' && /\/projects\/proj-1\/sessions\/sess-1\/restart$/.test(url)) {
+    if (method === 'GET' && /\/workspaces$/.test(url)) return { status: 200, body: [workspace1] };
+    if (method === 'GET' && /\/workspaces\/proj-1\/sessions$/.test(url)) return { status: 200, body: [existingSession] };
+    if (method === 'POST' && /\/workspaces\/proj-1\/sessions\/sess-1\/restart$/.test(url)) {
       return { status: 200, body: { ok: true, session_id: 'sess-1', status: 'provisioning' } };
     }
     throw new Error(`unmocked ${method} ${url}`);
@@ -366,7 +366,7 @@ test('restartSandbox POSTs to the restart endpoint for the resolved project/sess
 
   const restartCall = calls.find((c) => /\/restart$/.test(c.url));
   expect(restartCall?.method).toBe('POST');
-  expect(restartCall?.url).toContain('/projects/proj-1/sessions/sess-1/restart');
+  expect(restartCall?.url).toContain('/workspaces/proj-1/sessions/sess-1/restart');
 });
 
 test('stopSandbox throws when no sandboxId is given', async () => {
@@ -376,14 +376,14 @@ test('stopSandbox throws when no sandboxId is given', async () => {
 
 test('stopSandbox throws "not found" when the id does not resolve to a row', async () => {
   wireExistingSandbox();
-  await expect(stopSandbox('no-such-sandbox')).rejects.toThrow('Project session sandbox not found');
+  await expect(stopSandbox('no-such-sandbox')).rejects.toThrow('Workspace session sandbox not found');
 });
 
-test('stopSandbox POSTs to the stop endpoint for the resolved project/session', async () => {
+test('stopSandbox POSTs to the stop endpoint for the resolved workspace/session', async () => {
   handler = (url, method) => {
-    if (method === 'GET' && /\/projects$/.test(url)) return { status: 200, body: [project1] };
-    if (method === 'GET' && /\/projects\/proj-1\/sessions$/.test(url)) return { status: 200, body: [existingSession] };
-    if (method === 'POST' && /\/projects\/proj-1\/sessions\/sess-1\/stop$/.test(url)) {
+    if (method === 'GET' && /\/workspaces$/.test(url)) return { status: 200, body: [workspace1] };
+    if (method === 'GET' && /\/workspaces\/proj-1\/sessions$/.test(url)) return { status: 200, body: [existingSession] };
+    if (method === 'POST' && /\/workspaces\/proj-1\/sessions\/sess-1\/stop$/.test(url)) {
       return { status: 200, body: { ok: true, session_id: 'sess-1', status: 'stopped' } };
     }
     throw new Error(`unmocked ${method} ${url}`);
@@ -393,21 +393,21 @@ test('stopSandbox POSTs to the stop endpoint for the resolved project/session', 
 
   const stopCall = calls.find((c) => /\/stop$/.test(c.url));
   expect(stopCall?.method).toBe('POST');
-  expect(stopCall?.url).toContain('/projects/proj-1/sessions/sess-1/stop');
+  expect(stopCall?.url).toContain('/workspaces/proj-1/sessions/sess-1/stop');
 });
 
 // ─── cancelSandbox / reactivateSandbox ───────────────────────────────────────
 
 test('cancelSandbox always throws — cancellation is not exposed, regardless of args', async () => {
-  await expect(cancelSandbox()).rejects.toThrow('Cancellation is not exposed for project-session sandboxes');
-  await expect(cancelSandbox('sbx-1')).rejects.toThrow('Cancellation is not exposed for project-session sandboxes');
+  await expect(cancelSandbox()).rejects.toThrow('Cancellation is not exposed for workspace-session sandboxes');
+  await expect(cancelSandbox('sbx-1')).rejects.toThrow('Cancellation is not exposed for workspace-session sandboxes');
   expect(calls.length).toBe(0);
 });
 
 test('reactivateSandbox always throws — reactivation is not exposed, regardless of args', async () => {
-  await expect(reactivateSandbox()).rejects.toThrow('Reactivation is not exposed for project-session sandboxes');
+  await expect(reactivateSandbox()).rejects.toThrow('Reactivation is not exposed for workspace-session sandboxes');
   await expect(reactivateSandbox('sbx-1')).rejects.toThrow(
-    'Reactivation is not exposed for project-session sandboxes',
+    'Reactivation is not exposed for workspace-session sandboxes',
   );
   expect(calls.length).toBe(0);
 });

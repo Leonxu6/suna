@@ -82,7 +82,7 @@ export function __getConfigResolver(): (() => KortixPlatformConfig | undefined) 
  * host with exactly one config for its whole lifetime (a browser tab, a CLI,
  * a single-tenant server), but UNSAFE for a server process that must serve
  * concurrent requests carrying different tokens (see the warning on
- * `ServerTokenOptions` in `projects-client/shared.ts`): the last caller to
+ * `ServerTokenOptions` in `workspaces-client/shared.ts`): the last caller to
  * `configureKortix()`/`createKortix()` wins for every other in-flight request.
  * For that "Kortix as a Backend" shape, use `runWithKortix`/`createScopedKortix`
  * from `@kortix/sdk/server` instead — they isolate each call's config in a

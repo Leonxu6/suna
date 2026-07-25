@@ -85,7 +85,7 @@ test('createScopedKortix never writes to the process-global config — two scope
     const req = input as Request;
     const auth = init?.headers ? new Headers(init.headers).get('Authorization') : req.headers?.get?.('Authorization') ?? null;
     requests.push({ url: req.url ?? String(input), auth });
-    return new Response(JSON.stringify({ ok: true, projects: [] }), {
+    return new Response(JSON.stringify([]), {
       status: 200,
       headers: { 'content-type': 'application/json' },
     });
@@ -137,7 +137,7 @@ test('createScopedKortix scopes calls reached through id-bound handles minted at
   const kortix = createScopedKortix({ backendUrl: 'http://backend.local/v1', getToken: async () => 'scoped-tok' });
   await kortix.project('PID1').secrets.list();
 
-  expect(requests[0].url).toContain('/projects/PID1/secrets');
+  expect(requests[0].url).toContain('/workspaces/PID1/secrets');
   expect(requests[0].auth).toBe('Bearer scoped-tok');
 });
 

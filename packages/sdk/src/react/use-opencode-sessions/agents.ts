@@ -5,7 +5,7 @@ import { getClient } from '../../core/runtime/client';
 import type { Agent } from '@opencode-ai/sdk/v2/client';
 import { opencodeKeys, useOpenCodeRuntimeReady } from './keys';
 import { unwrap, getLSCache, setLSCache, LS_AGENTS, CACHE_SCOPE_GLOBAL } from './shared';
-import { getProjectDetail, type ProjectConfigSummary } from '../../core/rest/projects-client';
+import { getWorkspaceDetail, type WorkspaceConfigSummary } from '../../core/rest/workspaces-client';
 
 // Re-export filtered agents hook for UI agent selectors
 export { useVisibleAgents } from '../use-visible-agents';
@@ -15,30 +15,30 @@ export { useVisibleAgents } from '../use-visible-agents';
 // ============================================================================
 
 /**
- * Load agents. With `projectId`, the server-side project config is source of
+ * Load agents. With `workspaceId`, the server-side workspace config is source of
  * truth: it returns declarative `kortix.yaml` `agents:` entries for adopted
- * projects and OpenCode file discovery for legacy projects. Without `projectId`,
+ * workspaces and OpenCode file discovery for legacy workspaces. Without `workspaceId`,
  * this falls back to the sandbox OpenCode runtime.
  */
-export function useOpenCodeAgents(options?: { directory?: string; projectId?: string | null }) {
+export function useOpenCodeAgents(options?: { directory?: string; workspaceId?: string | null }) {
   const directory = options?.directory;
-  const projectId = options?.projectId ?? null;
+  const workspaceId = options?.workspaceId ?? null;
   const runtimeReady = useOpenCodeRuntimeReady();
-  const cacheScope = projectId
-    ? `project:${projectId}`
+  const cacheScope = workspaceId
+    ? `workspace:${workspaceId}`
     : directory
       ? `dir:${directory}`
       : CACHE_SCOPE_GLOBAL;
   return useQuery<Agent[]>({
-    queryKey: projectId
-      ? ['project-detail', projectId, 'agents']
+    queryKey: workspaceId
+      ? ['workspace-detail', workspaceId, 'agents']
       : directory
         ? [...opencodeKeys.agents(), 'dir', directory]
         : opencodeKeys.agents(),
     queryFn: async () => {
-      if (projectId) {
-        const detail = await getProjectDetail(projectId);
-        const agents = projectConfigAgentsToOpenCodeAgents(detail.config);
+      if (workspaceId) {
+        const detail = await getWorkspaceDetail(workspaceId);
+        const agents = workspaceConfigAgentsToOpenCodeAgents(detail.config);
         setLSCache(LS_AGENTS, agents, cacheScope);
         return agents;
       }
@@ -48,7 +48,7 @@ export function useOpenCodeAgents(options?: { directory?: string; projectId?: st
       const agents: Agent[] = Array.isArray(data)
         ? data
         : Object.values(data as Record<string, Agent>);
-      // Agents are defined in the project repo (.kortix/opencode/agents), so the
+      // Agents are defined in the workspace repo (.kortix/opencode/agents), so the
       // roster is stable across every session that shares a working directory.
       // Cache under a directory-scoped (or global) STABLE key — not the
       // ephemeral per-sandbox server id — so a new session's picker paints from
@@ -58,19 +58,19 @@ export function useOpenCodeAgents(options?: { directory?: string; projectId?: st
       return agents;
     },
     placeholderData: () => getLSCache<Agent[]>(LS_AGENTS, cacheScope),
-    enabled: projectId ? true : runtimeReady,
-    staleTime: projectId ? 30_000 : Infinity,
+    enabled: workspaceId ? true : runtimeReady,
+    staleTime: workspaceId ? 30_000 : Infinity,
     gcTime: 10 * 60 * 1000,
   });
 }
 
 /**
- * Put the declared project default first so every consumer's ordinary
- * "first visible agent" fallback agrees with the project contract. Explicit
+ * Put the declared workspace default first so every consumer's ordinary
+ * "first visible agent" fallback agrees with the workspace contract. Explicit
  * per-session/user picks still resolve by name and therefore keep precedence.
  */
-export function projectConfigAgentsToOpenCodeAgents(config: ProjectConfigSummary): Agent[] {
-  const agents = config.agents.map(projectConfigAgentToOpenCodeAgent);
+export function workspaceConfigAgentsToOpenCodeAgents(config: WorkspaceConfigSummary): Agent[] {
+  const agents = config.agents.map(workspaceConfigAgentToOpenCodeAgent);
   const defaultName = config.default_agent ?? config.open_code_default_agent;
   if (!defaultName) return agents;
   return agents.sort((left, right) => {
@@ -80,7 +80,11 @@ export function projectConfigAgentsToOpenCodeAgents(config: ProjectConfigSummary
   });
 }
 
-function projectConfigAgentToOpenCodeAgent(agent: ProjectConfigSummary['agents'][number]): Agent {
+/** @deprecated Use `workspaceConfigAgentsToOpenCodeAgents`. */
+export const projectConfigAgentsToOpenCodeAgents =
+  workspaceConfigAgentsToOpenCodeAgents;
+
+function workspaceConfigAgentToOpenCodeAgent(agent: WorkspaceConfigSummary['agents'][number]): Agent {
   return {
     name: agent.name,
     description: agent.description ?? undefined,

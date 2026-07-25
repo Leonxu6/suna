@@ -19,7 +19,7 @@
  * racing through `configureKortix()` with different tokens clobber each
  * other — whichever call landed last wins for every other in-flight request
  * (see the warning on `ServerTokenOptions` in
- * `platform/projects-client/shared.ts`).
+ * `platform/workspaces-client/shared.ts`).
  *
  * `runWithKortix`/`createScopedKortix` fix that using Node's
  * `AsyncLocalStorage`: the config passed to one call is visible ONLY inside

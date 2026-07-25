@@ -227,7 +227,7 @@ describe('classifySendError', () => {
           code: 'provider_not_connected',
           provider: 'openai',
           request_id: 'req_send_1',
-          suggestion: 'Add an openai API key in project settings, then retry.',
+          suggestion: 'Add an openai API key in workspace settings, then retry.',
         }),
       },
     };
@@ -237,7 +237,7 @@ describe('classifySendError', () => {
     expect(result.gateway).toEqual({
       provider: 'openai',
       code: 'provider_not_connected',
-      suggestion: 'Add an openai API key in project settings, then retry.',
+      suggestion: 'Add an openai API key in workspace settings, then retry.',
       upstreamStatus: undefined,
       requestId: 'req_send_1',
     });

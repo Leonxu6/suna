@@ -2,16 +2,16 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 
-import { listProjectSecrets } from '../core/rest/projects-client';
+import { listWorkspaceSecrets } from '../core/rest/workspaces-client';
 import { connectedGatewayProviderIdsFromSecretNames } from './provider-selection';
 import { configKeys } from './use-opencode-config';
-import { clearProjectProviderCache, opencodeKeys } from './use-opencode-sessions';
+import { clearWorkspaceProviderCache, opencodeKeys } from './use-opencode-sessions';
 
-type RefreshProjectProviderStateOptions = {
-  removeProjectScopedCache?: boolean;
+type RefreshWorkspaceProviderStateOptions = {
+  removeWorkspaceScopedCache?: boolean;
   /**
    * Provider id (e.g. 'anthropic', 'codex') whose credential was just saved.
-   * When set, the refresh keeps polling until the project's secrets actually
+   * When set, the refresh keeps polling until the workspace's secrets actually
    * resolve that provider as connected — instead of a fixed retry window that
    * a slow save/opencode restart can outlive, leaving the picker stale until
    * a hard page refresh.
@@ -43,27 +43,27 @@ export function providerConnectedInSecrets(
   return connectedGatewayProviderIdsFromSecretNames(names).has(expectedProviderId);
 }
 
-function invalidateProviderQueries(queryClient: QueryClient, projectId: string): void {
-  const projectProviderKey = ['project-providers', projectId];
-  clearProjectProviderCache(projectId);
-  void queryClient.invalidateQueries({ queryKey: projectProviderKey });
-  void queryClient.invalidateQueries({ queryKey: ['project-secrets', projectId] });
-  void queryClient.refetchQueries({ queryKey: ['project-secrets', projectId], type: 'all' });
-  void queryClient.refetchQueries({ queryKey: projectProviderKey, type: 'all' });
+function invalidateProviderQueries(queryClient: QueryClient, workspaceId: string): void {
+  const workspaceProviderKey = ['workspace-providers', workspaceId];
+  clearWorkspaceProviderCache(workspaceId);
+  void queryClient.invalidateQueries({ queryKey: workspaceProviderKey });
+  void queryClient.invalidateQueries({ queryKey: ['workspace-secrets', workspaceId] });
+  void queryClient.refetchQueries({ queryKey: ['workspace-secrets', workspaceId], type: 'all' });
+  void queryClient.refetchQueries({ queryKey: workspaceProviderKey, type: 'all' });
   void queryClient.invalidateQueries({ queryKey: opencodeKeys.providers() });
   void queryClient.invalidateQueries({ queryKey: configKeys.all });
 }
 
-export function refreshProjectProviderState(
+export function refreshWorkspaceProviderState(
   queryClient: QueryClient,
-  projectId: string,
-  opts: RefreshProjectProviderStateOptions = {},
+  workspaceId: string,
+  opts: RefreshWorkspaceProviderStateOptions = {},
 ): void {
-  const projectProviderKey = ['project-providers', projectId];
-  if (opts.removeProjectScopedCache) {
-    queryClient.removeQueries({ queryKey: projectProviderKey });
+  const workspaceProviderKey = ['workspace-providers', workspaceId];
+  if (opts.removeWorkspaceScopedCache) {
+    queryClient.removeQueries({ queryKey: workspaceProviderKey });
   }
-  invalidateProviderQueries(queryClient, projectId);
+  invalidateProviderQueries(queryClient, workspaceId);
 
   if (typeof window === 'undefined') return;
 
@@ -73,12 +73,12 @@ export function refreshProjectProviderState(
   // final — and with staleTime:Infinity on the provider list nothing ever asks
   // again, so the picker stays stale until a hard refresh. So: don't fire a
   // fixed number of blind retries — poll until the connected state actually
-  // CONVERGES (the expected provider resolves from the project's secrets),
+  // CONVERGES (the expected provider resolves from the workspace's secrets),
   // then do one final refresh burst and stop.
   const expected = opts.expectProviderId;
   if (!expected) {
     for (const delay of [500, 1500, 3000, 6000]) {
-      window.setTimeout(() => invalidateProviderQueries(queryClient, projectId), delay);
+      window.setTimeout(() => invalidateProviderQueries(queryClient, workspaceId), delay);
     }
     return;
   }
@@ -88,8 +88,8 @@ export function refreshProjectProviderState(
     let connected = false;
     try {
       const secrets = await queryClient.fetchQuery({
-        queryKey: ['project-secrets', projectId],
-        queryFn: () => listProjectSecrets(projectId),
+        queryKey: ['workspace-secrets', workspaceId],
+        queryFn: () => listWorkspaceSecrets(workspaceId),
         staleTime: 0,
       });
       connected = providerConnectedInSecrets(secrets, expected);
@@ -97,7 +97,7 @@ export function refreshProjectProviderState(
       // transient fetch failure — keep polling until the deadline
     }
     if (connected) {
-      invalidateProviderQueries(queryClient, projectId);
+      invalidateProviderQueries(queryClient, workspaceId);
       return;
     }
     if (Date.now() - startedAt >= CONVERGE_DEADLINE_MS) return;
@@ -105,3 +105,6 @@ export function refreshProjectProviderState(
   };
   window.setTimeout(() => void poll(), CONVERGE_POLL_MS);
 }
+
+/** @deprecated Use `refreshWorkspaceProviderState`. */
+export const refreshProjectProviderState = refreshWorkspaceProviderState;

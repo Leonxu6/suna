@@ -187,6 +187,7 @@ const SUBPATH_TIERS: Subpath[] = [
   { name: './config', file: 'deprecated/config.ts', tier: 'isomorphic-core' },
   { name: './auth', file: 'deprecated/auth.ts', tier: 'isomorphic-core' },
   { name: './api-client', file: 'deprecated/api-client.ts', tier: 'isomorphic-core' },
+  { name: './workspaces-client', file: 'deprecated/workspaces-client.ts', tier: 'isomorphic-core' },
   { name: './projects-client', file: 'deprecated/projects-client.ts', tier: 'isomorphic-core' },
   { name: './feature-flags', file: 'deprecated/feature-flags.ts', tier: 'isomorphic-core' },
   { name: './fresh-sessions', file: 'deprecated/fresh-sessions.ts', tier: 'isomorphic-core' },

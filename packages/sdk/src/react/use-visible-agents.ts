@@ -30,15 +30,20 @@ function hideProjectOnly(a: Agent): boolean {
  * Returns only visible agents (non-hidden, non-subagent).
  * Use this for agent selectors in UI where users pick which agent to use.
  *
- * Pass `projectId` for a SERVER-SIDE fetch (the project config is source of
+ * Pass `workspaceId` for a SERVER-SIDE fetch (the workspace config is source of
  * truth, works before any sandbox runtime exists) — preferred for selectors.
- * Pass `directory` to scope the sandbox-runtime fetch to a project instead.
+ * Pass `directory` to scope the sandbox-runtime fetch to a workspace instead.
  */
 export function useVisibleAgents(options?: {
   directory?: string;
+  workspaceId?: string | null;
+  /** @deprecated Use `workspaceId`. */
   projectId?: string | null;
 }): Agent[] {
-  const { data: agents = [] } = useOpenCodeAgents(options);
+  const { data: agents = [] } = useOpenCodeAgents({
+    directory: options?.directory,
+    workspaceId: options?.workspaceId ?? options?.projectId,
+  });
   return useMemo(
     () => agents.filter((a) => !a.hidden && a.mode !== 'subagent' && !hideProjectOnly(a)),
     [agents]
@@ -51,9 +56,14 @@ export function useVisibleAgents(options?: {
  */
 export function useAllVisibleAgents(options?: {
   directory?: string;
+  workspaceId?: string | null;
+  /** @deprecated Use `workspaceId`. */
   projectId?: string | null;
 }): Agent[] {
-  const { data: agents = [] } = useOpenCodeAgents(options);
+  const { data: agents = [] } = useOpenCodeAgents({
+    directory: options?.directory,
+    workspaceId: options?.workspaceId ?? options?.projectId,
+  });
   return useMemo(
     () => agents.filter((a) => !a.hidden && !hideProjectOnly(a)),
     [agents]

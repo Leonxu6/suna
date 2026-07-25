@@ -43,7 +43,7 @@ export {
   type OpenEventStreamOptions,
 } from '../core/stream/event-stream';
 
-// The kortix-master React Query layer (tasks/tickets/projects/milestones/
+// The kortix-master React Query layer (tasks/tickets/workspaces/milestones/
 // credentials/sandbox-services) relocated from apps/web's six
 // `apps/web/src/hooks/{kortix/*,use-sandbox-services}.ts` files — see
 // `use-kortix-master.ts` for the full contract, including the injectable
@@ -84,13 +84,21 @@ export {
 // exports-map change needed to reach it.
 export { useChatTurns, type TurnView, renderParts, type PartRenderers } from './chat';
 
-// Domain hooks — thin React Query bindings over `projects-client` CRUD
+// Domain hooks — thin React Query bindings over `workspaces-client` CRUD
 // surfaces (secrets, triggers, change requests) that previously had no
 // SDK-owned hook (only the client fn). Each owns its own query key + the
 // mutations a settings/workbench screen actually needs, with invalidation
 // wired so writes reflect without a manual refetch.
-export { useProjectSecrets, projectSecretsKey } from './use-project-secrets';
-export { useProjectTriggers, projectTriggersKey } from './use-project-triggers';
+export { useWorkspaceSecrets, workspaceSecretsKey } from './use-workspace-secrets';
+export { useWorkspaceTriggers, workspaceTriggersKey } from './use-workspace-triggers';
+export {
+  useWorkspaceSecrets as useProjectSecrets,
+  workspaceSecretsKey as projectSecretsKey,
+} from './use-workspace-secrets';
+export {
+  useWorkspaceTriggers as useProjectTriggers,
+  workspaceTriggersKey as projectTriggersKey,
+} from './use-workspace-triggers';
 export { useChangeRequests, changeRequestsKey } from './use-change-requests';
 export { useGatewayRoutingPolicy, gatewayRoutingPolicyKey } from './use-gateway-routing-policy';
 

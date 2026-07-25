@@ -6,21 +6,21 @@ import type { OpencodeClient } from '@opencode-ai/sdk/v2/client';
  * — never `@opencode-ai/sdk`, never `backendApi`/`authenticatedFetch` directly.
  *
  *   const kortix = createKortix({ getToken });
- *   await kortix.projects.list();
- *   await kortix.project(pid).secrets.upsert({ name, value });
+ *   await kortix.workspaces.list();
+ *   await kortix.workspace(pid).secrets.upsert({ name, value });
  *   const s = kortix.session(pid, sid);
  *   await s.start();
  *   s.runtime.session.prompt({ sessionID: sid, parts });   // typed opencode, via the SDK
  *
  * REST methods are direct references to the platform client, so they keep their
- * exact types with zero re-typing. The `project()`/`session()` handles bind ids
+ * exact types with zero re-typing. The `workspace()`/`session()` handles bind ids
  * for ergonomics. Reactive data still comes from `@kortix/sdk/react` hooks.
  */
 import * as F from '../files/client';
 import { getClient, getClientForUrl } from '../runtime/client';
 import { ApiError } from '../http/api/errors';
 import { type KortixPlatformConfig, configureKortix, platformConfig } from '../http/config';
-import * as P from '../rest/projects-client';
+import * as P from '../rest/workspaces-client';
 import { getSessionHealth } from '../session/health';
 import { type SubdomainUrlOptions, proxyLocalhostUrl, rewriteLocalhostUrl } from '../session/url';
 import { setCurrentRuntime } from '../session/current-runtime';
@@ -53,10 +53,10 @@ function runtime(): OpencodeClient {
  */
 /**
  * Dedupes concurrent `ensureReady()` calls that would otherwise both drive a
- * `/start` long-poll for the SAME (projectId, sessionId) — e.g. two session
+ * `/start` long-poll for the SAME (workspaceId, sessionId) — e.g. two session
  * handles for the same session (or the facade racing the React `useSession`
  * hook) both calling `ensureReady()`/`start()` before either has resolved a
- * runtime. Keyed by `${projectId}\n${sessionId}` (not the process-global
+ * runtime. Keyed by `${workspaceId}\n${sessionId}` (not the process-global
  * "active runtime" — every other handle for a DIFFERENT session gets its own
  * entry and is unaffected). Cleared on settle (success or failure) so a
  * transient failure doesn't wedge the key — the next call issues a fresh
@@ -218,7 +218,7 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
    * Account-invite lifecycle reached by invite token alone — accept/decline/
    * describe are called by the invitee (who may not be an account member, or
    * even signed into this account, yet), so they take only `inviteId` and
-   * genuinely don't fit account- or project-scoping.
+   * genuinely don't fit account- or workspace-scoping.
    */
   const accountInvites = {
     describe: P.describeAccountInvite,
@@ -226,27 +226,56 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
     decline: P.declineAccountInvite,
   };
 
-  /** Top-level project operations (not bound to an id). */
-  const projects = {
-    list: P.listProjects,
-    listForAccount: P.listProjectsForAccount,
-    get: P.getProject,
-    detail: P.getProjectDetail,
-    create: P.createProject,
-    /** Create a project backed by a brand-new Kortix-managed GitHub repo. */
-    createRepo: P.createProjectRepo,
-    provision: P.provisionProject,
-    update: P.updateProject,
-    archive: P.archiveProject,
-    llmCatalog: P.getProjectLlmCatalog,
-    modelPicker: P.getProjectModelPicker,
-    sandboxHealth: P.getProjectSandboxHealth,
-    sandboxTemplates: P.listProjectSandboxTemplates,
-    sessions: P.listProjectSessions,
-    createSession: P.createProjectSession,
+  /** Top-level workspace operations (not bound to an id). */
+  const workspaces = {
+    list: P.listWorkspaces,
+    listForAccount: P.listWorkspacesForAccount,
+    get: P.getWorkspace,
+    detail: P.getWorkspaceDetail,
+    create: P.createWorkspace,
+    /** Create a workspace backed by a brand-new Kortix-managed GitHub repo. */
+    createRepo: P.createWorkspaceRepo,
+    provision: P.provisionWorkspace,
+    update: P.updateWorkspace,
+    archive: P.archiveWorkspace,
+    llmCatalog: P.getWorkspaceLlmCatalog,
+    modelPicker: P.getWorkspaceModelPicker,
+    sandboxHealth: P.getWorkspaceSandboxHealth,
+    sandboxTemplates: P.listWorkspaceSandboxTemplates,
+    sessions: P.listWorkspaceSessions,
+    createSession: P.createWorkspaceSession,
   };
 
-  /** GitHub App installation + repository linking — account-scoped, not project-scoped. */
+  type LegacyProject = Omit<P.KortixWorkspace, 'workspace_id'> & {
+    project_id: string;
+    workspace_id?: string;
+  };
+  const toLegacyProject = (workspace: P.KortixWorkspace): LegacyProject => {
+    const { workspace_id, ...rest } = workspace;
+    return { ...rest, project_id: workspace_id, workspace_id };
+  };
+
+  /** @deprecated Use `workspaces`. */
+  const projects = {
+    ...workspaces,
+    list: async () => (await P.listWorkspaces()).map(toLegacyProject),
+    listForAccount: async (accountId?: string) =>
+      (await P.listWorkspacesForAccount(accountId)).map(toLegacyProject),
+    get: async (projectId: string, options?: Parameters<typeof P.getWorkspace>[1]) =>
+      toLegacyProject(await P.getWorkspace(projectId, options)),
+    create: async (input: Parameters<typeof P.createWorkspace>[0]) =>
+      toLegacyProject(await P.createWorkspace(input)),
+    createRepo: async (input: Parameters<typeof P.createWorkspaceRepo>[0]) =>
+      toLegacyProject(await P.createWorkspaceRepo(input)),
+    provision: async (input: Parameters<typeof P.provisionWorkspace>[0]) =>
+      toLegacyProject(await P.provisionWorkspace(input)),
+    update: async (
+      projectId: string,
+      input: Parameters<typeof P.updateWorkspace>[1],
+    ) => toLegacyProject(await P.updateWorkspace(projectId, input)),
+  };
+
+  /** GitHub App installation + repository linking — account-scoped, not workspace-scoped. */
   const github = {
     linkRepository: P.linkRepository,
     getInstallation: P.getGitHubInstallation,
@@ -259,20 +288,20 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
     deleteInstallation: P.deleteGitHubInstallation,
   };
 
-  /** Public share links for a sandbox port (`/v1/p/share`) — sandbox-scoped, not project-scoped. */
+  /** Public share links for a sandbox port (`/v1/p/share`) — sandbox-scoped, not workspace-scoped. */
   const sandboxShares = {
     list: P.listSandboxShares,
     create: P.createSandboxShare,
     revoke: P.revokeSandboxShare,
   };
 
-  /** Deployment-wide flag: is the easy-connect (Pipedream) provider configured? Not project-scoped. */
+  /** Deployment-wide flag: is the easy-connect (Pipedream) provider configured? Not workspace-scoped. */
   const connectStatus = P.getConnectStatus;
 
   /**
    * Public marketplace catalog browse (`/v1/marketplace/*`) — top-level and
-   * distinct from `project(id).marketplace`, which is install-scoped (commits
-   * an item onto a specific project's branch). This is read-only browsing +
+   * distinct from `workspace(id).marketplace`, which is install-scoped (commits
+   * an item onto a specific workspace's branch). This is read-only browsing +
    * the authed "add a marketplace source" surface.
    */
   const marketplace = {
@@ -289,216 +318,216 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
     },
   };
 
-  /** Id-bound handle for a single project: every sub-resource, projectId pre-applied. */
-  function project(projectId: string) {
+  /** Id-bound handle for a single workspace: every sub-resource, workspaceId pre-applied. */
+  function workspace(workspaceId: string) {
     return {
-      get: (opts?: Parameters<typeof P.getProject>[1]) => P.getProject(projectId, opts),
-      detail: () => P.getProjectDetail(projectId),
-      update: (input: Parameters<typeof P.updateProject>[1]) => P.updateProject(projectId, input),
-      archive: () => P.archiveProject(projectId),
-      llmCatalog: () => P.getProjectLlmCatalog(projectId),
-      modelPicker: () => P.getProjectModelPicker(projectId),
-      sandboxHealth: () => P.getProjectSandboxHealth(projectId),
-      onboardingComplete: (...a: DropFirst<Parameters<typeof P.setProjectOnboardingComplete>>) =>
-        P.setProjectOnboardingComplete(projectId, ...a),
+      get: (opts?: Parameters<typeof P.getWorkspace>[1]) => P.getWorkspace(workspaceId, opts),
+      detail: () => P.getWorkspaceDetail(workspaceId),
+      update: (input: Parameters<typeof P.updateWorkspace>[1]) => P.updateWorkspace(workspaceId, input),
+      archive: () => P.archiveWorkspace(workspaceId),
+      llmCatalog: () => P.getWorkspaceLlmCatalog(workspaceId),
+      modelPicker: () => P.getWorkspaceModelPicker(workspaceId),
+      sandboxHealth: () => P.getWorkspaceSandboxHealth(workspaceId),
+      onboardingComplete: (...a: DropFirst<Parameters<typeof P.setWorkspaceOnboardingComplete>>) =>
+        P.setWorkspaceOnboardingComplete(workspaceId, ...a),
 
-      /** Project-scoped CLI PATs (auto-minted at session-create as `KORTIX_TOKEN`; can also be minted by hand). */
+      /** Workspace-scoped CLI PATs (auto-minted at session-create as `KORTIX_TOKEN`; can also be minted by hand). */
       tokens: {
-        list: () => P.listProjectCliTokens(projectId),
-        create: (input?: Parameters<typeof P.createProjectCliToken>[1]) =>
-          P.createProjectCliToken(projectId, input),
-        revoke: (tokenId: string) => P.revokeProjectCliToken(projectId, tokenId),
+        list: () => P.listWorkspaceCliTokens(workspaceId),
+        create: (input?: Parameters<typeof P.createWorkspaceCliToken>[1]) =>
+          P.createWorkspaceCliToken(workspaceId, input),
+        revoke: (tokenId: string) => P.revokeWorkspaceCliToken(workspaceId, tokenId),
       },
 
       /** Agent-minted setup links — hand a human a link to enter a secret value or 1-click connect an app. */
       setupLinks: {
-        requestSecret: (input: Parameters<typeof P.requestProjectSecret>[1]) =>
-          P.requestProjectSecret(projectId, input),
-        requestConnector: (input: Parameters<typeof P.requestProjectConnector>[1]) =>
-          P.requestProjectConnector(projectId, input),
+        requestSecret: (input: Parameters<typeof P.requestWorkspaceSecret>[1]) =>
+          P.requestWorkspaceSecret(workspaceId, input),
+        requestConnector: (input: Parameters<typeof P.requestWorkspaceConnector>[1]) =>
+          P.requestWorkspaceConnector(workspaceId, input),
       },
 
-      /** Validate a `kortix.yaml` (or legacy `kortix.toml`) manifest's raw text server-side — format is auto-resolved from the project's manifest path (same schema `kortix ship`/CR-merge use). */
-      validateManifest: (raw: string) => P.validateProjectManifest(projectId, raw),
+      /** Validate a `kortix.yaml` (or legacy `kortix.toml`) manifest's raw text server-side — format is auto-resolved from the workspace's manifest path (same schema `kortix ship`/CR-merge use). */
+      validateManifest: (raw: string) => P.validateWorkspaceManifest(workspaceId, raw),
 
-      /** Mint a fresh scoped git push token for a managed project (409 for BYO repos). */
-      gitToken: () => P.getProjectGitToken(projectId),
+      /** Mint a fresh scoped git push token for a managed workspace (409 for BYO repos). */
+      gitToken: () => P.getWorkspaceGitToken(workspaceId),
 
       secrets: {
-        list: () => P.listProjectSecrets(projectId),
-        upsert: (input: Parameters<typeof P.upsertProjectSecret>[1]) =>
-          P.upsertProjectSecret(projectId, input),
-        remove: (name: string) => P.deleteProjectSecret(projectId, name),
-        setPersonal: (...a: DropFirst<Parameters<typeof P.setPersonalProjectSecret>>) =>
-          P.setPersonalProjectSecret(projectId, ...a),
-        removePersonal: (name: string) => P.deletePersonalProjectSecret(projectId, name),
-        setGitCredential: (input: Parameters<typeof P.upsertProjectGitCredential>[1]) =>
-          P.upsertProjectGitCredential(projectId, input),
+        list: () => P.listWorkspaceSecrets(workspaceId),
+        upsert: (input: Parameters<typeof P.upsertWorkspaceSecret>[1]) =>
+          P.upsertWorkspaceSecret(workspaceId, input),
+        remove: (name: string) => P.deleteWorkspaceSecret(workspaceId, name),
+        setPersonal: (...a: DropFirst<Parameters<typeof P.setPersonalWorkspaceSecret>>) =>
+          P.setPersonalWorkspaceSecret(workspaceId, ...a),
+        removePersonal: (name: string) => P.deletePersonalWorkspaceSecret(workspaceId, name),
+        setGitCredential: (input: Parameters<typeof P.upsertWorkspaceGitCredential>[1]) =>
+          P.upsertWorkspaceGitCredential(workspaceId, input),
         /** Device-code OAuth flow to connect a subscription-backed provider (e.g. ChatGPT). */
-        startProviderOAuth: (...a: DropFirst<Parameters<typeof P.startProjectProviderOAuth>>) =>
-          P.startProjectProviderOAuth(projectId, ...a),
-        pollProviderOAuth: (...a: DropFirst<Parameters<typeof P.pollProjectProviderOAuth>>) =>
-          P.pollProjectProviderOAuth(projectId, ...a),
+        startProviderOAuth: (...a: DropFirst<Parameters<typeof P.startWorkspaceProviderOAuth>>) =>
+          P.startWorkspaceProviderOAuth(workspaceId, ...a),
+        pollProviderOAuth: (...a: DropFirst<Parameters<typeof P.pollWorkspaceProviderOAuth>>) =>
+          P.pollWorkspaceProviderOAuth(workspaceId, ...a),
       },
 
       access: {
-        list: () => P.listProjectAccess(projectId),
-        invite: (...a: DropFirst<Parameters<typeof P.inviteProjectMember>>) =>
-          P.inviteProjectMember(projectId, ...a),
-        update: (...a: DropFirst<Parameters<typeof P.updateProjectAccess>>) =>
-          P.updateProjectAccess(projectId, ...a),
-        revoke: (userId: string) => P.revokeProjectAccess(projectId, userId),
-        pendingInvites: () => P.listPendingProjectInvites(projectId),
-        resendInvite: (...a: DropFirst<Parameters<typeof P.resendPendingProjectInvite>>) =>
-          P.resendPendingProjectInvite(projectId, ...a),
-        revokeInvite: (...a: DropFirst<Parameters<typeof P.revokePendingProjectInvite>>) =>
-          P.revokePendingProjectInvite(projectId, ...a),
-        requests: () => P.listProjectAccessRequests(projectId),
-        approveRequest: (...a: DropFirst<Parameters<typeof P.approveProjectAccessRequest>>) =>
-          P.approveProjectAccessRequest(projectId, ...a),
-        rejectRequest: (...a: DropFirst<Parameters<typeof P.rejectProjectAccessRequest>>) =>
-          P.rejectProjectAccessRequest(projectId, ...a),
-        groupGrants: () => P.listProjectGroupGrants(projectId),
-        attachGroupGrant: (...a: DropFirst<Parameters<typeof P.attachGroupToProject>>) =>
-          P.attachGroupToProject(projectId, ...a),
-        updateGroupGrant: (...a: DropFirst<Parameters<typeof P.updateProjectGroupGrant>>) =>
-          P.updateProjectGroupGrant(projectId, ...a),
-        detachGroupGrant: (groupId: string) => P.detachGroupFromProject(projectId, groupId),
+        list: () => P.listWorkspaceAccess(workspaceId),
+        invite: (...a: DropFirst<Parameters<typeof P.inviteWorkspaceMember>>) =>
+          P.inviteWorkspaceMember(workspaceId, ...a),
+        update: (...a: DropFirst<Parameters<typeof P.updateWorkspaceAccess>>) =>
+          P.updateWorkspaceAccess(workspaceId, ...a),
+        revoke: (userId: string) => P.revokeWorkspaceAccess(workspaceId, userId),
+        pendingInvites: () => P.listPendingWorkspaceInvites(workspaceId),
+        resendInvite: (...a: DropFirst<Parameters<typeof P.resendPendingWorkspaceInvite>>) =>
+          P.resendPendingWorkspaceInvite(workspaceId, ...a),
+        revokeInvite: (...a: DropFirst<Parameters<typeof P.revokePendingWorkspaceInvite>>) =>
+          P.revokePendingWorkspaceInvite(workspaceId, ...a),
+        requests: () => P.listWorkspaceAccessRequests(workspaceId),
+        approveRequest: (...a: DropFirst<Parameters<typeof P.approveWorkspaceAccessRequest>>) =>
+          P.approveWorkspaceAccessRequest(workspaceId, ...a),
+        rejectRequest: (...a: DropFirst<Parameters<typeof P.rejectWorkspaceAccessRequest>>) =>
+          P.rejectWorkspaceAccessRequest(workspaceId, ...a),
+        groupGrants: () => P.listWorkspaceGroupGrants(workspaceId),
+        attachGroupGrant: (...a: DropFirst<Parameters<typeof P.attachGroupToWorkspace>>) =>
+          P.attachGroupToWorkspace(workspaceId, ...a),
+        updateGroupGrant: (...a: DropFirst<Parameters<typeof P.updateWorkspaceGroupGrant>>) =>
+          P.updateWorkspaceGroupGrant(workspaceId, ...a),
+        detachGroupGrant: (groupId: string) => P.detachGroupFromWorkspace(workspaceId, groupId),
         /** Per-resource (agent/skill/secret) grants to a member or a group. */
         resourceGrants: {
-          list: () => P.listProjectResourceGrants(projectId),
-          create: (input: Parameters<typeof P.createProjectResourceGrant>[1]) =>
-            P.createProjectResourceGrant(projectId, input),
-          remove: (grantId: string) => P.deleteProjectResourceGrant(projectId, grantId),
+          list: () => P.listWorkspaceResourceGrants(workspaceId),
+          create: (input: Parameters<typeof P.createWorkspaceResourceGrant>[1]) =>
+            P.createWorkspaceResourceGrant(workspaceId, input),
+          remove: (grantId: string) => P.deleteWorkspaceResourceGrant(workspaceId, grantId),
         },
       },
 
       connectors: {
-        list: () => P.listConnectors(projectId),
+        list: () => P.listConnectors(workspaceId),
         config: (...a: DropFirst<Parameters<typeof P.getConnectorConfig>>) =>
-          P.getConnectorConfig(projectId, ...a),
+          P.getConnectorConfig(workspaceId, ...a),
         create: (...a: DropFirst<Parameters<typeof P.createConnector>>) =>
-          P.createConnector(projectId, ...a),
+          P.createConnector(workspaceId, ...a),
         remove: (...a: DropFirst<Parameters<typeof P.deleteConnector>>) =>
-          P.deleteConnector(projectId, ...a),
-        sync: () => P.syncConnectors(projectId),
+          P.deleteConnector(workspaceId, ...a),
+        sync: () => P.syncConnectors(workspaceId),
         auth: {
           discover: (...a: DropFirst<Parameters<typeof P.discoverConnectorAuth>>) =>
-            P.discoverConnectorAuth(projectId, ...a),
+            P.discoverConnectorAuth(workspaceId, ...a),
         },
         setName: (...a: DropFirst<Parameters<typeof P.setConnectorName>>) =>
-          P.setConnectorName(projectId, ...a),
+          P.setConnectorName(workspaceId, ...a),
         setCredentialMode: (...a: DropFirst<Parameters<typeof P.setConnectorCredentialMode>>) =>
-          P.setConnectorCredentialMode(projectId, ...a),
+          P.setConnectorCredentialMode(workspaceId, ...a),
         setCredential: (...a: DropFirst<Parameters<typeof P.setConnectorCredential>>) =>
-          P.setConnectorCredential(projectId, ...a),
+          P.setConnectorCredential(workspaceId, ...a),
         setSensitive: (...a: DropFirst<Parameters<typeof P.setConnectorSensitive>>) =>
-          P.setConnectorSensitive(projectId, ...a),
+          P.setConnectorSensitive(workspaceId, ...a),
         profiles: {
-          list: () => P.listConnectionProfiles(projectId),
+          list: () => P.listConnectionProfiles(workspaceId),
           reconcile: (...a: DropFirst<Parameters<typeof P.reconcileConnectionProfile>>) =>
-            P.reconcileConnectionProfile(projectId, ...a),
+            P.reconcileConnectionProfile(workspaceId, ...a),
           reconcileMember: (
             ...a: DropFirst<Parameters<typeof P.reconcileMemberConnectionProfile>>
-          ) => P.reconcileMemberConnectionProfile(projectId, ...a),
+          ) => P.reconcileMemberConnectionProfile(workspaceId, ...a),
           updateCredential: (
             ...a: DropFirst<Parameters<typeof P.updateConnectionProfileCredential>>
-          ) => P.updateConnectionProfileCredential(projectId, ...a),
+          ) => P.updateConnectionProfileCredential(workspaceId, ...a),
           revoke: (...a: DropFirst<Parameters<typeof P.revokeConnectionProfile>>) =>
-            P.revokeConnectionProfile(projectId, ...a),
+            P.revokeConnectionProfile(workspaceId, ...a),
           activate: (...a: DropFirst<Parameters<typeof P.activateConnectionProfile>>) =>
-            P.activateConnectionProfile(projectId, ...a),
+            P.activateConnectionProfile(workspaceId, ...a),
           pipedreamConnect: (
             ...a: DropFirst<Parameters<typeof P.pipedreamConnectConnectionProfile>>
-          ) => P.pipedreamConnectConnectionProfile(projectId, ...a),
+          ) => P.pipedreamConnectConnectionProfile(workspaceId, ...a),
           pipedreamFinalize: (
             ...a: DropFirst<Parameters<typeof P.pipedreamFinalizeConnectionProfile>>
-          ) => P.pipedreamFinalizeConnectionProfile(projectId, ...a),
+          ) => P.pipedreamFinalizeConnectionProfile(workspaceId, ...a),
         },
         policies: {
           get: (...a: DropFirst<Parameters<typeof P.getConnectorPolicies>>) =>
-            P.getConnectorPolicies(projectId, ...a),
+            P.getConnectorPolicies(workspaceId, ...a),
           set: (...a: DropFirst<Parameters<typeof P.setConnectorPolicies>>) =>
-            P.setConnectorPolicies(projectId, ...a),
+            P.setConnectorPolicies(workspaceId, ...a),
         },
         /** Easy-connect (Pipedream): app catalog + connect/finalize handshake. */
         pipedream: {
           listApps: (...a: DropFirst<Parameters<typeof P.listPipedreamApps>>) =>
-            P.listPipedreamApps(projectId, ...a),
+            P.listPipedreamApps(workspaceId, ...a),
           connect: (...a: DropFirst<Parameters<typeof P.pipedreamConnect>>) =>
-            P.pipedreamConnect(projectId, ...a),
+            P.pipedreamConnect(workspaceId, ...a),
           finalize: (...a: DropFirst<Parameters<typeof P.pipedreamFinalize>>) =>
-            P.pipedreamFinalize(projectId, ...a),
+            P.pipedreamFinalize(workspaceId, ...a),
         },
         /** Direct integrations.sh catalogue and normalized domain surfaces. */
         discover: {
           list: (...a: DropFirst<Parameters<typeof P.listDiscoverIntegrations>>) =>
-            P.listDiscoverIntegrations(projectId, ...a),
+            P.listDiscoverIntegrations(workspaceId, ...a),
           detail: (...a: DropFirst<Parameters<typeof P.getDiscoverIntegration>>) =>
-            P.getDiscoverIntegration(projectId, ...a),
+            P.getDiscoverIntegration(workspaceId, ...a),
         },
       },
 
       policies: {
-        list: () => P.listProjectPolicies(projectId),
-        set: (...a: DropFirst<Parameters<typeof P.setProjectPolicies>>) =>
-          P.setProjectPolicies(projectId, ...a),
+        list: () => P.listWorkspacePolicies(workspaceId),
+        set: (...a: DropFirst<Parameters<typeof P.setWorkspacePolicies>>) =>
+          P.setWorkspacePolicies(workspaceId, ...a),
       },
 
       triggers: {
-        list: () => P.listProjectTriggers(projectId),
-        create: (...a: DropFirst<Parameters<typeof P.createProjectTrigger>>) =>
-          P.createProjectTrigger(projectId, ...a),
-        update: (...a: DropFirst<Parameters<typeof P.updateProjectTrigger>>) =>
-          P.updateProjectTrigger(projectId, ...a),
-        remove: (...a: DropFirst<Parameters<typeof P.deleteProjectTrigger>>) =>
-          P.deleteProjectTrigger(projectId, ...a),
-        fire: (...a: DropFirst<Parameters<typeof P.fireProjectTrigger>>) =>
-          P.fireProjectTrigger(projectId, ...a),
-        setActivation: (...a: DropFirst<Parameters<typeof P.setProjectTriggersActivation>>) =>
-          P.setProjectTriggersActivation(projectId, ...a),
+        list: () => P.listWorkspaceTriggers(workspaceId),
+        create: (...a: DropFirst<Parameters<typeof P.createWorkspaceTrigger>>) =>
+          P.createWorkspaceTrigger(workspaceId, ...a),
+        update: (...a: DropFirst<Parameters<typeof P.updateWorkspaceTrigger>>) =>
+          P.updateWorkspaceTrigger(workspaceId, ...a),
+        remove: (...a: DropFirst<Parameters<typeof P.deleteWorkspaceTrigger>>) =>
+          P.deleteWorkspaceTrigger(workspaceId, ...a),
+        fire: (...a: DropFirst<Parameters<typeof P.fireWorkspaceTrigger>>) =>
+          P.fireWorkspaceTrigger(workspaceId, ...a),
+        setActivation: (...a: DropFirst<Parameters<typeof P.setWorkspaceTriggersActivation>>) =>
+          P.setWorkspaceTriggersActivation(workspaceId, ...a),
       },
 
       files: {
-        list: (options?: Parameters<typeof P.listProjectFiles>[1]) =>
-          P.listProjectFiles(projectId, options),
-        read: (path: string, ref?: string) => P.readProjectFile(projectId, path, ref),
-        search: (...a: DropFirst<Parameters<typeof P.searchProjectFiles>>) =>
-          P.searchProjectFiles(projectId, ...a),
-        archive: (...a: DropFirst<Parameters<typeof P.fetchProjectArchive>>) =>
-          P.fetchProjectArchive(projectId, ...a),
-        history: (...a: DropFirst<Parameters<typeof P.getProjectFileHistory>>) =>
-          P.getProjectFileHistory(projectId, ...a),
+        list: (options?: Parameters<typeof P.listWorkspaceFiles>[1]) =>
+          P.listWorkspaceFiles(workspaceId, options),
+        read: (path: string, ref?: string) => P.readWorkspaceFile(workspaceId, path, ref),
+        search: (...a: DropFirst<Parameters<typeof P.searchWorkspaceFiles>>) =>
+          P.searchWorkspaceFiles(workspaceId, ...a),
+        archive: (...a: DropFirst<Parameters<typeof P.fetchWorkspaceArchive>>) =>
+          P.fetchWorkspaceArchive(workspaceId, ...a),
+        history: (...a: DropFirst<Parameters<typeof P.getWorkspaceFileHistory>>) =>
+          P.getWorkspaceFileHistory(workspaceId, ...a),
       },
 
       git: {
-        commits: () => P.listProjectCommits(projectId),
-        commit: (sha: string) => P.getProjectCommit(projectId, sha),
-        commitDiff: (sha: string) => P.getProjectCommitDiff(projectId, sha),
-        branches: () => P.listProjectBranches(projectId),
+        commits: () => P.listWorkspaceCommits(workspaceId),
+        commit: (sha: string) => P.getWorkspaceCommit(workspaceId, sha),
+        commitDiff: (sha: string) => P.getWorkspaceCommitDiff(workspaceId, sha),
+        branches: () => P.listWorkspaceBranches(workspaceId),
         versionDiff: (...a: DropFirst<Parameters<typeof P.getVersionDiff>>) =>
-          P.getVersionDiff(projectId, ...a),
+          P.getVersionDiff(workspaceId, ...a),
         /** Invite a GitHub user as a collaborator on a Kortix-managed repo. */
         inviteCollaborator: (...a: DropFirst<Parameters<typeof P.inviteRepoCollaborator>>) =>
-          P.inviteRepoCollaborator(projectId, ...a),
+          P.inviteRepoCollaborator(workspaceId, ...a),
       },
 
       changeRequests: {
-        list: () => P.listChangeRequests(projectId),
-        get: (crId: string) => P.getChangeRequest(projectId, crId),
-        diff: (crId: string) => P.getChangeRequestDiff(projectId, crId),
-        mergePreview: (crId: string) => P.getChangeRequestMergePreview(projectId, crId),
+        list: () => P.listChangeRequests(workspaceId),
+        get: (crId: string) => P.getChangeRequest(workspaceId, crId),
+        diff: (crId: string) => P.getChangeRequestDiff(workspaceId, crId),
+        mergePreview: (crId: string) => P.getChangeRequestMergePreview(workspaceId, crId),
         open: (...a: DropFirst<Parameters<typeof P.openChangeRequest>>) =>
-          P.openChangeRequest(projectId, ...a),
+          P.openChangeRequest(workspaceId, ...a),
         merge: (...a: DropFirst<Parameters<typeof P.mergeChangeRequest>>) =>
-          P.mergeChangeRequest(projectId, ...a),
+          P.mergeChangeRequest(workspaceId, ...a),
         close: (...a: DropFirst<Parameters<typeof P.closeChangeRequest>>) =>
-          P.closeChangeRequest(projectId, ...a),
+          P.closeChangeRequest(workspaceId, ...a),
         reopen: (...a: DropFirst<Parameters<typeof P.reopenChangeRequest>>) =>
-          P.reopenChangeRequest(projectId, ...a),
+          P.reopenChangeRequest(workspaceId, ...a),
         /** Request changes on a CR (Review Center) — records feedback + optionally delivers it back to the originating session. */
         requestChanges: (...a: DropFirst<Parameters<typeof P.requestChangesOnChangeRequest>>) =>
-          P.requestChangesOnChangeRequest(projectId, ...a),
+          P.requestChangesOnChangeRequest(workspaceId, ...a),
       },
 
       sessions: {
@@ -511,143 +540,143 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
           P.claimWarmProjectSession(projectId, input),
       },
 
-      /** Review Center — the per-project human-in-the-loop inbox (change requests, tool approvals, agent outputs/decisions). */
+      /** Review Center — the per-workspace human-in-the-loop inbox (change requests, tool approvals, agent outputs/decisions). */
       review: {
         list: (params?: Parameters<typeof P.listReviewItems>[1]) =>
-          P.listReviewItems(projectId, params),
-        get: (reviewItemId: string) => P.getReviewItem(projectId, reviewItemId),
+          P.listReviewItems(workspaceId, params),
+        get: (reviewItemId: string) => P.getReviewItem(workspaceId, reviewItemId),
         submit: (input: Parameters<typeof P.submitReviewItem>[1]) =>
-          P.submitReviewItem(projectId, input),
+          P.submitReviewItem(workspaceId, input),
         act: (...a: DropFirst<Parameters<typeof P.actReviewItem>>) =>
-          P.actReviewItem(projectId, ...a),
+          P.actReviewItem(workspaceId, ...a),
         bulkAct: (input: Parameters<typeof P.bulkActReviewItems>[1]) =>
-          P.bulkActReviewItems(projectId, input),
+          P.bulkActReviewItems(workspaceId, input),
       },
 
       /** The manager inbox of executor-gated actions awaiting approve/deny (APPROVE / ASK / BLOCK). */
       approvals: {
         list: (options?: Parameters<typeof P.listPendingApprovals>[1]) =>
-          P.listPendingApprovals(projectId, options),
+          P.listPendingApprovals(workspaceId, options),
         resolve: (...a: DropFirst<Parameters<typeof P.resolveApproval>>) =>
-          P.resolveApproval(projectId, ...a),
+          P.resolveApproval(workspaceId, ...a),
         sessionsNeedingInput: (options?: Parameters<typeof P.listSessionsNeedingInput>[1]) =>
-          P.listSessionsNeedingInput(projectId, options),
+          P.listSessionsNeedingInput(workspaceId, options),
       },
 
       /** Gateway observability — LLM request logs, cost/latency rollups, budgets, gateway API keys. */
       gateway: {
         logs: (opts?: Parameters<typeof P.listGatewayLogs>[1]) =>
-          P.listGatewayLogs(projectId, opts),
-        log: (logId: string) => P.getGatewayLog(projectId, logId),
-        overview: (days?: number) => P.getGatewayOverview(projectId, days),
-        series: (days?: number) => P.getGatewaySeries(projectId, days),
-        breakdown: (days?: number) => P.getGatewayBreakdown(projectId, days),
-        sessions: (days?: number) => P.getGatewaySessions(projectId, days),
-        errors: (days?: number) => P.getGatewayErrors(projectId, days),
-        budgets: () => P.getGatewayBudgets(projectId),
+          P.listGatewayLogs(workspaceId, opts),
+        log: (logId: string) => P.getGatewayLog(workspaceId, logId),
+        overview: (days?: number) => P.getGatewayOverview(workspaceId, days),
+        series: (days?: number) => P.getGatewaySeries(workspaceId, days),
+        breakdown: (days?: number) => P.getGatewayBreakdown(workspaceId, days),
+        sessions: (days?: number) => P.getGatewaySessions(workspaceId, days),
+        errors: (days?: number) => P.getGatewayErrors(workspaceId, days),
+        budgets: () => P.getGatewayBudgets(workspaceId),
         setBudget: (input: Parameters<typeof P.setGatewayBudget>[1]) =>
-          P.setGatewayBudget(projectId, input),
-        deleteBudget: (budgetId: string) => P.deleteGatewayBudget(projectId, budgetId),
-        keys: () => P.getGatewayKeys(projectId),
-        createKey: (name: string) => P.createGatewayKey(projectId, name),
-        revokeKey: (keyId: string) => P.revokeGatewayKey(projectId, keyId),
+          P.setGatewayBudget(workspaceId, input),
+        deleteBudget: (budgetId: string) => P.deleteGatewayBudget(workspaceId, budgetId),
+        keys: () => P.getGatewayKeys(workspaceId),
+        createKey: (name: string) => P.createGatewayKey(workspaceId, name),
+        revokeKey: (keyId: string) => P.revokeGatewayKey(workspaceId, keyId),
         routing: {
-          get: () => P.getGatewayRoutingPolicy(projectId),
+          get: () => P.getGatewayRoutingPolicy(workspaceId),
           set: (policy: Parameters<typeof P.setGatewayRoutingPolicy>[1]) =>
-            P.setGatewayRoutingPolicy(projectId, policy),
-          reset: () => P.resetGatewayRoutingPolicy(projectId),
+            P.setGatewayRoutingPolicy(workspaceId, policy),
+          reset: () => P.resetGatewayRoutingPolicy(workspaceId),
           preview: (input: Parameters<typeof P.previewGatewayRoute>[1]) =>
-            P.previewGatewayRoute(projectId, input),
+            P.previewGatewayRoute(workspaceId, input),
         },
         /** Run one prompt against up to 6 models side by side (a model-comparison playground). */
         playground: (prompt: string, models: string[], system?: string) =>
-          P.runGatewayPlayground(projectId, prompt, models, system),
+          P.runGatewayPlayground(workspaceId, prompt, models, system),
       },
 
       /** Slack + email + Meet channel integrations. */
       channels: {
         slack: {
-          installation: () => P.getSlackInstallation(projectId),
+          installation: () => P.getSlackInstallation(workspaceId),
           connect: (input: Parameters<typeof P.connectSlack>[1]) =>
-            P.connectSlack(projectId, input),
-          mode: () => P.getSlackMode(projectId),
-          manifest: () => P.getSlackManifest(projectId),
-          disconnect: () => P.disconnectSlack(projectId),
+            P.connectSlack(workspaceId, input),
+          mode: () => P.getSlackMode(workspaceId),
+          manifest: () => P.getSlackManifest(workspaceId),
+          disconnect: () => P.disconnectSlack(workspaceId),
           /** Download a Slack-hosted file through the server-side proxy (bot token stays server-side). */
-          getFile: (url: string) => P.getSlackChannelFile(projectId, url),
+          getFile: (url: string) => P.getSlackChannelFile(workspaceId, url),
           /** Upload a file to Slack through the server-side 3-step external-upload proxy. */
           uploadFile: (input: Parameters<typeof P.uploadSlackChannelFile>[1]) =>
-            P.uploadSlackChannelFile(projectId, input),
+            P.uploadSlackChannelFile(workspaceId, input),
         },
         email: {
           installation: (connectorSlug?: string | null) =>
-            P.getEmailInstallation(projectId, connectorSlug),
-          mode: () => P.getEmailMode(projectId),
+            P.getEmailInstallation(workspaceId, connectorSlug),
+          mode: () => P.getEmailMode(workspaceId),
           connect: (input: Parameters<typeof P.connectEmail>[1]) =>
-            P.connectEmail(projectId, input),
+            P.connectEmail(workspaceId, input),
           disconnect: (connectorSlug?: string | null) =>
-            P.disconnectEmail(projectId, connectorSlug),
+            P.disconnectEmail(workspaceId, connectorSlug),
           updatePolicy: (...a: DropFirst<Parameters<typeof P.updateEmailPolicy>>) =>
-            P.updateEmailPolicy(projectId, ...a),
+            P.updateEmailPolicy(workspaceId, ...a),
         },
         voice: {
-          setBotName: (name: string) => P.setMeetBotName(projectId, name),
+          setBotName: (name: string) => P.setMeetBotName(workspaceId, name),
         },
         /** @deprecated Use `channels.voice`. Retained for SDK compatibility. */
         meet: {
-          voices: () => P.getMeetVoices(projectId),
-          setVoice: (voice: string) => P.setMeetVoice(projectId, voice),
-          setBotName: (name: string) => P.setMeetBotName(projectId, name),
-          previewVoice: (voiceId: string) => P.previewMeetVoice(projectId, voiceId),
+          voices: () => P.getMeetVoices(workspaceId),
+          setVoice: (voice: string) => P.setMeetVoice(workspaceId, voice),
+          setBotName: (name: string) => P.setMeetBotName(workspaceId, name),
+          previewVoice: (voiceId: string) => P.previewMeetVoice(workspaceId, voiceId),
           speak: (botId: string, text: string, voice?: string) =>
-            P.speakInMeeting(projectId, botId, text, voice),
+            P.speakInMeeting(workspaceId, botId, text, voice),
         },
       },
 
       /** Toggle an experimental feature (Customize → Settings → Experimental). Pass `enabled: null` to clear the override. */
       updateExperimentalFeature: (
         ...a: DropFirst<Parameters<typeof P.updateExperimentalFeature>>
-      ) => P.updateExperimentalFeature(projectId, ...a),
+      ) => P.updateExperimentalFeature(workspaceId, ...a),
 
-      /** Default model preferences (account/agent/project scope, gateway-resolved). */
+      /** Default model preferences (account/agent/workspace scope, gateway-resolved). */
       modelDefaults: {
-        get: () => P.getModelDefaults(projectId),
+        get: () => P.getModelDefaults(workspaceId),
         set: (input: Parameters<typeof P.setModelDefault>[1]) =>
-          P.setModelDefault(projectId, input),
+          P.setModelDefault(workspaceId, input),
         clear: (params: Parameters<typeof P.clearModelDefault>[1]) =>
-          P.clearModelDefault(projectId, params),
+          P.clearModelDefault(workspaceId, params),
       },
 
-      /** Set the agent used when a new project session does not name one explicitly. */
-      setDefaultAgent: (agentName: string) => P.updateProjectDefaultAgent(projectId, agentName),
+      /** Set the agent used when a new workspace session does not name one explicitly. */
+      setDefaultAgent: (agentName: string) => P.updateWorkspaceDefaultAgent(workspaceId, agentName),
 
       /** Sandbox templates + snapshot builds — Dockerfile/image/warm-pool config, beyond `sandboxHealth`/`sandboxTemplates`. */
       sandbox: {
-        list: () => P.listProjectSandboxes(projectId),
-        snapshots: () => P.listProjectSnapshots(projectId),
-        rebuildSnapshot: (slug?: string) => P.rebuildProjectSnapshot(projectId, slug),
-        fixWithAgent: () => P.fixSandboxWithAgent(projectId),
+        list: () => P.listWorkspaceSandboxes(workspaceId),
+        snapshots: () => P.listWorkspaceSnapshots(workspaceId),
+        rebuildSnapshot: (slug?: string) => P.rebuildWorkspaceSnapshot(workspaceId, slug),
+        fixWithAgent: () => P.fixSandboxWithAgent(workspaceId),
         createTemplate: (input: Parameters<typeof P.createSandboxTemplate>[1]) =>
-          P.createSandboxTemplate(projectId, input),
+          P.createSandboxTemplate(workspaceId, input),
         updateTemplate: (...a: DropFirst<Parameters<typeof P.updateSandboxTemplate>>) =>
-          P.updateSandboxTemplate(projectId, ...a),
-        removeTemplate: (templateId: string) => P.deleteSandboxTemplate(projectId, templateId),
-        buildTemplate: (templateId: string) => P.buildSandboxTemplate(projectId, templateId),
-        /** Pin/clear the per-project sandbox provider (null = follow the platform default). */
-        setProvider: (provider: Parameters<typeof P.updateProjectSandboxProvider>[1]) =>
-          P.updateProjectSandboxProvider(projectId, provider),
+          P.updateSandboxTemplate(workspaceId, ...a),
+        removeTemplate: (templateId: string) => P.deleteSandboxTemplate(workspaceId, templateId),
+        buildTemplate: (templateId: string) => P.buildSandboxTemplate(workspaceId, templateId),
+        /** Pin/clear the per-workspace sandbox provider (null = follow the platform default). */
+        setProvider: (provider: Parameters<typeof P.updateWorkspaceSandboxProvider>[1]) =>
+          P.updateWorkspaceSandboxProvider(workspaceId, provider),
       },
 
       /** Bind specific secrets + connectors to an agent (the inheritance pyramid's declaration step). */
       setAgentScope: (...a: DropFirst<Parameters<typeof P.setAgentScope>>) =>
-        P.setAgentScope(projectId, ...a),
+        P.setAgentScope(workspaceId, ...a),
 
-      session: (sessionId: string) => session(projectId, sessionId),
+      session: (sessionId: string) => session(workspaceId, sessionId),
     };
   }
 
   /** Id-bound handle for a single session: lifecycle (REST) + runtime (opencode). */
-  function session(projectId: string, sessionId: string) {
+  function session(workspaceId: string, sessionId: string) {
     // Opinionated-action state, scoped to THIS handle. The opencode runtime is
     // keyed by the OpenCode session id (resolved server-side at /start), NOT the
     // Kortix `sessionId` — they differ. We resolve+cache it once (including the
@@ -660,7 +689,7 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
     let _agent: string | undefined;
 
     /**
-     * Adopt an already-resolved runtime for THIS (projectId, sessionId) from
+     * Adopt an already-resolved runtime for THIS (workspaceId, sessionId) from
      * the shared session-runtime registry, if this handle hasn't resolved one
      * itself yet. This is what lets a brand-new `kortix.session(pid, sid)`
      * handle — e.g. a one-off poll tick, or a handle created independently of
@@ -670,7 +699,7 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
      */
     function tryResolveReady(): SessionRuntimeEntry | null {
       if (_ready) return _ready;
-      const cached = getSessionRuntime(projectId, sessionId);
+      const cached = getSessionRuntime(workspaceId, sessionId);
       if (cached) _ready = cached;
       return _ready;
     }
@@ -689,11 +718,11 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
       if (cached) return cached;
       const readyTimeoutMs = opts?.readyTimeoutMs ?? 180_000;
 
-      // Dedup concurrent starts for this (projectId, sessionId) — see
+      // Dedup concurrent starts for this (workspaceId, sessionId) — see
       // `inFlightSessionStarts`'s doc comment. If another call (this handle or
       // a different one) already kicked off `/start`, ride its result instead
       // of issuing a second POST.
-      const key = `${projectId}\n${sessionId}`;
+      const key = `${workspaceId}\n${sessionId}`;
       const inFlight = inFlightSessionStarts.get(key);
       if (inFlight) {
         _ready = await inFlight;
@@ -713,13 +742,13 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
         // so the total honors readyTimeoutMs — a fixed 30s wait would overshoot
         // the deadline by up to ~30s on the final iteration.
         const remainingMs = () => Math.max(0, deadline - Date.now());
-        let started = await P.startProjectSession(
-          projectId,
+        let started = await P.startWorkspaceSession(
+          workspaceId,
           sessionId,
           Math.min(30_000, remainingMs()),
         );
         // Keep polling while the runtime is still coming up. A `null` result is
-        // a TRANSIENT tick, not a terminal state: startProjectSession returns
+        // a TRANSIENT tick, not a terminal state: startWorkspaceSession returns
         // null for a 5xx/408/429/network blip AND the create→start 404 race
         // (row not yet visible on the read path) — the exact cases a backend
         // hits calling ensureReady() right after create(). Only a resolved
@@ -732,8 +761,8 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
               started.retriable))
         ) {
           await new Promise((r) => setTimeout(r, Math.min(1_000, remainingMs())));
-          started = await P.startProjectSession(
-            projectId,
+          started = await P.startWorkspaceSession(
+            workspaceId,
             sessionId,
             Math.min(30_000, remainingMs()),
           );
@@ -790,50 +819,50 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
     /** Clear this handle's cached runtime + the shared registry entry (restart/delete). */
     function forgetReady(): void {
       _ready = null;
-      clearSessionRuntime(projectId, sessionId);
+      clearSessionRuntime(workspaceId, sessionId);
     }
 
     return {
       // ── lifecycle (Kortix REST) ──────────────────────────────────────────
-      get: (opts?: { showErrors?: boolean }) => P.getProjectSession(projectId, sessionId, opts),
-      update: (input: Parameters<typeof P.updateProjectSession>[2]) =>
-        P.updateProjectSession(projectId, sessionId, input),
+      get: (opts?: { showErrors?: boolean }) => P.getWorkspaceSession(workspaceId, sessionId, opts),
+      update: (input: Parameters<typeof P.updateWorkspaceSession>[2]) =>
+        P.updateWorkspaceSession(workspaceId, sessionId, input),
       delete: () => {
         // A deleted session's sandbox is gone — never let a later handle for
-        // this (projectId, sessionId) resolve a runtime that no longer exists.
+        // this (workspaceId, sessionId) resolve a runtime that no longer exists.
         forgetReady();
-        return P.deleteProjectSession(projectId, sessionId);
+        return P.deleteWorkspaceSession(workspaceId, sessionId);
       },
-      start: (...a: DropFirst2<Parameters<typeof P.startProjectSession>>) =>
-        P.startProjectSession(projectId, sessionId, ...a),
+      start: (...a: DropFirst2<Parameters<typeof P.startWorkspaceSession>>) =>
+        P.startWorkspaceSession(workspaceId, sessionId, ...a),
       restart: () => {
         // Restart preserves the established sandbox identity, but readiness
         // and the proxy connection must still be resolved again after reboot.
         forgetReady();
-        return P.restartProjectSession(projectId, sessionId);
+        return P.restartWorkspaceSession(workspaceId, sessionId);
       },
       stop: () => {
         forgetReady();
-        return P.stopProjectSession(projectId, sessionId);
+        return P.stopWorkspaceSession(workspaceId, sessionId);
       },
-      setSharing: (intent: Parameters<typeof P.setProjectSessionSharing>[2]) =>
-        P.setProjectSessionSharing(projectId, sessionId, intent),
-      previews: () => P.getSessionPreviewCandidates(projectId, sessionId),
+      setSharing: (intent: Parameters<typeof P.setWorkspaceSessionSharing>[2]) =>
+        P.setWorkspaceSessionSharing(workspaceId, sessionId, intent),
+      previews: () => P.getSessionPreviewCandidates(workspaceId, sessionId),
       commit: (input?: Parameters<typeof P.commitSessionChanges>[2]) =>
-        P.commitSessionChanges(projectId, sessionId, input),
+        P.commitSessionChanges(workspaceId, sessionId, input),
       publicShares: {
-        list: () => P.listSessionPublicShares(projectId, sessionId),
+        list: () => P.listSessionPublicShares(workspaceId, sessionId),
         create: (...a: DropFirst2<Parameters<typeof P.createSessionPublicShare>>) =>
-          P.createSessionPublicShare(projectId, sessionId, ...a),
+          P.createSessionPublicShare(workspaceId, sessionId, ...a),
         revoke: (...a: DropFirst2<Parameters<typeof P.revokeSessionPublicShare>>) =>
-          P.revokeSessionPublicShare(projectId, sessionId, ...a),
+          P.revokeSessionPublicShare(workspaceId, sessionId, ...a),
       },
       /** Per-session audit trail of executor-gated agent actions. */
       audit: (limit?: number, options?: { showErrors?: boolean }) =>
-        P.getSessionAudit(projectId, sessionId, limit, options),
-      /** Compact server-side transcript read (text + tool calls, no tool inputs/outputs) — callable with project-scoped session tokens. */
+        P.getSessionAudit(workspaceId, sessionId, limit, options),
+      /** Compact server-side transcript read (text + tool calls, no tool inputs/outputs) — callable with workspace-scoped session tokens. */
       transcript: (options?: Parameters<typeof P.getSessionTranscript>[2]) =>
-        P.getSessionTranscript(projectId, sessionId, options),
+        P.getSessionTranscript(workspaceId, sessionId, options),
 
       /**
        * Resolve THIS handle's own runtime (idempotent): provisions/resumes the
@@ -991,20 +1020,24 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
     accounts,
     /** Account-invite lifecycle reached by invite token alone (accept/decline/describe). */
     accountInvites,
+    workspaces,
+    workspace,
+    /** @deprecated Use `workspaces`. */
     projects,
-    project,
+    /** @deprecated Use `workspace(workspaceId)`. */
+    project: workspace,
     session,
     /** GitHub App installation + repository linking (account-scoped). */
     github,
-    /** Billing read surface — credits/subscription/tier/transactions (not project-scoped). */
+    /** Billing read surface — credits/subscription/tier/transactions (not workspace-scoped). */
     billing,
     /** Public share links for a sandbox port (`/v1/p/share`, sandbox-scoped). */
     sandboxShares,
-    /** Speech-to-text transcription (`/transcription` — not project-scoped). */
+    /** Speech-to-text transcription (`/transcription` — not workspace-scoped). */
     transcribe: P.transcribeAudio,
-    /** Deployment-wide Pipedream/easy-connect availability flag (not project-scoped). */
+    /** Deployment-wide Pipedream/easy-connect availability flag (not workspace-scoped). */
     connectStatus,
-    /** Public marketplace catalog browse + sources (`/v1/marketplace/*`, not project-scoped). */
+    /** Public marketplace catalog browse + sources (`/v1/marketplace/*`, not workspace-scoped). */
     marketplace,
     /** The pasted-API-key UX check — `GET /accounts/me`, never throws. */
     validateToken: P.validateToken,
@@ -1014,8 +1047,10 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
 }
 
 export type Kortix = ReturnType<typeof createKortix>;
-/** The id-bound project handle returned by `kortix.project(id)`. */
-export type ProjectHandle = ReturnType<Kortix['project']>;
+/** The id-bound workspace handle returned by `kortix.workspace(id)`. */
+export type WorkspaceHandle = ReturnType<Kortix['workspace']>;
+/** @deprecated Use `WorkspaceHandle`. */
+export type ProjectHandle = WorkspaceHandle;
 /** The id-bound session handle returned by `kortix.session(pid, sid)`. */
 export type SessionHandle = ReturnType<Kortix['session']>;
 

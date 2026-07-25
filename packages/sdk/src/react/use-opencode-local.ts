@@ -13,11 +13,11 @@
 
 import { flattenModels, type FlatModel } from './model-flatten';
 import { featureFlags } from '../core/http/feature-flags';
-import { listProjectSecrets } from '../core/rest/projects-client';
+import { listWorkspaceSecrets } from '../core/rest/workspaces-client';
 import type { Agent, Config, ProviderListResponse } from '@opencode-ai/sdk/v2/client';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useKortixRouteProjectId } from './route-project';
+import { useKortixRouteWorkspaceId } from './route-workspace';
 import {
   connectedGatewayProviderIdsFromSecretNames,
   normalizeProviderList,
@@ -37,14 +37,14 @@ export interface UseOpenCodeLocalOptions {
   /** Session ID — used to persist agent selection per-session in localStorage */
   sessionId?: string;
   /**
-   * Server-bound immutable agent for project sessions. When present, it seeds
+   * Server-bound immutable agent for workspace sessions. When present, it seeds
    * the session picker instead of the global last-used agent so existing
    * sessions never accidentally prompt with a different agent.
    */
   boundAgentName?: string | null;
   /**
-   * Project-declared default agent. Seeds a new composer before the user's
-   * cross-project last-used agent, but remains overridable for this mount.
+   * Workspace-declared default agent. Seeds a new composer before the user's
+   * cross-workspace last-used agent, but remains overridable for this mount.
    */
   defaultAgentName?: string | null;
   /**
@@ -55,7 +55,7 @@ export interface UseOpenCodeLocalOptions {
   freeTier?: boolean;
   /**
    * Resolve the gateway's configured default model for an agent (agent →
-   * project → account → platform) — a host with a server-backed default-model
+   * workspace → account → platform) — a host with a server-backed default-model
    * preferences API (see `useModelDefaults` in apps/web) supplies this; a host
    * without one omits it and the resolution chain simply skips this step,
    * falling through to `globalDefault` / `agent.model` / the generic fallback.
@@ -214,11 +214,11 @@ export function scopedModelSelectionKey(
  * Resolve the current agent name with a priority chain:
  *   1. Per-session slot (`sessionAgentName`) — sticky for THIS session once the
  *      user (or a replayed stash) has picked one.
- *   2. The server-bound agent for a project session (`boundAgentName`) — so an
- *      existing project session never accidentally re-prompts with a different
+ *   2. The server-bound agent for a workspace session (`boundAgentName`) — so an
+ *      existing workspace session never accidentally re-prompts with a different
  *      agent than the one it was created with.
- *   3. The project's declared default (`defaultAgentName`) — the starting pick
- *      for a new project chat.
+ *   3. The workspace's declared default (`defaultAgentName`) — the starting pick
+ *      for a new workspace chat.
  *   4. The global last-used agent — only when there's no session at all (e.g.
  *      the dashboard composer), so a fresh session inherits the user's most
  *      recent pick.
@@ -259,12 +259,12 @@ export function useOpenCodeLocal({
   // ---- Flatten models from providers (shared with the chat input, so the
   // gateway-only allowlist applies here too — native providers never leak in) ----
   const flatModels = useMemo<FlatModel[]>(() => flattenModels(providers), [providers]);
-  const projectId = useKortixRouteProjectId();
+  const workspaceId = useKortixRouteWorkspaceId();
   const providerMode = useMemo(() => modelProviderMode(providers), [providers]);
   const secretsQuery = useQuery({
-    queryKey: ['project-secrets', projectId],
-    queryFn: () => listProjectSecrets(projectId as string),
-    enabled: !!projectId && providerMode === 'gateway',
+    queryKey: ['workspace-secrets', workspaceId],
+    queryFn: () => listWorkspaceSecrets(workspaceId as string),
+    enabled: !!workspaceId && providerMode === 'gateway',
     staleTime: 10_000,
   });
   const connectedProviderIds = useMemo(() => {
@@ -330,7 +330,7 @@ export function useOpenCodeLocal({
   }, [rawAgents]);
 
   // Resolve the current agent name (see `resolveCurrentAgentName`): per-session
-  // slot -> server-bound project agent -> project default -> global last-used.
+  // slot -> server-bound workspace agent -> workspace default -> global last-used.
   const sessionAgentName = sessionId ? modelStore.getSessionAgentName(sessionId) : undefined;
   const agentSelectionScope = `${sessionId ?? ''}\u0000${boundAgentName ?? ''}\u0000${defaultAgentName ?? ''}`;
   const [explicitAgentSelection, setExplicitAgentSelection] = useState<{
@@ -359,9 +359,9 @@ export function useOpenCodeLocal({
       if (sessionId) {
         modelStore.setSessionAgentName(sessionId, name);
       } else {
-        // A project default is an initial preference, not a hard lock. Keep an
+        // A workspace default is an initial preference, not a hard lock. Keep an
         // in-memory override so the user can switch this composer without
-        // rewriting the project's durable default.
+        // rewriting the workspace's durable default.
         setExplicitAgentSelection({ scope: agentSelectionScope, name });
       }
       // Always update the global "last used" slot so the dashboard and any
@@ -455,7 +455,7 @@ export function useOpenCodeLocal({
     [currentAgent, sessionId, scopedSessionModelKey, providerMode, modelStore, getFirstValidModel],
   );
 
-  // The gateway-configured default for the current agent (agent -> project ->
+  // The gateway-configured default for the current agent (agent -> workspace ->
   // account -> platform), when the host supplies a resolver. Validated against
   // the catalog. Used for DISPLAY of "on default" and as a resolution step
   // between the explicit pick and the legacy globalDefault cache.
@@ -468,7 +468,7 @@ export function useOpenCodeLocal({
   // Priority: explicit (session/per-agent) > server default > globalDefault >
   // agent.model > fallback. Model selection must NOT depend on a loaded agent:
   // the session/global/fallback slots resolve fine without one, and the agent
-  // roster can be empty (e.g. a project with no configured agents, or
+  // roster can be empty (e.g. a workspace with no configured agents, or
   // `enableProjects` off) — the agent-keyed slots are simply skipped then.
   const currentModelKey = useMemo<ModelKey | undefined>(() => {
     const resolved =

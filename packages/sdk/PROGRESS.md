@@ -2810,7 +2810,6 @@ Post-repair verification:
 
 **Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
 and deployed ACP plus REST parity remain.
-<<<<<<< HEAD
 
 ---
 
@@ -3148,38 +3147,3 @@ Post-rebase live ACP and REST presentation plus question parity:
 **Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
 and deployed ACP plus REST parity remain.
 ||||||| parent of f571c3b92 (chore(sdk): complete Workspace API task)
-=======
-
----
-
-### 2026-07-25 — session `019f9afd` (Workspace API domain)
-
-Made `/v1/workspaces` the canonical public API domain.
-
-Kept `/v1/projects` and `/v1/executor/projects/:projectId` as deprecated
-compatibility routes. Compatibility responses use legacy Project field names.
-Compatibility responses include `Deprecation`, `Sunset`, and successor `Link`
-headers.
-
-Moved the API implementation from `src/projects` to `src/workspaces`.
-Changed canonical API fields, IAM grants, audit resources, and shared contracts
-to Workspace names. Kept physical database identifiers and documented external
-identifiers unchanged for rolling deployment compatibility.
-
-Verification:
-
-- API typecheck: exit 0.
-- Workspace session contract: **43 pass / 0 fail**.
-- Workspace triggers: **24 pass / 0 fail**.
-- Workspaces contract: **13 pass / 0 fail**.
-- Workspace provision: **9 pass / 0 fail**.
-- Workspace limit: **5 pass / 0 fail**.
-- Preview proxy: **56 pass / 0 fail**.
-- API isolated run: **380 passed files / 11 failed files**.
-- Seven failed files are unchanged baseline contracts.
-- Four failed files depend on the pending CLI rename or Slack fixture updates.
-
-**Status:** Task 3 DONE.
-
-**Shippable to production: NOT YET.** Tasks 4 through 9 remain.
->>>>>>> f571c3b92 (chore(sdk): complete Workspace API task)

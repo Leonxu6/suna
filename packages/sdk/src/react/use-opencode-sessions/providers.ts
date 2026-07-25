@@ -2,23 +2,23 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { getClient } from '../../core/runtime/client';
-import { useKortixRouteProjectId } from '../route-project';
+import { useKortixRouteWorkspaceId } from '../route-workspace';
 import { opencodeKeys, useOpenCodeRuntimeReady } from './keys';
 import type { ProviderListResponse } from './keys';
 import { unwrap, getLSCache, setLSCache, LS_PROVIDERS, CACHE_SCOPE_GLOBAL } from './shared';
 import {
-  getProjectDetail,
-  getProjectModelPicker,
-  listProjectSecrets,
-} from '../../core/rest/projects-client';
+  getWorkspaceDetail,
+  getWorkspaceModelPicker,
+  listWorkspaceSecrets,
+} from '../../core/rest/workspaces-client';
 import {
   filterToGatewayProviders,
   filterToNativeProviders,
   GATEWAY_PROVIDER_IDS,
   LLM_PROVIDER_CREDENTIALS,
-  mergeProjectSecretConnectedProviders,
+  mergeWorkspaceSecretConnectedProviders,
   normalizeProviderList,
-  projectLlmCatalogToProviderList,
+  workspaceLlmCatalogToProviderList,
   providerListHasModels,
 } from '../provider-selection';
 
@@ -30,47 +30,47 @@ export { GATEWAY_PROVIDER_IDS };
 
 export function useOpenCodeProviders() {
   const runtimeReady = useOpenCodeRuntimeReady();
-  const projectId = useKortixRouteProjectId();
-  const projectDetailQuery = useQuery({
-    queryKey: ['project-detail', projectId],
-    queryFn: () => getProjectDetail(projectId!),
-    enabled: !!projectId,
+  const workspaceId = useKortixRouteWorkspaceId();
+  const workspaceDetailQuery = useQuery({
+    queryKey: ['workspace-detail', workspaceId],
+    queryFn: () => getWorkspaceDetail(workspaceId!),
+    enabled: !!workspaceId,
     staleTime: 30_000,
   });
-  const projectGatewayEnabled =
-    projectId ? projectDetailQuery.data?.project.experimental?.llm_gateway === true : false;
-  const projectModeKnown = !projectId || projectDetailQuery.isSuccess;
-  // BYOK makes the connected model set project-specific (a provider connected
-  // in one project must NOT leak into another, nor linger after removal), so
-  // the persisted placeholder is scoped per project — not the old global scope.
-  const cacheScope = projectId
-    ? `proj:${projectId}:${projectGatewayEnabled ? 'gateway' : 'native'}`
+  const workspaceGatewayEnabled =
+    workspaceId ? workspaceDetailQuery.data?.workspace.experimental?.llm_gateway === true : false;
+  const workspaceModeKnown = !workspaceId || workspaceDetailQuery.isSuccess;
+  // BYOK makes the connected model set workspace-specific (a provider connected
+  // in one workspace must NOT leak into another, nor linger after removal), so
+  // the persisted placeholder is scoped per workspace — not the old global scope.
+  const cacheScope = workspaceId
+    ? `proj:${workspaceId}:${workspaceGatewayEnabled ? 'gateway' : 'native'}`
     : CACHE_SCOPE_GLOBAL;
   return useQuery<ProviderListResponse>({
-    queryKey: projectId
-      ? ['project-providers', projectId, projectGatewayEnabled ? 'gateway' : 'native']
+    queryKey: workspaceId
+      ? ['workspace-providers', workspaceId, workspaceGatewayEnabled ? 'gateway' : 'native']
       : opencodeKeys.providers(),
     queryFn: async () => {
-      if (projectId && projectGatewayEnabled) {
-        const catalog = await getProjectModelPicker(projectId);
-        const providers = projectLlmCatalogToProviderList(catalog);
+      if (workspaceId && workspaceGatewayEnabled) {
+        const catalog = await getWorkspaceModelPicker(workspaceId);
+        const providers = workspaceLlmCatalogToProviderList(catalog);
         setLSCache(LS_PROVIDERS, providers, cacheScope);
         return providers;
       }
       const client = getClient();
       const result = await client.provider.list();
       let rawProviders = normalizeProviderList(unwrap(result));
-      if (projectId) {
-        const secrets = await listProjectSecrets(projectId);
+      if (workspaceId) {
+        const secrets = await listWorkspaceSecrets(workspaceId);
         const items = Array.isArray(secrets) ? secrets : (secrets.items ?? []);
         const secretNames = new Set(items.map((secret: { name: string }) => secret.name));
-        rawProviders = mergeProjectSecretConnectedProviders(
+        rawProviders = mergeWorkspaceSecretConnectedProviders(
           rawProviders,
           secretNames,
           LLM_PROVIDER_CREDENTIALS,
         );
       }
-      const providers = projectId ? filterToNativeProviders(rawProviders) : rawProviders;
+      const providers = workspaceId ? filterToNativeProviders(rawProviders) : rawProviders;
 
       // During sandbox boot the OpenCode server frequently answers
       // /provider/list BEFORE its provider config is wired up, returning zero
@@ -87,7 +87,7 @@ export function useOpenCodeProviders() {
         );
       }
 
-      // Persist under the per-project scope (never the ephemeral per-sandbox
+      // Persist under the per-workspace scope (never the ephemeral per-sandbox
       // server id) so a fresh session paints the right models instantly. Only
       // genuine, model-bearing responses reach here, so the placeholder cache
       // is never poisoned with an empty list.
@@ -100,19 +100,19 @@ export function useOpenCodeProviders() {
       const cached = getLSCache<ProviderListResponse>(LS_PROVIDERS, cacheScope);
       if (!providerListHasModels(cached)) return undefined;
       // Old gateway caches may have been persisted before the source filter —
-      // clean them on read, but native-mode projects must see the runtime's
+      // clean them on read, but native-mode workspaces must see the runtime's
       // actual provider list for v0.9.68/backward-compatible fallback.
-      if (projectGatewayEnabled) {
+      if (workspaceGatewayEnabled) {
         const gatewayProviders = filterToGatewayProviders(cached as ProviderListResponse);
         return providerListHasModels(gatewayProviders) ? gatewayProviders : undefined;
       }
-      if (projectId && !projectGatewayEnabled) {
+      if (workspaceId && !workspaceGatewayEnabled) {
         const nativeProviders = filterToNativeProviders(cached as ProviderListResponse);
         return providerListHasModels(nativeProviders) ? nativeProviders : undefined;
       }
       return cached;
     },
-    enabled: projectId ? projectModeKnown && (projectGatewayEnabled || runtimeReady) : runtimeReady,
+    enabled: workspaceId ? workspaceModeKnown && (workspaceGatewayEnabled || runtimeReady) : runtimeReady,
     staleTime: Infinity,
     gcTime: 10 * 60 * 1000,
     // The boot race (sandbox up, providers not yet wired) self-heals: keep

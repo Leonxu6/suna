@@ -16,8 +16,8 @@
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FINAL PUBLIC SURFACE (Phase 7). A new host should reach a session through ONE
-// hook — `useSession(projectId, sessionId)` — plus the pre-runtime capability
-// hooks (`useProjectModels` / `useVisibleAgents` / `useProjectConfig`) and the
+// hook — `useSession(workspaceId, sessionId)` — plus the pre-runtime capability
+// hooks (`useWorkspaceModels` / `useVisibleAgents` / `useWorkspaceConfig`) and the
 // primitives (`useSessionPicks` / `useRuntimePhase` / start-stash). The golden
 // reference (apps/whitelabel-demo) imports ONLY that surface — no `server-store`,
 // no `OpenCodeEventStreamProvider`, no `useCanonicalOpenCodeSession`, no raw
@@ -31,10 +31,15 @@
 // migration lands they come out of the public surface. New hosts: do not import
 // them — use `useSession`.
 // ─────────────────────────────────────────────────────────────────────────────
-// Router-agnostic route scope: the host injects "the project the user is
+// Router-agnostic route scope: the host injects "the workspace the user is
 // looking at" here (Next hosts derive it from useParams once, near the root);
 // `useOpenCodeProviders`/`useOpenCodeLocal` resolve it via this context.
-export { KortixProjectProvider, useKortixRouteProjectId } from './route-project';
+export {
+  KortixWorkspaceProvider,
+  useKortixRouteWorkspaceId,
+  KortixProjectProvider,
+  useKortixRouteProjectId,
+} from './route-workspace';
 export * from './use-opencode-sessions';
 export * from './use-opencode-events';
 export * from './use-opencode-local';
@@ -121,7 +126,7 @@ export {
 export { useServerStore as useRuntimeStore } from '../browser/stores/server-store';
 export { useSyncStore as useSessionStateStore } from '../browser/stores/sync-store';
 export * from './use-session-prefetch';
-// Relocated from `platform/projects-client/session-sandbox` — it types against
+// Relocated from `platform/workspaces-client/session-sandbox` — it types against
 // react-query's QueryClient, which the framework-free REST layer must not.
 export { prefetchSessionStart } from './prefetch-session-start';
 export * from './use-canonical-opencode-session';
@@ -130,7 +135,7 @@ export * from './use-visible-agents';
 export * from './provider-refresh';
 // Runtime-free model catalog → selectable model list. Lets a host build a model
 // picker BEFORE a session runtime exists (e.g. on a "new session" screen) by
-// feeding `project(id).llmCatalog()` through these, with correct provider/model
+// feeding `workspace(id).llmCatalog()` through these, with correct provider/model
 // ids — no guessing the gateway-vs-BYOK key format.
 export { flattenModels, type FlatModel } from './model-flatten';
 export {
@@ -139,19 +144,24 @@ export {
   connectedGatewayProviderIdsFromSecretNames,
   filterToGatewayProviders,
   filterToNativeProviders,
-  mergeProjectSecretConnectedProviders,
+  mergeWorkspaceSecretConnectedProviders,
   mergeProviderLists,
   normalizeProviderList,
-  projectLlmCatalogToProviderList,
+  workspaceLlmCatalogToProviderList,
   providerListHasGateway,
   providerListHasModels,
+  mergeProjectSecretConnectedProviders,
+  projectLlmCatalogToProviderList,
 } from './provider-selection';
-export { useProjectModels } from './use-project-models';
-export { useProjectConfig } from './use-project-config';
-export type { ProjectConfigSummary } from '../core/rest/projects-client';
+export { useWorkspaceModels } from './use-workspace-models';
+export { useWorkspaceConfig } from './use-workspace-config';
+export { useWorkspaceModels as useProjectModels } from './use-workspace-models';
+export { useWorkspaceConfig as useProjectConfig } from './use-workspace-config';
+export type { WorkspaceConfigSummary } from '../core/rest/workspaces-client';
+export type { WorkspaceConfigSummary as ProjectConfigSummary } from '../core/rest/workspaces-client';
 
 // ── The one-hook session surface ─────────────────────────────────────────────
-// `useSession(projectId, sessionId)` collapses the entire runtime dance (start →
+// `useSession(workspaceId, sessionId)` collapses the entire runtime dance (start →
 // switch → health → SSE → id-resolution → message sync) into a single hook so a
 // host never touches the sandbox. The primitives below are what it composes —
 // also exported standalone for hosts that want the pieces (a model picker, a boot

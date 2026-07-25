@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 
-import { getProjectSession } from '../core/rest/projects-client';
+import { getWorkspaceSession } from '../core/rest/workspaces-client';
 
 import { useOpenCodeSessions, type Session } from './use-opencode-sessions';
 
@@ -15,7 +15,7 @@ import { useOpenCodeSessions, type Session } from './use-opencode-sessions';
  * the client (the old client-side `ensure-opencode` mutation caused the
  * "session replaced / data lost" drift). It just surfaces the pin:
  *   1. the value /start handed us this render (`pinFromStart`), else
- *   2. the persisted pin on the Kortix session row (`getProjectSession`).
+ *   2. the persisted pin on the Kortix session row (`getWorkspaceSession`).
  *
  * The OpenCode session list is still read (read-only) for ?oc deep-links and
  * sidebar sub-session rendering.
@@ -39,14 +39,14 @@ export interface CanonicalOpenCodeSession {
 }
 
 export function useCanonicalOpenCodeSession(params: {
-  projectId: string;
+  workspaceId: string;
   sessionId: string;
   /** The pin POST /start resolved server-side this render (preferred source). */
   pinFromStart?: string | null;
   /** Disable the legacy OpenCode REST session list for ACP sessions. */
   listRuntimeSessions?: boolean;
 }): CanonicalOpenCodeSession {
-  const { projectId, sessionId, pinFromStart, listRuntimeSessions = true } = params;
+  const { workspaceId, sessionId, pinFromStart, listRuntimeSessions = true } = params;
   const sessionsQuery = useOpenCodeSessions(listRuntimeSessions);
 
   // The Kortix session row carries the authoritative, server-managed pin — used
@@ -57,13 +57,13 @@ export function useCanonicalOpenCodeSession(params: {
   // reads active but the pin isn't resolved (pinFromStart null → query still runs).
   // On a warm start pinFromStart is always present, so this saves a redundant
   // round-trip that otherwise contends for connections during boot.
-  const projectSessionQuery = useQuery({
-    queryKey: ['project-session', projectId, sessionId],
-    queryFn: () => getProjectSession(projectId, sessionId, { showErrors: false }),
-    enabled: !!projectId && !!sessionId && !pinFromStart,
+  const workspaceSessionQuery = useQuery({
+    queryKey: ['workspace-session', workspaceId, sessionId],
+    queryFn: () => getWorkspaceSession(workspaceId, sessionId, { showErrors: false }),
+    enabled: !!workspaceId && !!sessionId && !pinFromStart,
     staleTime: 10_000,
   });
-  const pin = projectSessionQuery.data?.opencode_session_id ?? null;
+  const pin = workspaceSessionQuery.data?.opencode_session_id ?? null;
   const rootSessionId = pinFromStart ?? pin ?? null;
 
   return {
