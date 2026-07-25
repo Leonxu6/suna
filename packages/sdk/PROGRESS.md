@@ -200,8 +200,8 @@ Also stop if the same failure survives three different fixes (use
 | # | Task | Status | Session | Last touched | Commit |
 |---|---|---|---|---|---|
 | 1 | Contract inventory and RED tests | DONE | `019f9afd` | 2026-07-25 | `adb74756a` |
-| 2 | Database domain | IN PROGRESS | `019f9afd` | 2026-07-25 | — |
-| 3 | API domain | NOT STARTED | — | — | — |
+| 2 | Database domain | DONE | `019f9afd` | 2026-07-25 | `981431967` |
+| 3 | API domain | IN PROGRESS | `019f9afd` | 2026-07-25 | — |
 | 4 | SDK domain | NOT STARTED | — | — | — |
 | 5 | CLI domain | NOT STARTED | — | — | — |
 | 6 | Web domain and default routing | NOT STARTED | — | — | — |
