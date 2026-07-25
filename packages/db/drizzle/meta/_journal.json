@@ -110,6 +110,13 @@
     {
       "idx": 15,
       "version": "7",
+      "when": 1785014767189,
+      "tag": "20260725212607_workspace_domain_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
       "when": 1785024428383,
       "tag": "20260726000708_project_sessions_one_available_warm",
       "breakpoints": true

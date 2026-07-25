@@ -4,11 +4,11 @@ import {
   kortixSchema,
   sandboxStatusEnum,
   sandboxProviderEnum,
-  projectStatusEnum,
-  projectSessionStatusEnum,
+  workspaceStatusEnum,
+  workspaceSessionStatusEnum,
   sessionLifecycleCommandStatusEnum,
-  projectRoleEnum,
-  projectAccessRequestStatusEnum,
+  workspaceRoleEnum,
+  workspaceAccessRequestStatusEnum,
   apiKeyStatusEnum,
   apiKeyTypeEnum,
   accountRoleEnum,
@@ -18,12 +18,12 @@ import {
   changeRequestStatusEnum,
   accounts,
   accountMembers,
-  projects,
-  projectMembers,
-  projectSessions,
-  projectGroupGrants,
-  projectGitConnections,
-  projectLlmRoutingPolicies,
+  workspaces,
+  workspaceMembers,
+  workspaceSessions,
+  workspaceGroupGrants,
+  workspaceGitConnections,
+  workspaceLlmRoutingPolicies,
   sandboxes,
   sandboxMembers,
   kortixApiKeys,
@@ -53,7 +53,7 @@ describe('kortix pgSchema', () => {
   });
 
   test('all sampled tables live in the kortix schema', () => {
-    const tables = [accounts, projects, sandboxes, kortixApiKeys];
+    const tables = [accounts, workspaces, sandboxes, kortixApiKeys];
     for (const t of tables) {
       expect(getTableConfig(t).schema).toBe('kortix');
     }
@@ -77,12 +77,12 @@ describe('kortix enums', () => {
     expect(sandboxProviderEnum.enumValues).toEqual(['daytona', 'platinum', 'e2b', 'local-docker']);
   });
 
-  test('project_status enum is active or archived', () => {
-    expect(projectStatusEnum.enumValues).toEqual(['active', 'archived']);
+  test('workspace status uses the persisted legacy enum values', () => {
+    expect(workspaceStatusEnum.enumValues).toEqual(['active', 'archived']);
   });
 
-  test('project_session_status enum covers the session lifecycle', () => {
-    expect(projectSessionStatusEnum.enumValues).toEqual([
+  test('workspace session status covers the session lifecycle', () => {
+    expect(workspaceSessionStatusEnum.enumValues).toEqual([
       'queued',
       'branching',
       'provisioning',
@@ -98,14 +98,18 @@ describe('kortix enums', () => {
     expect(sessionLifecycleCommandStatusEnum.enumValues).toContain('dead_lettered');
   });
 
-  test('project_role enum carries manager, editor, member, and the deprecated viewer', () => {
+  test('workspace role carries manager, editor, member, and the deprecated viewer', () => {
     // `viewer` is retired (folded into `member`) but remains in the enum because
     // Postgres can't drop an enum member — nothing reads or writes it.
-    expect(projectRoleEnum.enumValues).toEqual(['manager', 'editor', 'member', 'viewer']);
+    expect(workspaceRoleEnum.enumValues).toEqual(['manager', 'editor', 'member', 'viewer']);
   });
 
-  test('project_access_request_status enum has the expected values', () => {
-    expect(projectAccessRequestStatusEnum.enumValues).toEqual(['pending', 'approved', 'rejected']);
+  test('workspace access request status has the expected values', () => {
+    expect(workspaceAccessRequestStatusEnum.enumValues).toEqual([
+      'pending',
+      'approved',
+      'rejected',
+    ]);
   });
 
   test('api_key_status enum has the expected values', () => {
@@ -149,9 +153,9 @@ describe('sandbox compute provider attribution', () => {
   });
 });
 
-describe('warm project session uniqueness', () => {
-  test('allows one available warm session per project and creator', () => {
-    const index = getTableConfig(projectSessions).indexes.find(
+describe('warm workspace session uniqueness', () => {
+  test('allows one available warm session per workspace and creator', () => {
+    const index = getTableConfig(workspaceSessions).indexes.find(
       (candidate) =>
         candidate.config.name === 'idx_project_sessions_one_available_warm',
     );
@@ -210,6 +214,7 @@ describe('accounts table', () => {
   test('exposes the expected core columns', () => {
     const cols = columnNames(accounts);
     expect(cols).toContain('name');
+    expect(cols).toContain('default_workspace_id');
     expect(cols).toContain('mfa_required');
     expect(cols).toContain('created_at');
     expect(cols).toContain('updated_at');
@@ -256,50 +261,50 @@ describe('account_members table', () => {
   });
 });
 
-describe('projects table', () => {
-  test('maps to the projects table name', () => {
-    expect(getTableConfig(projects).name).toBe('projects');
+describe('workspaces table', () => {
+  test('keeps the deprecated physical projects table during the rolling migration', () => {
+    expect(getTableConfig(workspaces).name).toBe('projects');
   });
 
-  test('uses project_id as its primary key', () => {
-    expect(primaryColumn(projects)).toBe('project_id');
+  test('keeps the deprecated physical project_id primary key', () => {
+    expect(primaryColumn(workspaces)).toBe('project_id');
   });
 
   test('references accounts via a foreign key', () => {
-    const fks = getTableConfig(projects).foreignKeys;
+    const fks = getTableConfig(workspaces).foreignKeys;
     expect(fks.length).toBeGreaterThan(0);
     const referenced = fks.map((f) => getTableConfig(f.reference().foreignTable).name);
     expect(referenced).toContain('accounts');
   });
 
   test('default_branch defaults to main', () => {
-    const col = getTableConfig(projects).columns.find((c) => c.name === 'default_branch');
+    const col = getTableConfig(workspaces).columns.find((c) => c.name === 'default_branch');
     expect(col?.default).toBe('main');
   });
 
   test('manifest_path defaults to kortix.yaml', () => {
-    const col = getTableConfig(projects).columns.find((c) => c.name === 'manifest_path');
+    const col = getTableConfig(workspaces).columns.find((c) => c.name === 'manifest_path');
     expect(col?.default).toBe('kortix.yaml');
   });
 
   test('status defaults to active', () => {
-    const col = getTableConfig(projects).columns.find((c) => c.name === 'status');
+    const col = getTableConfig(workspaces).columns.find((c) => c.name === 'status');
     expect(col?.default).toBe('active');
   });
 
-  test('indexes account/repo without preventing branch-isolated projects', () => {
-    const cfg = getTableConfig(projects);
+  test('indexes account/repo without preventing branch-isolated workspaces', () => {
+    const cfg = getTableConfig(workspaces);
     const accountRepo = cfg.indexes.find((i) => i.config.name === 'idx_projects_account_repo');
     expect(accountRepo).toBeDefined();
     expect(accountRepo?.config.unique).toBe(false);
   });
 });
 
-describe('project_llm_routing_policies table', () => {
-  test('stores one versioned routing document per project with audit fields', () => {
-    expect(getTableConfig(projectLlmRoutingPolicies).name).toBe('project_llm_routing_policies');
-    expect(primaryColumn(projectLlmRoutingPolicies)).toBe('project_id');
-    expect(columnNames(projectLlmRoutingPolicies)).toEqual(
+describe('workspace_llm_routing_policies table', () => {
+  test('stores one versioned routing document per workspace with audit fields', () => {
+    expect(getTableConfig(workspaceLlmRoutingPolicies).name).toBe('project_llm_routing_policies');
+    expect(primaryColumn(workspaceLlmRoutingPolicies)).toBe('project_id');
+    expect(columnNames(workspaceLlmRoutingPolicies)).toEqual(
       expect.arrayContaining([
         'vision_model',
         'default_fallback_models',
@@ -313,40 +318,40 @@ describe('project_llm_routing_policies table', () => {
   });
 });
 
-describe('project_members table', () => {
-  test('project_role defaults to member (the floor role)', () => {
-    const col = getTableConfig(projectMembers).columns.find((c) => c.name === 'project_role');
+describe('workspace_members table', () => {
+  test('the persisted role defaults to member', () => {
+    const col = getTableConfig(workspaceMembers).columns.find((c) => c.name === 'project_role');
     expect(col?.default).toBe('member');
   });
 
-  test('enforces a unique project/user index', () => {
-    const cfg = getTableConfig(projectMembers);
+  test('enforces a unique workspace/user index through the legacy physical index', () => {
+    const cfg = getTableConfig(workspaceMembers);
     const unique = cfg.indexes.find((i) => i.config.name === 'idx_project_members_project_user');
     expect(unique?.config.unique).toBe(true);
   });
 });
 
-describe('project_group_grants table', () => {
-  test('does not carry branch selection outside the project boundary', () => {
-    const col = getTableConfig(projectGroupGrants).columns.find(
+describe('workspace_group_grants table', () => {
+  test('does not carry branch selection outside the workspace boundary', () => {
+    const col = getTableConfig(workspaceGroupGrants).columns.find(
       (column) => column.name === 'default_base_ref',
     );
     expect(col).toBeUndefined();
   });
 });
 
-describe('project_git_connections table', () => {
-  test('maps to the project_git_connections table name', () => {
-    expect(getTableConfig(projectGitConnections).name).toBe('project_git_connections');
+describe('workspace_git_connections table', () => {
+  test('keeps the deprecated physical project_git_connections table', () => {
+    expect(getTableConfig(workspaceGitConnections).name).toBe('project_git_connections');
   });
 
   test('managed flag defaults to false', () => {
-    const col = getTableConfig(projectGitConnections).columns.find((c) => c.name === 'managed');
+    const col = getTableConfig(workspaceGitConnections).columns.find((c) => c.name === 'managed');
     expect(col?.default).toBe(false);
   });
 
-  test('enforces a unique project index', () => {
-    const cfg = getTableConfig(projectGitConnections);
+  test('enforces a unique workspace index through the legacy physical index', () => {
+    const cfg = getTableConfig(workspaceGitConnections);
     const unique = cfg.indexes.find((i) => i.config.name === 'idx_project_git_connections_project');
     expect(unique?.config.unique).toBe(true);
   });

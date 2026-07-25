@@ -1,4 +1,34 @@
-import { sandboxes, kortixApiKeys, accounts, accountMembers, accountInvitations, accountGithubInstallations, auditEvents, usageEvents, gatewayRequestLogs, gatewayApiKeys, gatewayBudgets, projects, projectGitConnections, projectGitCredentials, projectMembers, projectSecrets, projectSessions, projectSnapshotBuilds, sandboxTemplates, sessionSandboxes, legacySandboxMigrations, creditAccounts, tunnelConnections, tunnelPermissions, tunnelPermissionRequests, tunnelAuditLogs, chatChannelBindings, chatInstalls, chatThreads } from './schema/kortix';
+import {
+  sandboxes,
+  kortixApiKeys,
+  accounts,
+  accountMembers,
+  accountInvitations,
+  accountGithubInstallations,
+  auditEvents,
+  usageEvents,
+  gatewayRequestLogs,
+  gatewayApiKeys,
+  gatewayBudgets,
+  workspaces,
+  workspaceGitConnections,
+  workspaceGitCredentials,
+  workspaceMembers,
+  workspaceSecrets,
+  workspaceSessions,
+  workspaceSnapshotBuilds,
+  sandboxTemplates,
+  sessionSandboxes,
+  legacySandboxMigrations,
+  creditAccounts,
+  tunnelConnections,
+  tunnelPermissions,
+  tunnelPermissionRequests,
+  tunnelAuditLogs,
+  chatChannelBindings,
+  chatInstalls,
+  chatThreads,
+} from './schema/kortix';
 import { apiKeys } from './schema/public';
 
 // Select types (what you get back from queries)
@@ -20,20 +50,20 @@ export type GatewayApiKey = typeof gatewayApiKeys.$inferSelect;
 export type NewGatewayApiKey = typeof gatewayApiKeys.$inferInsert;
 export type GatewayBudget = typeof gatewayBudgets.$inferSelect;
 export type NewGatewayBudget = typeof gatewayBudgets.$inferInsert;
-export type Project = typeof projects.$inferSelect;
-export type NewProject = typeof projects.$inferInsert;
-export type ProjectGitConnection = typeof projectGitConnections.$inferSelect;
-export type NewProjectGitConnection = typeof projectGitConnections.$inferInsert;
-export type ProjectGitCredential = typeof projectGitCredentials.$inferSelect;
-export type NewProjectGitCredential = typeof projectGitCredentials.$inferInsert;
-export type ProjectMember = typeof projectMembers.$inferSelect;
-export type NewProjectMember = typeof projectMembers.$inferInsert;
-export type ProjectSecret = typeof projectSecrets.$inferSelect;
-export type NewProjectSecret = typeof projectSecrets.$inferInsert;
-export type ProjectSession = typeof projectSessions.$inferSelect;
-export type NewProjectSession = typeof projectSessions.$inferInsert;
-export type ProjectSnapshotBuild = typeof projectSnapshotBuilds.$inferSelect;
-export type NewProjectSnapshotBuild = typeof projectSnapshotBuilds.$inferInsert;
+export type Workspace = typeof workspaces.$inferSelect;
+export type NewWorkspace = typeof workspaces.$inferInsert;
+export type WorkspaceGitConnection = typeof workspaceGitConnections.$inferSelect;
+export type NewWorkspaceGitConnection = typeof workspaceGitConnections.$inferInsert;
+export type WorkspaceGitCredential = typeof workspaceGitCredentials.$inferSelect;
+export type NewWorkspaceGitCredential = typeof workspaceGitCredentials.$inferInsert;
+export type WorkspaceMember = typeof workspaceMembers.$inferSelect;
+export type NewWorkspaceMember = typeof workspaceMembers.$inferInsert;
+export type WorkspaceSecret = typeof workspaceSecrets.$inferSelect;
+export type NewWorkspaceSecret = typeof workspaceSecrets.$inferInsert;
+export type WorkspaceSession = typeof workspaceSessions.$inferSelect;
+export type NewWorkspaceSession = typeof workspaceSessions.$inferInsert;
+export type WorkspaceSnapshotBuild = typeof workspaceSnapshotBuilds.$inferSelect;
+export type NewWorkspaceSnapshotBuild = typeof workspaceSnapshotBuilds.$inferInsert;
 export type SandboxTemplate = typeof sandboxTemplates.$inferSelect;
 export type NewSandboxTemplate = typeof sandboxTemplates.$inferInsert;
 export type SessionSandbox = typeof sessionSandboxes.$inferSelect;

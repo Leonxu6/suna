@@ -68,16 +68,22 @@ Compatibility aliases must not create a second implementation.
 
 ## Database migration
 
-One forward migration renames:
+Deployments apply migrations before rolling API updates.
 
-- `kortix.projects` to `kortix.workspaces`.
-- Every `kortix.project_*` table to its `kortix.workspace_*` equivalent.
-- Every domain foreign-key column from `project_id` to `workspace_id`.
-- Project-named indexes, constraints, policies, functions, and triggers.
+Existing API replicas must remain valid during that mixed-version window.
 
-The migration preserves row identifiers and relationships.
+The migration therefore uses an expand-only database contract:
 
-Application code uses only canonical workspace database names after migration.
+- Add `accounts.default_workspace_id`.
+- Backfill it from the oldest active workspace.
+- Add and validate its foreign key without blocking writes.
+- Add 17 canonical `workspace*` views over legacy physical storage.
+- Keep legacy `project*` storage identifiers as deprecated persistence aliases.
+
+Application code uses canonical workspace symbols.
+
+A later contract migration can rename physical storage after no deployed
+version reads the deprecated identifiers.
 
 ## API
 

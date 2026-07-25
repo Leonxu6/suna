@@ -15,8 +15,8 @@ describe('package index re-exports', () => {
     const expected = [
       'accounts',
       'accountMembers',
-      'projects',
-      'projectMembers',
+      'workspaces',
+      'workspaceMembers',
       'sandboxes',
       'kortixApiKeys',
     ] as const;
@@ -28,10 +28,10 @@ describe('package index re-exports', () => {
   test('re-exports the kortix enums', () => {
     const expected = [
       'sandboxStatusEnum',
-      'projectStatusEnum',
+      'workspaceStatusEnum',
       'apiKeyTypeEnum',
       'accountRoleEnum',
-      'projectRoleEnum',
+      'workspaceRoleEnum',
     ] as const;
     for (const name of expected) {
       expect(db[name]).toBeDefined();

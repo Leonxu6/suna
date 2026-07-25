@@ -10,9 +10,9 @@
 
 ## Task 2: Database domain
 
-- Add one forward migration for workspace tables, columns, and database objects.
+- Add an expand-only migration for the default workspace and canonical views.
 - Rename Drizzle schema exports and relations.
-- Preserve existing identifiers and relationships.
+- Keep legacy physical identifiers during the rolling-deploy compatibility window.
 - Run migrations and database tests against the isolated database.
 
 ## Task 3: API domain
