@@ -203,7 +203,7 @@ Also stop if the same failure survives three different fixes (use
 | 2 | Database domain | DONE | `019f9afd` | 2026-07-25 | `981431967` |
 | 3 | API domain | DONE | `019f9afd` | 2026-07-25 | `7f08bc5cc` |
 | 4 | SDK domain | DONE | `019f9afd` | 2026-07-25 | `344a4a294` |
-| 5 | CLI domain | IN PROGRESS | `019f9afd` | 2026-07-25 | — |
+| 5 | CLI domain | DONE | `019f9afd` | 2026-07-25 | `a85190ab8` |
 | 6 | Web domain and default routing | NOT STARTED | — | — | — |
 | 7 | Mobile, tests, and documentation | NOT STARTED | — | — | — |
 | 8 | Full local verification | NOT STARTED | — | — | — |
@@ -3149,3 +3149,5 @@ and deployed ACP plus REST parity remain.
 ||||||| parent of f571c3b92 (chore(sdk): complete Workspace API task)
 ||||||| parent of 2967a40d8 (chore(sdk): mark Workspace domain task complete)
 **Shippable to production: NOT YET.** Tasks 4 through 9 remain.
+||||||| parent of 025345ce8 (chore(sdk): complete Workspace CLI task)
+**Shippable to production: NOT YET.** Tasks 5 through 9 remain.
