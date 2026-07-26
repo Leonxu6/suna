@@ -49,3 +49,35 @@ test("target smoke removes and counts recovery flow state", () => {
     /'auth\.flow_state',\s+\(SELECT count\(\*\) FROM auth\.flow_state WHERE user_id = :'smoke_user_id'::uuid\)/,
   );
 });
+
+test("frontend smoke removes and counts password-recovery flow state", () => {
+  assert.match(
+    frontendSmoke,
+    /DELETE FROM auth\.flow_state\s+WHERE user_id = :'smoke_user_id'::uuid/,
+  );
+  assert.match(
+    frontendSmoke,
+    /SELECT count\(\*\) FROM auth\.flow_state\s+WHERE user_id = :'smoke_user_id'::uuid/,
+  );
+});
+
+test("shadow smokes remove and count target-only billing state", () => {
+  for (const smokeProgram of [targetSmokeProgram, frontendSmoke]) {
+    assert.match(
+      smokeProgram,
+      /FROM kortix\.account_members[\s\S]*WHERE user_id = :'smoke_user_id'::uuid/,
+    );
+    assert.match(
+      smokeProgram,
+      /DELETE FROM kortix\.credit_ledger\s+WHERE account_id = ANY\(:'smoke_account_ids'::uuid\[\]\);/,
+    );
+    assert.match(
+      smokeProgram,
+      /DELETE FROM kortix\.credit_accounts\s+WHERE account_id = ANY\(:'smoke_account_ids'::uuid\[\]\);/,
+    );
+    assert.match(
+      smokeProgram,
+      /SELECT count\(\*\) FROM kortix\.credit_ledger\s+WHERE account_id = ANY\(:'smoke_account_ids'::uuid\[\]\)/,
+    );
+  }
+});
