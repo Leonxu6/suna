@@ -32,7 +32,6 @@ export interface Principals {
   DENY_USER: Principal;
   NONMEMBER: Principal;
   PAT_ACCT: Principal;
-  PAT_WORKSPACE: Principal;
   APIKEY: Principal;
   ANON: Principal;
   /** The run-scoped team account id everything is provisioned under. */
@@ -71,7 +70,11 @@ export interface Fixtures {
    * session/sandbox. Unseeded workspaces (the default) are an empty repo, fine for
    * metadata/boundary flows and much cheaper.
    */
-  workspace(opts?: { name?: string; accountId?: string; seed?: boolean }): Promise<CreatedWorkspace>;
+  workspace(opts?: {
+    name?: string;
+    accountId?: string;
+    seed?: boolean;
+  }): Promise<CreatedWorkspace>;
   /**
    * A single shared, READ-ONLY workspace provisioned once per run and reused — use
    * this in flows that only READ a workspace (never mutate its manifest/name/state),

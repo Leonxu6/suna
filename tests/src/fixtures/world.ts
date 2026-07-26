@@ -3,8 +3,8 @@
  * teardown, built once per run. Public-only runs (system/access) need no creds
  * and provision nothing; any auth'd domain triggers full provisioning.
  *
- * NOTE: the full 14-principal matrix (ADMIN, MEMBER, the M_ workspace roles,
- * BILLING, AUDITOR, RO_ADMIN, DENY_USER, NONMEMBER, PAT_WORKSPACE) is completed in
+ * NOTE: the full principal matrix (ADMIN, MEMBER, the M_ workspace roles,
+ * BILLING, AUDITOR, RO_ADMIN, DENY_USER, NONMEMBER) is completed in
  * fixtures/principals.ts as the
  * route contracts are pinned by the audit. OWNER/ANON/PAT_ACCT/APIKEY + the run
  * account are wired here.
