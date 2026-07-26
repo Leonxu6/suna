@@ -25,7 +25,7 @@ flow('SKILL-1', { domain: 'skills', tags: ['smoke'], routes: ['GET /v1/skills'] 
     // outside /v1/workspaces/:id. That is the caller these routes exist for, so
     // it is the one that must be asserted here — an owner JWT passing proves
     // nothing about the sandbox.
-    const r = await ctx.client.as(ctx.P.PAT_PROJ).get('/v1/skills');
+    const r = await ctx.client.as(ctx.P.PAT_WORKSPACE).get('/v1/skills');
     r.status(200);
   });
   await ctx.step('authed list → 200 with descriptions and no bodies', async () => {
@@ -79,7 +79,7 @@ flow(
     });
     await ctx.step('a WORKSPACE-scoped PAT can read the body (the in-sandbox read)', async () => {
       const r = await ctx.client
-        .as(ctx.P.PAT_PROJ)
+        .as(ctx.P.PAT_WORKSPACE)
         .get('/v1/skills/:name', { params: { name: KNOWN_SKILL } });
       r.status(200).body().exists('$.body');
     });
