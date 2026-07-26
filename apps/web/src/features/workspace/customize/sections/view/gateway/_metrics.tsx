@@ -11,7 +11,7 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import { cn } from '@/lib/utils';
-import type { GatewaySeriesPoint } from '@/lib/projects-gateway-client';
+import type { GatewaySeriesPoint } from '@/lib/workspaces-gateway-client';
 
 export const RANGES = [
   { days: 7, label: '7d' },

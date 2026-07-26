@@ -15,7 +15,7 @@ import { HiArrowRight } from 'react-icons/hi2';
 const terminalLines = [
   { id: 'install', type: 'command', text: KORTIX_CLI_INSTALL_COMMAND },
   { id: 'install-done', type: 'muted', text: '✓ Installed the Kortix CLI' },
-  { id: 'space-project', type: 'space', text: '' },
+  { id: 'space-workspace', type: 'space', text: '' },
   { id: 'init', type: 'command', text: 'kortix init acme-ops' },
   { id: 'init-done', type: 'muted', text: '✓ Created kortix.yaml and .kortix/' },
   { id: 'space-attach', type: 'space', text: '' },
@@ -30,7 +30,7 @@ export function CliInstallSection() {
 
   const handleLaunch = useCallback(() => {
     trackCtaSignup();
-    window.location.href = user ? '/projects' : '/auth';
+    window.location.href = user ? '/workspaces' : '/auth';
   }, [user]);
 
   const copyInstallCommand = useCallback(() => {
@@ -55,7 +55,7 @@ export function CliInstallSection() {
                 Install Kortix from your terminal.
               </h2>
               <p className="text-muted-foreground text-base leading-relaxed text-pretty">
-                One curl installs the CLI. From there you can create a project, launch sessions, and
+                One curl installs the CLI. From there you can create a workspace, launch sessions, and
                 attach your local OpenCode TUI to any Kortix sandbox.
               </p>
             </div>

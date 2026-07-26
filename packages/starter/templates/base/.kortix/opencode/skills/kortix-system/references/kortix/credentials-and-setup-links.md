@@ -75,7 +75,7 @@ single message.
 ## Minting a connect link (Pipedream Quick Connect)
 
 For an app you connect via Pipedream, mint a 1-click connect link. If the
-connector isn't on the project yet, **add it instantly first — no change
+connector isn't on the workspace yet, **add it instantly first — no change
 request**: the `add_connector` tool / `kortix executor add <slug> --provider pipedream
 --app <app>` (humans: `kortix connectors add … --apply`). That commits it to
 `kortix.yaml` on main and syncs the catalog server-side, exactly like the
@@ -128,10 +128,10 @@ If it isn't there yet, the human may not have finished — say so and wait.
 
 ## Why this is safe (and why it's the only good way)
 
-- The link is an **opaque, encrypted, single-project token** with a short TTL
+- The link is an **opaque, encrypted, single-workspace token** with a short TTL
   (default 30 min, ask for more with `--expires` / `expires_in_minutes`).
 - It is **value-only**: it can only *set* the exact key(s) you named, in *this*
-  project. It can't read any existing secret and can't target another key — so a
+  workspace. It can't read any existing secret and can't target another key — so a
   leaked link is low-blast-radius and expires fast.
 - **You never handle the raw value.** The human enters it directly into an
   encrypted store; for a connector, the key only ever lives at Pipedream.

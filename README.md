@@ -31,7 +31,7 @@ Three commands. Build your company like a codebase, then bring it live.
 # 1 · Install the CLI
 curl -fsSL https://kortix.com/install | bash
 
-# 2 · Scaffold a project — creates kortix.yaml + your agents, skills and runtime config
+# 2 · Scaffold a workspace — creates kortix.yaml + your agents, skills and runtime config
 kortix init
 
 # 3 · Ship it — pushes your repo and brings the whole thing live in the cloud
@@ -46,7 +46,7 @@ kortix cr ls          # review what an agent proposes — merge to keep it
 kortix chat           # talk to a session's agent from your terminal
 ```
 
-Prefer zero setup? Sign up at **[kortix.com](https://kortix.com)**, create a project, and start a session — nothing to install. Full command surface: **[CLI reference](https://kortix.com/docs/reference/cli)**.
+Prefer zero setup? Sign up at **[kortix.com](https://kortix.com)**, create a workspace, and start a session — nothing to install. Full command surface: **[CLI reference](https://kortix.com/docs/reference/cli)**.
 
 ---
 
@@ -57,7 +57,7 @@ Not as a metaphor — literally something you can clone. Inside it: your agents,
 Most AI tools give you a chat box. Kortix gives you a **command center** — one place where your agents, skills, integrations, automations and memory all live, and a workforce of agents that produces real output (decks, reports, code, replies, deployed work), not just chat. It feels as simple as a chat app. Underneath, everything is code you own.
 
 ```
-project  (git repo + kortix.yaml)
+workspace  (git repo + kortix.yaml)
    └─ session ──> isolated cloud sandbox on a branch named after the session
                      └─ agent (OpenCode) works, commits, pushes
                            └─ change request ──> you review & merge ──> main

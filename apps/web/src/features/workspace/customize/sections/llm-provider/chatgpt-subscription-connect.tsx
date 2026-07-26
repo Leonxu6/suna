@@ -1,13 +1,13 @@
 'use client';
 
-import { ChatGptDeviceChallenge } from '@/components/projects/chatgpt-device-challenge';
+import { ChatGptDeviceChallenge } from '@/components/workspaces/chatgpt-device-challenge';
 import { Button } from '@/components/ui/button';
 import { InfoBanner } from '@/components/ui/info-banner';
 import Loading from '@/components/ui/loading';
 import { successToast } from '@/components/ui/toast';
 import { ProviderLogo } from '@/features/providers/provider-branding';
-import { pollProjectProviderOAuth, startProjectProviderOAuth } from '@kortix/sdk';
-import { refreshProjectProviderState } from '@kortix/sdk/react';
+import { pollWorkspaceProviderOAuth, startWorkspaceProviderOAuth } from '@kortix/sdk';
+import { refreshWorkspaceProviderState } from '@kortix/sdk/react';
 import { useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, TriangleAlert } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -16,14 +16,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatGptChallenge, ChatGptPhase } from './types';
 import { sleep } from './utils';
 
-// ChatGPT subscription logins connect project-wide, like every other LLM
+// ChatGPT subscription logins connect workspace-wide, like every other LLM
 // provider credential (kortix policy: no per-user access choice at the LLM
-// level). The server's default sharing intent is project-wide.
+// level). The server's default sharing intent is workspace-wide.
 export function ChatGptSubscriptionConnect({
-  projectId,
+  workspaceId,
   onConnected,
 }: {
-  projectId: string;
+  workspaceId: string;
   onConnected: (providerId: string) => void;
 }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
@@ -52,7 +52,7 @@ export function ChatGptSubscriptionConnect({
     setChallenge(null);
     setPhase('waiting');
     try {
-      const start = await startProjectProviderOAuth(projectId, 'openai', {});
+      const start = await startWorkspaceProviderOAuth(workspaceId, 'openai', {});
       if (cancelledRef.current) return;
       setChallenge({ url: start.verification_url, code: start.user_code });
 
@@ -63,16 +63,16 @@ export function ChatGptSubscriptionConnect({
         if (cancelledRef.current) return;
         let res;
         try {
-          res = await pollProjectProviderOAuth(projectId, 'openai', start.flow_id);
+          res = await pollWorkspaceProviderOAuth(workspaceId, 'openai', start.flow_id);
         } catch {
           continue;
         }
         if (cancelledRef.current) return;
         if (res.status === 'success') {
           setPhase('done');
-          successToast('ChatGPT subscription connected to this project');
-          queryClient.invalidateQueries({ queryKey: ['project-secrets', projectId] });
-          refreshProjectProviderState(queryClient, projectId, { expectProviderId: 'codex' });
+          successToast('ChatGPT subscription connected to this workspace');
+          queryClient.invalidateQueries({ queryKey: ['workspace-secrets', workspaceId] });
+          refreshWorkspaceProviderState(queryClient, workspaceId, { expectProviderId: 'codex' });
           onConnected('codex');
           return;
         }
@@ -100,7 +100,7 @@ export function ChatGptSubscriptionConnect({
       setPhase('idle');
       setError(err instanceof Error ? err.message : 'Failed to connect ChatGPT subscription');
     }
-  }, [projectId, queryClient, onConnected]);
+  }, [workspaceId, queryClient, onConnected]);
 
   const waiting = phase === 'waiting';
 
@@ -111,12 +111,12 @@ export function ChatGptSubscriptionConnect({
         <div className="min-w-0 flex-1">
           <div className="text-foreground text-sm font-medium">
             {tHardcodedUi.raw(
-              'autoComponentsProjectsProjectProviderModalJsxTextChatGPTPlusPro0deb5530',
+              'autoComponentsWorkspacesWorkspaceProviderModalJsxTextChatGPTPlusPro0deb5530',
             )}
           </div>
           <p className="text-muted-foreground mt-0.5 text-xs leading-5">
             {tHardcodedUi.raw(
-              'autoComponentsProjectsProjectProviderModalJsxTextSignInWitha0c5128c',
+              'autoComponentsWorkspacesWorkspaceProviderModalJsxTextSignInWitha0c5128c',
             )}
           </p>
         </div>
@@ -128,7 +128,7 @@ export function ChatGptSubscriptionConnect({
             <>
               <div className="text-foreground text-xs font-medium">
                 {tHardcodedUi.raw(
-                  'autoComponentsProjectsProjectProviderModalJsxTextAuthorizeInThed882ae47',
+                  'autoComponentsWorkspacesWorkspaceProviderModalJsxTextAuthorizeInThed882ae47',
                 )}
               </div>
               <div className="mt-3">
@@ -138,7 +138,7 @@ export function ChatGptSubscriptionConnect({
           ) : (
             <div className="text-foreground text-xs font-medium">
               {tHardcodedUi.raw(
-                'autoComponentsProjectsProjectProviderModalJsxTextStartingAuthorization35b1fe13',
+                'autoComponentsWorkspacesWorkspaceProviderModalJsxTextStartingAuthorization35b1fe13',
               )}
             </div>
           )}
@@ -152,7 +152,7 @@ export function ChatGptSubscriptionConnect({
       {phase === 'done' && (
         <InfoBanner tone="success" icon={CheckCircle2} className="mt-3 text-xs">
           {tHardcodedUi.raw(
-            'autoComponentsProjectsProjectProviderModalJsxTextChatGPTSubscriptionConnectedcf12bc87',
+            'autoComponentsWorkspacesWorkspaceProviderModalJsxTextChatGPTSubscriptionConnectedcf12bc87',
           )}
         </InfoBanner>
       )}

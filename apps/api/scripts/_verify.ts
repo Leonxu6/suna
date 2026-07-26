@@ -10,8 +10,8 @@ const now=()=>Date.now(); const s=(ms:number)=>(ms/1000).toFixed(1);
 async function px(b:string,p:string,init?:RequestInit){ return fetch(`${b}${p}`,{...init,headers:{...H,...(init?.headers||{})},signal:AbortSignal.timeout(30000)}); }
 
 const t0=now();
-const prov:any=await(await fetch(`${BASE}/v1/projects/provision`,{method:'POST',headers:H,body:JSON.stringify({name:`verify-${t0}`,seed_starter:true,account_id:ACC})})).json();
-const ses:any=await(await fetch(`${BASE}/v1/projects/${prov.project_id}/sessions`,{method:'POST',headers:H,body:JSON.stringify({provider:'platinum',branch_already_created:false})})).json();
+const prov:any=await(await fetch(`${BASE}/v1/workspaces/provision`,{method:'POST',headers:H,body:JSON.stringify({name:`verify-${t0}`,seed_starter:true,account_id:ACC})})).json();
+const ses:any=await(await fetch(`${BASE}/v1/workspaces/${prov.project_id}/sessions`,{method:'POST',headers:H,body:JSON.stringify({provider:'platinum',branch_already_created:false})})).json();
 let row:any=null; const end=now()+120000;
 while(now()<end){ const [r]:any=await db.select().from(sessionSandboxes).where(eq(sessionSandboxes.sessionId,ses.session_id)).limit(1); if((r as any)?.baseUrl&&((r as any)?.status==='active'||(r as any)?.status==='running')){row=r;break;} await new Promise(z=>setTimeout(z,500)); }
 if(!row?.baseUrl){ console.log(`SPAWN TIMEOUT (no ready sandbox in 120s)`); process.exit(0); }

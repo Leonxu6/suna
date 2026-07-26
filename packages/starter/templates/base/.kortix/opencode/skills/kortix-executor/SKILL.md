@@ -7,7 +7,7 @@ description: Use the Kortix Executor to reach external systems from a session. P
 
 <overview>
 The **Executor** is the one way an agent reaches outside systems. It gives this
-session access to configured project integrations (Pipedream, MCP, OpenAPI,
+session access to configured workspace integrations (Pipedream, MCP, OpenAPI,
 GraphQL, HTTP, `channel` connectors like Slack/email, and connected `computer`
 surfaces) without exposing third-party secrets to the sandbox.
 
@@ -114,7 +114,7 @@ import { createExecutorClient } from '@kortix/executor-sdk';
 const executor = createExecutorClient({
   apiUrl: process.env.KORTIX_API_URL!,
   token: process.env.KORTIX_CLI_TOKEN ?? process.env.KORTIX_EXECUTOR_TOKEN!,
-  projectId: process.env.KORTIX_PROJECT_ID,
+  workspaceId: process.env.KORTIX_WORKSPACE_ID,
 });
 
 const matches = await executor.discover('send an email', { limit: 5 });
@@ -131,7 +131,7 @@ if (!result.ok) throw new Error(`Executor call failed: ${result.reason ?? result
 console.log(JSON.stringify(result, null, 2));
 ```
 
-For project scripts, prefer `bun run path/to/script.ts`. Keep credentials out of
+For workspace scripts, prefer `bun run path/to/script.ts`. Keep credentials out of
 code; pass only Kortix auth/context from env and let the gateway resolve
 third-party secrets.
 </sdk-workflows>

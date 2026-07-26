@@ -1,12 +1,12 @@
 # @kortix/cli
 
-Create a new Kortix project.
+Create a new Kortix workspace.
 
 ```sh
-kortix init my-project
+kortix init my-workspace
 ```
 
-Makes `./my-project/`, runs `git init -b main`, drops the full OpenCode
+Makes `./my-workspace/`, runs `git init -b main`, drops the full OpenCode
 runtime scaffold at the repo root (`kortix.yaml`, `README.md`,
 `.kortix/opencode/`, `.kortix/memory/MEMORY.md`), stages every file, and
 makes an initial commit.
@@ -16,32 +16,35 @@ makes an initial commit.
 ```sh
 kortix init                  # interactive flow: pick a name + template,
                               # wire up coding agents, install marketplace skills
-kortix init my-project       # use the given name
-kortix ship                  # create the cloud project (first run) + push your code
+kortix init my-workspace       # use the given name
+kortix ship                  # create the cloud workspace (first run) + push your code
 kortix self-host start       # run your own Kortix Cloud from Docker images
 ```
 
 Scaffolding is explicit-only: `kortix init` is the one command that creates
-a project directory. An unknown subcommand (`kortix use`, `kortix inti`, …)
+a workspace directory. An unknown subcommand (`kortix use`, `kortix inti`, …)
 errors with a suggestion — it never scaffolds. Init's choices: which coding
 agent(s) to wire (`--primary`, `--agents`), which starter template
 (`--template minimal|general-knowledge-worker`), and which marketplace
 skills to install (`--marketplace`).
 
 Run `kortix init --help` for the full flag list, or `kortix --help`
-for the full command list (project, auth, work, and resource subcommands —
+for the full command list (workspace, auth, work, and resource subcommands —
 sessions, triggers, connectors, secrets, sandboxes, marketplace, and more).
+
+Use `kortix workspaces` for Workspace operations. The deprecated
+`kortix projects` alias remains available during the compatibility window.
 
 ## What gets written
 
 ```
-my-project/
+my-workspace/
 ├── .git/                              ← initialized on the `main` branch
 ├── .gitignore
 ├── README.md
-├── kortix.yaml                        ← project manifest (agents: map, triggers, sandbox)
+├── kortix.yaml                        ← workspace manifest (agents: map, triggers, sandbox)
 └── .kortix/
-    ├── memory/MEMORY.md               ← project-wide memory for agents
+    ├── memory/MEMORY.md               ← workspace-wide memory for agents
     └── opencode/                      ← OpenCode native config dir
         ├── opencode.jsonc             ← runtime config (providers, plugins, MCP servers, …)
         ├── agents/{kortix,memory-reflector}.md
@@ -57,11 +60,11 @@ of truth. Codex and Cursor also get a root `AGENTS.md` pointer.
 After the scaffold lands, one commit is made:
 
 ```
-chore: init kortix project
+chore: init kortix workspace
 ```
 
 Then it's yours. Add a remote, push, open in your coding agent of choice —
-or run `kortix ship` to create the cloud project and push in one step.
+or run `kortix ship` to create the cloud workspace and push in one step.
 
 ## Self-host
 

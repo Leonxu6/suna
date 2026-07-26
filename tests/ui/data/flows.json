@@ -1314,7 +1314,7 @@
     "gated": ""
   },
   {
-    "id": "PROJ-4",
+    "id": "WS-4",
     "domain": "git",
     "status": "passed",
     "cases": 4,
@@ -1719,7 +1719,7 @@
     "gated": ""
   },
   {
-    "id": "PACC-1",
+    "id": "WACC-1",
     "domain": "projects",
     "status": "passed",
     "cases": 4,
@@ -1728,7 +1728,7 @@
     "gated": ""
   },
   {
-    "id": "PACC-2",
+    "id": "WACC-2",
     "domain": "projects",
     "status": "passed",
     "cases": 4,
@@ -1737,7 +1737,7 @@
     "gated": ""
   },
   {
-    "id": "PACC-3",
+    "id": "WACC-3",
     "domain": "projects",
     "status": "passed",
     "cases": 4,
@@ -1746,7 +1746,7 @@
     "gated": ""
   },
   {
-    "id": "PACC-4",
+    "id": "WACC-4",
     "domain": "projects",
     "status": "passed",
     "cases": 3,
@@ -1755,7 +1755,7 @@
     "gated": ""
   },
   {
-    "id": "PACC-5",
+    "id": "WACC-5",
     "domain": "projects",
     "status": "passed",
     "cases": 8,
@@ -1764,7 +1764,7 @@
     "gated": ""
   },
   {
-    "id": "PACC-6",
+    "id": "WACC-6",
     "domain": "projects",
     "status": "passed",
     "cases": 8,
@@ -1773,7 +1773,7 @@
     "gated": ""
   },
   {
-    "id": "PROJ-1",
+    "id": "WS-1",
     "domain": "projects",
     "status": "passed",
     "cases": 2,
@@ -1782,7 +1782,7 @@
     "gated": ""
   },
   {
-    "id": "PROJ-2",
+    "id": "WS-2",
     "domain": "projects",
     "status": "passed",
     "cases": 3,
@@ -1791,7 +1791,7 @@
     "gated": ""
   },
   {
-    "id": "PROJ-3",
+    "id": "WS-3",
     "domain": "projects",
     "status": "skipped",
     "cases": 1,
@@ -1800,7 +1800,7 @@
     "gated": "managedGit"
   },
   {
-    "id": "PROJ-5",
+    "id": "WS-5",
     "domain": "projects",
     "status": "passed",
     "cases": 3,
@@ -1809,7 +1809,7 @@
     "gated": ""
   },
   {
-    "id": "PROJ-6",
+    "id": "WS-6",
     "domain": "projects",
     "status": "passed",
     "cases": 1,
@@ -1818,7 +1818,7 @@
     "gated": ""
   },
   {
-    "id": "PROJ-7",
+    "id": "WS-7",
     "domain": "projects",
     "status": "passed",
     "cases": 2,
@@ -1827,7 +1827,7 @@
     "gated": ""
   },
   {
-    "id": "PROJ-8",
+    "id": "WS-8",
     "domain": "projects",
     "status": "passed",
     "cases": 2,
@@ -1836,7 +1836,7 @@
     "gated": ""
   },
   {
-    "id": "PROJ-9",
+    "id": "WS-9",
     "domain": "projects",
     "status": "passed",
     "cases": 4,
@@ -1845,7 +1845,7 @@
     "gated": ""
   },
   {
-    "id": "PROJ-10",
+    "id": "WS-10",
     "domain": "projects",
     "status": "passed",
     "cases": 5,
@@ -1854,7 +1854,7 @@
     "gated": ""
   },
   {
-    "id": "PROJ-11",
+    "id": "WS-11",
     "domain": "projects",
     "status": "passed",
     "cases": 3,
@@ -1863,7 +1863,7 @@
     "gated": ""
   },
   {
-    "id": "PROJ-12",
+    "id": "WS-12",
     "domain": "projects",
     "status": "passed",
     "cases": 3,
@@ -1872,7 +1872,7 @@
     "gated": ""
   },
   {
-    "id": "PROJ-13",
+    "id": "WS-13",
     "domain": "projects",
     "status": "passed",
     "cases": 3,
@@ -1881,7 +1881,7 @@
     "gated": ""
   },
   {
-    "id": "PROJ-14",
+    "id": "WS-14",
     "domain": "projects",
     "status": "passed",
     "cases": 4,
@@ -1890,7 +1890,7 @@
     "gated": ""
   },
   {
-    "id": "PROJ-15",
+    "id": "WS-15",
     "domain": "projects",
     "status": "passed",
     "cases": 2,
@@ -1899,7 +1899,7 @@
     "gated": ""
   },
   {
-    "id": "PROJ-16",
+    "id": "WS-16",
     "domain": "projects",
     "status": "passed",
     "cases": 3,
@@ -1908,7 +1908,7 @@
     "gated": ""
   },
   {
-    "id": "PROJ-17",
+    "id": "WS-17",
     "domain": "projects",
     "status": "passed",
     "cases": 4,
@@ -1917,7 +1917,7 @@
     "gated": ""
   },
   {
-    "id": "PROJ-18",
+    "id": "WS-18",
     "domain": "projects",
     "status": "skipped",
     "cases": 2,

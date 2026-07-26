@@ -1,0 +1,65 @@
+'use client';
+import { ToolRegistry } from '@/features/session/tool/shared/registry';
+import type { ToolProps } from '@/features/session/tool/shared/types';
+import {
+  BasicTool,
+  isErrorOutput,
+  ToolOutputFallback,
+  partInput,
+  partOutput,
+  useToolNavigation,
+} from '@/features/session/tool/shared/infrastructure';
+import {
+  ChevronRight,
+  Plus,
+} from 'lucide-react';
+import {
+  useMemo,
+} from 'react';
+
+
+import { parseWorkspaceCreateOutput } from '@/lib/utils/kortix-tool-output';
+
+export function WorkspaceCreateTool({ part }: ToolProps) {
+  const input = partInput(part);
+  const output = partOutput(part);
+  const { enabled: navigationEnabled, openTab } = useToolNavigation();
+  const name = (input.name as string) || '';
+  const data = useMemo(() => parseWorkspaceCreateOutput(output || ''), [output]);
+  const displayName = data?.name || name;
+
+  if (isErrorOutput(output)) {
+    return (
+      <BasicTool icon={<Plus />} trigger={{ title: 'Workspace', subtitle: displayName || 'failed' }}>
+        <ToolOutputFallback output={output} toolName="project_create" />
+      </BasicTool>
+    );
+  }
+
+  return (
+    <BasicTool
+      icon={<Plus />}
+      trigger={{
+        title: 'Workspace',
+        subtitle: displayName,
+      }}
+      onClick={
+        navigationEnabled
+          ? () =>
+              openTab({
+                id: 'page:/workspace',
+                title: displayName,
+                type: 'page' as any,
+                href: '/workspace',
+              })
+          : undefined
+      }
+      rightAccessory={navigationEnabled ? <ChevronRight /> : undefined}
+    />
+  );
+}
+ToolRegistry.register('project_create', WorkspaceCreateTool);
+ToolRegistry.register('project-create', WorkspaceCreateTool);
+ToolRegistry.register('oc-project_create', WorkspaceCreateTool);
+ToolRegistry.register('oc-project-create', WorkspaceCreateTool);
+

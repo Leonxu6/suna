@@ -83,7 +83,7 @@ export function RuntimeLayerFields({
               allowUnset
             />
             <p className="text-muted-foreground/60 text-[11px]">
-              {oc.mode ? AGENT_MODE_HELP[oc.mode] : 'Inherits the project default.'}
+              {oc.mode ? AGENT_MODE_HELP[oc.mode] : 'Inherits the workspace default.'}
             </p>
           </div>
         </FieldRow>

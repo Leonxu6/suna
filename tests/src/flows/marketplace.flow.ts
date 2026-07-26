@@ -9,12 +9,12 @@
  * FEATURED address, which any signed-in user may add (see the route's own
  * comment in index.ts).
  *
- * Also covers the ONE surviving project-scoped marketplace route —
- * `POST /v1/projects/:projectId/marketplace/install-session`, the
+ * Also covers the ONE surviving workspace-scoped marketplace route —
+ * `POST /v1/workspaces/:workspaceId/marketplace/install-session`, the
  * agent-driven replacement for the deleted deterministic install engine
  * (apps/api/src/projects/routes/r10.ts). It kicks off a real session/agent
- * once past validation, so — same convention as PROJ-13's OAuth `start` in
- * projects-misc.flow.ts — we assert the request-validation boundary only,
+ * once past validation, so — same convention as WS-13's OAuth `start` in
+ * workspaces-misc.flow.ts — we assert the request-validation boundary only,
  * never drive the full flow.
  */
 import { flow } from '../core/flow';
@@ -243,34 +243,34 @@ flow(
   },
 );
 
-// ─── COVB-15 — POST /v1/projects/:projectId/marketplace/install-session ──
+// ─── COVB-15 — POST /v1/workspaces/:workspaceId/marketplace/install-session ──
 // Agent-driven replacement for the deleted deterministic per-project install
-// engine. Validates projectId access + body BEFORE spawning any real
+// engine. Validates workspaceId access + body BEFORE spawning any real
 // session/agent (apps/api/src/projects/routes/r10.ts:134-163) — we assert
-// that boundary only, matching PROJ-13's convention for similarly heavy
-// routes (projects-misc.flow.ts).
+// that boundary only, matching WS-13's convention for similarly heavy
+// routes (workspaces-misc.flow.ts).
 flow(
   'COVB-15',
-  { domain: 'projects', routes: ['POST /v1/projects/:projectId/marketplace/install-session'] },
+  { domain: 'workspaces', routes: ['POST /v1/workspaces/:workspaceId/marketplace/install-session'] },
   async (ctx) => {
-    const p = await ctx.fixtures.project();
+    const p = await ctx.fixtures.workspace();
     await ctx.step('ANON → 401', async () => {
       const r = await ctx.client
         .as(ctx.P.ANON)
         .post(
-          '/v1/projects/:projectId/marketplace/install-session',
+          '/v1/workspaces/:workspaceId/marketplace/install-session',
           { id: KNOWN_ITEM_ID },
-          { params: { projectId: p.id } },
+          { params: { workspaceId: p.id } },
         );
       r.status(401);
     });
-    await ctx.step('unknown projectId → 404', async () => {
+    await ctx.step('unknown workspaceId → 404', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          '/v1/projects/:projectId/marketplace/install-session',
+          '/v1/workspaces/:workspaceId/marketplace/install-session',
           { id: KNOWN_ITEM_ID },
-          { params: { projectId: NOPE } },
+          { params: { workspaceId: NOPE } },
         );
       r.status(404);
     });
@@ -278,9 +278,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          '/v1/projects/:projectId/marketplace/install-session',
+          '/v1/workspaces/:workspaceId/marketplace/install-session',
           {},
-          { params: { projectId: p.id } },
+          { params: { workspaceId: p.id } },
         );
       r.status(400).body().has('$.error', 'id is required');
     });
@@ -288,9 +288,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          '/v1/projects/:projectId/marketplace/install-session',
+          '/v1/workspaces/:workspaceId/marketplace/install-session',
           { id: 'nope-' + NOPE },
-          { params: { projectId: p.id } },
+          { params: { workspaceId: p.id } },
         );
       r.status(400);
     });
@@ -298,9 +298,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.NONMEMBER)
         .post(
-          '/v1/projects/:projectId/marketplace/install-session',
+          '/v1/workspaces/:workspaceId/marketplace/install-session',
           { id: KNOWN_ITEM_ID },
-          { params: { projectId: p.id } },
+          { params: { workspaceId: p.id } },
         );
       r.status([403, 404]);
     });

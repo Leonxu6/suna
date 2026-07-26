@@ -59,9 +59,9 @@ export default function InvitePage() {
       return { kind: 'account' as const, data: await acceptAccountInvite(inviteId!) };
     },
     onSuccess: () => {
-      // Land a newly-joined member on their projects, not the account settings
+      // Land a newly-joined member on their workspaces, not the account settings
       // page — they came here to start working, not to manage the account.
-      router.replace('/projects');
+      router.replace('/workspaces');
     },
   });
 
@@ -82,9 +82,9 @@ export default function InvitePage() {
     const inv = item?.invite;
     // Only auto-redirect the actual recipient. Strangers with a link hit the
     // "wrong account" state instead. Auto-claimed invites (already accepted on
-    // first sign-in) land on /projects too — same destination as a manual accept.
+    // first sign-in) land on /workspaces too — same destination as a manual accept.
     if (!item || !inv?.email_matches_caller || !inv.accepted_at) return;
-    router.replace('/projects');
+    router.replace('/workspaces');
   }, [inviteQuery.data, router]);
 
   if (authLoading || !user || inviteQuery.isLoading) {
@@ -106,8 +106,8 @@ export default function InvitePage() {
             {tHardcodedUi.raw('appInvitesInviteidPage.line98JsxTextInviteNotFound')}
           </StateHeading>
           <StateBody>{tHardcodedUi.raw('appInvitesInviteidPage.inviteInvalidOrRevoked')}</StateBody>
-          <GhostAction onClick={() => router.replace('/projects')}>
-            {tHardcodedUi.raw('appInvitesInviteidPage.line105JsxTextBackToProjects')}
+          <GhostAction onClick={() => router.replace('/workspaces')}>
+            {tHardcodedUi.raw('appInvitesInviteidPage.line105JsxTextBackToWorkspaces')}
           </GhostAction>
         </InviteCard>
       </BrandSurface>
@@ -139,8 +139,8 @@ export default function InvitePage() {
           <p className="text-foreground/30 mt-4 text-xs">
             {tHardcodedUi.raw('appInvitesInviteidPage.line129JsxTextSignOutAndSignBackInWithThe')}
           </p>
-          <GhostAction onClick={() => router.replace('/projects')}>
-            {tHardcodedUi.raw('appInvitesInviteidPage.line132JsxTextBackToProjects')}
+          <GhostAction onClick={() => router.replace('/workspaces')}>
+            {tHardcodedUi.raw('appInvitesInviteidPage.line132JsxTextBackToWorkspaces')}
           </GhostAction>
         </InviteCard>
       </BrandSurface>
@@ -161,8 +161,8 @@ export default function InvitePage() {
               'appInvitesInviteidPage.line145JsxTextAskThePersonWhoInvitedYouToSend',
             )}
           </StateBody>
-          <GhostAction onClick={() => router.replace('/projects')}>
-            {tHardcodedUi.raw('appInvitesInviteidPage.line148JsxTextBackToProjects')}
+          <GhostAction onClick={() => router.replace('/workspaces')}>
+            {tHardcodedUi.raw('appInvitesInviteidPage.line148JsxTextBackToWorkspaces')}
           </GhostAction>
         </InviteCard>
       </BrandSurface>

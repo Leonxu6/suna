@@ -8,11 +8,11 @@ import Loading from '@/components/ui/loading';
 import { errorToast, successToast, warningToast } from '@/components/ui/toast';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import { ProviderLogo } from '@/features/providers/provider-branding';
-import { refreshProjectProviderState } from '@kortix/sdk/react';
+import { refreshWorkspaceProviderState } from '@kortix/sdk/react';
 import { LLM_PROVIDER_BY_ID, type LlmProviderEntry } from '@/lib/llm-providers';
 import { cn } from '@/lib/utils';
 import {
-  deleteProjectSecret,
+  deleteWorkspaceSecret,
   type GatewayProviderVerifyResult,
   verifyGatewayProvider,
 } from '@kortix/sdk';
@@ -23,7 +23,7 @@ import { useMemo, useState } from 'react';
 import { CODEX_AUTH_JSON_SECRET_NAME, LEGACY_RUNTIME_AUTH_JSON_SECRET_NAME } from './constants';
 import { providerCredentialSummary } from './utils';
 
-// GAP C1 — "Connected" only means a secret row exists in project_secrets; it
+// GAP C1 — "Connected" only means a secret row exists in workspace_secrets; it
 // never proves the key actually works. This row action calls the gateway's
 // cheap one-request verify endpoint (POST .../gateway/providers/:id/verify)
 // on demand and renders the classification inline — never on mount, so
@@ -47,13 +47,13 @@ function verifyAffordanceLabel(result: GatewayProviderVerifyResult | undefined):
 }
 
 export function ConnectedTab({
-  projectId,
+  workspaceId,
   connectedProviders,
   search,
   onAddProvider,
   canWrite = false,
 }: {
-  projectId: string;
+  workspaceId: string;
   connectedProviders: LlmProviderEntry[];
   search: string;
   onAddProvider: () => void;
@@ -67,7 +67,7 @@ export function ConnectedTab({
   );
 
   const verify = useMutation({
-    mutationFn: (provider: LlmProviderEntry) => verifyGatewayProvider(projectId, provider.id),
+    mutationFn: (provider: LlmProviderEntry) => verifyGatewayProvider(workspaceId, provider.id),
     onSuccess: (result, provider) => {
       setVerifyResults((current) => ({ ...current, [provider.id]: result }));
       if (result.status === 'verified') {
@@ -93,15 +93,15 @@ export function ConnectedTab({
             ]
           : provider.envVars;
       await Promise.all(
-        names.map((envVar) => deleteProjectSecret(projectId, envVar).catch(() => undefined)),
+        names.map((envVar) => deleteWorkspaceSecret(workspaceId, envVar).catch(() => undefined)),
       );
       return provider;
     },
     onSuccess: (provider) => {
       successToast(`${provider.label} disconnected`);
       setConfirmId(null);
-      queryClient.invalidateQueries({ queryKey: ['project-secrets', projectId] });
-      refreshProjectProviderState(queryClient, projectId);
+      queryClient.invalidateQueries({ queryKey: ['workspace-secrets', workspaceId] });
+      refreshWorkspaceProviderState(queryClient, workspaceId);
     },
     onError: (err) => errorToast(err instanceof Error ? err.message : 'Failed to disconnect'),
   });
@@ -124,19 +124,19 @@ export function ConnectedTab({
           size="sm"
           icon={Plug}
           title={tHardcodedUi.raw(
-            'componentsProjectsProjectProviderModal.line300JsxTextNoProvidersConnectedYet',
+            'componentsWorkspacesWorkspaceProviderModal.line300JsxTextNoProvidersConnectedYet',
           )}
           description={
             canWrite
-              ? 'Connect an LLM provider to give this project its own models. Keys are encrypted and shared with everyone on the project.'
-              : 'No LLM providers have been connected to this project yet.'
+              ? 'Connect an LLM provider to give this workspace its own models. Keys are encrypted and shared with everyone on the workspace.'
+              : 'No LLM providers have been connected to this workspace yet.'
           }
           action={
             canWrite ? (
               <Button variant="outline" size="sm" className="gap-1.5" onClick={onAddProvider}>
                 <Plus className="size-3.5 shrink-0" />
                 {tHardcodedUi.raw(
-                  'componentsProjectsProjectProviderModal.line302JsxTextAddProvider',
+                  'componentsWorkspacesWorkspaceProviderModal.line302JsxTextAddProvider',
                 )}
               </Button>
             ) : undefined
@@ -151,7 +151,7 @@ export function ConnectedTab({
       <div className="px-5 pt-3 pb-4">
         <EmptyState
           size="sm"
-          title={`${tHardcodedUi.raw('componentsProjectsProjectProviderModal.line312JsxTextNoConnectedProvidersMatchLdquo')}${search}${tHardcodedUi.raw('componentsProjectsProjectProviderModal.line312JsxTextRdquo')}`}
+          title={`${tHardcodedUi.raw('componentsWorkspacesWorkspaceProviderModal.line312JsxTextNoConnectedProvidersMatchLdquo')}${search}${tHardcodedUi.raw('componentsWorkspacesWorkspaceProviderModal.line312JsxTextRdquo')}`}
         />
       </div>
     );
@@ -244,7 +244,7 @@ export function ConnectedTab({
         open={!!confirmId}
         onOpenChange={(open) => !open && setConfirmId(null)}
         title={tHardcodedUi.raw(
-          'componentsProjectsProjectProviderModal.line361JsxTextDisconnectProvider',
+          'componentsWorkspacesWorkspaceProviderModal.line361JsxTextDisconnectProvider',
         )}
         confirmLabel="Disconnect"
         confirmVariant="destructive"
@@ -255,7 +255,7 @@ export function ConnectedTab({
           confirmProvider ? (
             <span className="text-xs">
               Remove <span className="text-foreground font-medium">{confirmProvider.label}</span>
-              {tHardcodedUi.raw('componentsProjectsProjectProviderModal.line366JsxTextThisDeletes')}{' '}
+              {tHardcodedUi.raw('componentsWorkspacesWorkspaceProviderModal.line366JsxTextThisDeletes')}{' '}
               {confirmProvider.envVars.length === 1 ? (
                 <>
                   the{' '}
@@ -263,14 +263,14 @@ export function ConnectedTab({
                     {confirmProvider.envVars[0]}
                   </code>{' '}
                   {tHardcodedUi.raw(
-                    'componentsProjectsProjectProviderModal.line374JsxTextProjectSecret',
+                    'componentsWorkspacesWorkspaceProviderModal.line374JsxTextWorkspaceSecret',
                   )}
                 </>
               ) : (
                 <>
                   {confirmProvider.envVars.length}
                   {tHardcodedUi.raw(
-                    'componentsProjectsProjectProviderModal.line378JsxTextProjectSecrets',
+                    'componentsWorkspacesWorkspaceProviderModal.line378JsxTextWorkspaceSecrets',
                   )}
                   {confirmProvider.envVars.map((envVar, index) => (
                     <span key={envVar}>
@@ -282,7 +282,7 @@ export function ConnectedTab({
                 </>
               )}{' '}
               {tHardcodedUi.raw(
-                'componentsProjectsProjectProviderModal.line388JsxTextYouAposLlNeedToReconnectToUse',
+                'componentsWorkspacesWorkspaceProviderModal.line388JsxTextYouAposLlNeedToReconnectToUse',
               )}
             </span>
           ) : null

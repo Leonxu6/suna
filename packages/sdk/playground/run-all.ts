@@ -6,15 +6,15 @@
  * - Defaults KORTIX_MODEL to claude-sonnet-4.6 when unset (the local stack's
  *   default model currently 400s on `max_tokens`).
  * - Keeps going after a failure; exits 1 if anything failed.
- * - Skipped on purpose: 14-change-default-model (mutates the project's
+ * - Skipped on purpose: 14-change-default-model (mutates the workspace's
  *   default model — run it deliberately) and full-flow.ts (duplicates 01+03+04).
  *
  * Run (from packages/sdk):  bun run playground/run-all.ts
  */
-import { makeKortix, pickProjectId, run } from "./_shared";
+import { makeKortix, pickWorkspaceId, run } from "./_shared";
 
 const SCRIPTS = [
-  "projects/01-list-projects.ts",
+  "workspaces/01-list-workspaces.ts",
   "sessions/02-list-sessions.ts",
   "sessions/03-create-session.ts",
   "chat/04-send-and-stream.ts",
@@ -45,14 +45,14 @@ const SCRIPTS = [
   "sessions/30-session-crud.ts",
   "session-extras/31-files-deep.ts",
   "env/32-personal-secrets.ts",
-  "projects/33-models-and-search.ts",
+  "workspaces/33-models-and-search.ts",
   "server/34-server-scoped.ts",
   "session-extras/35-shares.ts",
 ];
 
 run("run-all", async () => {
   const kortix = makeKortix();
-  const projectId = await pickProjectId(kortix);
+  const workspaceId = await pickWorkspaceId(kortix);
 
   const model = process.env.KORTIX_MODEL ?? "claude-sonnet-4.6";
   if (!process.env.KORTIX_MODEL) {
@@ -63,7 +63,7 @@ run("run-all", async () => {
 
   let sessionId = process.env.KORTIX_SESSION_ID;
   if (!sessionId) {
-    const created = await kortix.projects.createSession(projectId, {
+    const created = await kortix.workspaces.createSession(workspaceId, {
       name: "sdk run-all",
     });
     sessionId = created.session_id;
@@ -79,7 +79,7 @@ run("run-all", async () => {
     const proc = Bun.spawn(["bun", "run", `playground/${script}`], {
       env: {
         ...process.env,
-        KORTIX_PROJECT_ID: projectId,
+        KORTIX_WORKSPACE_ID: workspaceId,
         KORTIX_SESSION_ID: sessionId,
         KORTIX_MODEL: model,
       },
@@ -101,7 +101,7 @@ run("run-all", async () => {
     );
   }
   console.log(
-    "  – chat/14-change-default-model.ts     skipped (mutates the project default — run deliberately)",
+    "  – chat/14-change-default-model.ts     skipped (mutates the workspace default — run deliberately)",
   );
   console.log(
     "  – full-flow.ts                        skipped (duplicates 01+03+04)",

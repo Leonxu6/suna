@@ -173,7 +173,7 @@ export const BottomBar = forwardRef<BottomBarRef, BottomBarProps>(function Botto
   // passes a handler (gated on can_manage_sharing upstream).
   // Rename/Share/Delete rows render only when their handler is provided —
   // the caller gates them on the resolved project-session row (and Share
-  // additionally on can_manage_sharing), mirroring web's isProjectSession gate.
+  // additionally on can_manage_sharing), mirroring web's isWorkspaceSession gate.
   const menuItems = useMemo(() => [
     ...(onRenameSession
       ? [{ icon: 'pencil-outline' as const, label: 'Rename session', destructive: false, onPress: () => { closeSheet(); onRenameSession(); } }]

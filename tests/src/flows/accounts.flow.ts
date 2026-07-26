@@ -415,7 +415,7 @@ flow(
   },
 );
 
-// TOK-4 — project-scoped PAT (enforceTokenProjectScope): allowed only on its
+// TOK-4 — workspace-scoped PAT (enforceTokenWorkspaceScope): allowed only on its
 // own project + the `/accounts/me` self-identity probe; every other surface
 // (a different project, project-list, account-level routes) → 403.
 flow(
@@ -423,41 +423,41 @@ flow(
   {
     domain: 'accounts',
     routes: [
-      'POST /v1/projects/:projectId/cli-token',
-      'DELETE /v1/projects/:projectId/cli-token/:tokenId',
-      'GET /v1/projects/:projectId',
-      'GET /v1/projects/:projectId/secrets',
-      'GET /v1/projects',
+      'POST /v1/workspaces/:workspaceId/cli-token',
+      'DELETE /v1/workspaces/:workspaceId/cli-token/:tokenId',
+      'GET /v1/workspaces/:workspaceId',
+      'GET /v1/workspaces/:workspaceId/secrets',
+      'GET /v1/workspaces',
       'GET /v1/accounts/me',
       'GET /v1/accounts/tokens',
     ],
   },
   async (ctx) => {
-    const projA = await ctx.fixtures.project();
-    const projB = await ctx.fixtures.project();
+    const projA = await ctx.fixtures.workspace();
+    const projB = await ctx.fixtures.workspace();
     let secret = '';
     let tokenId = '';
-    await ctx.step('mint a project-scoped PAT on project A', async () => {
+    await ctx.step('mint a workspace-scoped PAT on project A', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          '/v1/projects/:projectId/cli-token',
+          '/v1/workspaces/:workspaceId/cli-token',
           { name: ctx.fixtures.name('proj-pat') },
-          { params: { projectId: projA.id } },
+          { params: { workspaceId: projA.id } },
         );
-      r.status(201).body().exists('$.secret_key').has('$.project_id', projA.id);
+      r.status(201).body().exists('$.secret_key').has('$.workspace_id', projA.id);
       const j = r.json<any>();
       secret = j.secret_key;
       tokenId = j.token_id;
     });
-    const pat = () => ctx.client.withBearer(secret, 'PAT_PROJ');
+    const pat = () => ctx.client.withBearer(secret, 'PAT_WORKSPACE');
     await ctx.step('allowed: GET its own project → 200', async () => {
-      const r = await pat().get('/v1/projects/:projectId', { params: { projectId: projA.id } });
+      const r = await pat().get('/v1/workspaces/:workspaceId', { params: { workspaceId: projA.id } });
       r.status(200);
     });
     await ctx.step("allowed: GET its own project's secrets → 200", async () => {
-      const r = await pat().get('/v1/projects/:projectId/secrets', {
-        params: { projectId: projA.id },
+      const r = await pat().get('/v1/workspaces/:workspaceId/secrets', {
+        params: { workspaceId: projA.id },
       });
       r.status(200);
     });
@@ -466,11 +466,11 @@ flow(
       r.status(200);
     });
     await ctx.step('denied: a different project → 403', async () => {
-      const r = await pat().get('/v1/projects/:projectId', { params: { projectId: projB.id } });
+      const r = await pat().get('/v1/workspaces/:workspaceId', { params: { workspaceId: projB.id } });
       r.status(403);
     });
     await ctx.step('denied: enumerate projects → 403', async () => {
-      const r = await pat().get('/v1/projects');
+      const r = await pat().get('/v1/workspaces');
       r.status(403);
     });
     await ctx.step('denied: account-level route → 403', async () => {
@@ -478,8 +478,8 @@ flow(
       r.status(403);
     });
     await ctx.step('revoke the project token → 200', async () => {
-      const r = await ctx.client.as(ctx.P.OWNER).del('/v1/projects/:projectId/cli-token/:tokenId', {
-        params: { projectId: projA.id, tokenId },
+      const r = await ctx.client.as(ctx.P.OWNER).del('/v1/workspaces/:workspaceId/cli-token/:tokenId', {
+        params: { workspaceId: projA.id, tokenId },
       });
       r.status(200).body().has('$.ok', true);
     });

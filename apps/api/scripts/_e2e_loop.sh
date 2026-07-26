@@ -21,7 +21,7 @@ for round in $(seq 1 "$MAX"); do
   MINT_EMAIL='vukasinkubet@gmail.com' bun run scripts/_mint_jwt.ts >/dev/null 2>&1
   JWT=$(cat /tmp/userjwt)
   t0=$(nowms)
-  sid=$(curl -s -m20 "http://localhost:8008/v1/projects/$PID/sessions" -H "Authorization: Bearer $JWT" -H 'Content-Type: application/json' -d '{"branch_already_created":false}' | python3 -c "import sys,json;print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null)
+  sid=$(curl -s -m20 "http://localhost:8008/v1/workspaces/$PID/sessions" -H "Authorization: Bearer $JWT" -H 'Content-Type: application/json' -d '{"branch_already_created":false}' | python3 -c "import sys,json;print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null)
   if [ -z "$sid" ]; then echo "round $round: CREATE_FAILED"; continue; fi
 
   # resolve sandbox external_id + active status from DB

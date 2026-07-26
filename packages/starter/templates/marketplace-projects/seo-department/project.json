@@ -1,6 +1,6 @@
 {
   "title": "SEO Department",
-  "description": "A full SEO department in a Kortix project: strategy intake, technical audits, repo/PR SEO monitoring, SERP and competitor monitoring, content briefs and refreshes, and monthly growth reporting with safe approval gates.",
+  "description": "A full SEO department in a Kortix workspace: strategy intake, technical audits, repo/PR SEO monitoring, SERP and competitor monitoring, content briefs and refreshes, and monthly growth reporting with safe approval gates.",
   "categories": ["business", "marketing", "seo", "automation"],
   "dependencies": [
     "deep-research",

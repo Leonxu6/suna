@@ -6,13 +6,13 @@ description: Run a session, stream its events, and handle the errors it can thro
 import { Callout } from 'fumadocs-ui/components/callout';
 
 A session is one agent run, in its own sandbox, on its own git branch.
-`kortix.session(projectId, sessionId)` returns the handle for everything a
+`kortix.session(workspaceId, sessionId)` returns the handle for everything a
 session does: start it, send prompts, stream events, and read status. This
 page covers the handle, the readiness handshake, streaming, and the typed
 errors an SDK call can throw.
 
 ```ts
-const s = kortix.session(projectId, sessionId);
+const s = kortix.session(workspaceId, sessionId);
 ```
 
 `s` is the handle for everything a session does. The session ID, the sandbox
@@ -23,12 +23,12 @@ ID, and the branch name are the same value. See
 
 | Method | Wraps | What it does |
 |---|---|---|
-| `s.get(opts?)` | `GET /projects/:pid/sessions/:sid` | Reads session details |
-| `s.update(input)` | `PATCH …/sessions/:sid` | Renames the session or updates metadata |
-| `s.start(waitMs?)` | `POST …/sessions/:sid/start` | Provisions and boots the runtime |
-| `s.restart()` | `POST …/sessions/:sid/restart` | Restarts the runtime; keeps the same sandbox |
-| `s.stop()` | `POST …/sessions/:sid/stop` | Stops the runtime; the session stays |
-| `s.delete()` | `DELETE …/sessions/:sid` | Deletes the session |
+| `s.get(opts?)` | `GET /workspaces/:workspaceId/sessions/:sessionId` | Reads session details |
+| `s.update(input)` | `PATCH …/sessions/:sessionId` | Renames the session or updates metadata |
+| `s.start(waitMs?)` | `POST …/sessions/:sessionId/start` | Provisions and boots the runtime |
+| `s.restart()` | `POST …/sessions/:sessionId/restart` | Restarts the runtime; keeps the same sandbox |
+| `s.stop()` | `POST …/sessions/:sessionId/stop` | Stops the runtime; the session stays |
+| `s.delete()` | `DELETE …/sessions/:sessionId` | Deletes the session |
 | `s.setSharing(intent)` | `PUT …/sharing` | Sets sharing and visibility |
 | `s.commit(input?)` | — | Commits the agent's work |
 
@@ -41,7 +41,7 @@ Three more read methods round out the handle:
 - `s.previews()` — candidate preview ports the runtime exposes.
 - `s.publicShares.list()` / `.create(input)` / `.revoke(shareId)` — public share links.
 - `s.audit(limit?)` — the session's audit trail of agent actions.
-- `s.transcript(options?)` — a compact server-side transcript (text and tool calls, no tool inputs or outputs). This works with a project-scoped session token.
+- `s.transcript(options?)` — a compact server-side transcript (text and tool calls, no tool inputs or outputs). This works with a workspace-scoped session token.
 
 ## Readiness is a handshake
 
@@ -113,7 +113,7 @@ Stream a session:
 4. Close the stream when you see `session.idle`.
 
 ```ts
-const session = kortix.session(projectId, sessionId);
+const session = kortix.session(workspaceId, sessionId);
 const { opencodeSessionId } = await session.ensureReady();
 
 const stream = await session.stream({
@@ -215,7 +215,7 @@ await s.runtime.session.prompt({
 ```
 
 The OpenCode `sessionID` here is not the session ID you pass to
-`kortix.session(projectId, sessionId)`. The SDK resolves it during
+`kortix.session(workspaceId, sessionId)`. The SDK resolves it during
 `ensureReady()` and caches it on the handle.
 
 ## Warm a project session
@@ -251,7 +251,7 @@ never a plain object. Catch the error, check `instanceof`, and branch on
 import { ApiError, BillingError } from '@kortix/sdk';
 
 try {
-  await kortix.project(projectId).sessions.create();
+  await kortix.workspace(workspaceId).sessions.create();
 } catch (err) {
   if (err instanceof BillingError) {
     // 402 — out of credits or over a plan limit
@@ -297,7 +297,7 @@ Two errors mean the session's sandbox is not ready yet. Handle each one differen
 ```ts
 import { SessionNotReadyError } from '@kortix/sdk';
 
-const s = kortix.session(projectId, sessionId);
+const s = kortix.session(workspaceId, sessionId);
 try {
   const url = s.previewUrl(3000); // throws: not resolved yet
 } catch (err) {
@@ -323,7 +323,7 @@ Call `await session.ensureReady()` first, or call `send()`, which readies the se
 import { formatBillingErrorForUI } from '@kortix/sdk';
 
 try {
-  await kortix.session(projectId, sessionId).start();
+  await kortix.session(workspaceId, sessionId).start();
 } catch (err) {
   const ui = formatBillingErrorForUI(err);
   if (ui) showUpgradeModal(ui.alertTitle, ui.alertSubtitle);
@@ -346,7 +346,7 @@ interface KortixSendError {
 ```
 
 ```tsx
-const s = useSession(projectId, sessionId);
+const s = useSession(workspaceId, sessionId);
 
 if (s.sendError?.kind === 'billing') {
   const ui = formatBillingErrorForUI(s.sendError.billing);

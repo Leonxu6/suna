@@ -12,7 +12,7 @@ MINT_EMAIL='vukasinkubet@gmail.com' bun run scripts/_mint_jwt.ts >/dev/null 2>&1
 JWT=$(cat /tmp/userjwt); H=(-H "Authorization: Bearer $JWT" -H 'Content-Type: application/json')
 t0=$(nowms)
 
-sid=$(curl -s -m20 "${H[@]}" -X POST "$BASE/v1/projects/$PID/sessions" -d '{"branch_already_created":false}' | python3 -c "import sys,json;print(json.load(sys.stdin).get('session_id',''))")
+sid=$(curl -s -m20 "${H[@]}" -X POST "$BASE/v1/workspaces/$PID/sessions" -d '{"branch_already_created":false}' | python3 -c "import sys,json;print(json.load(sys.stdin).get('session_id',''))")
 [ -z "$sid" ] && { echo "CREATE_FAILED"; exit 1; }
 echo "session=$sid +$(( $(nowms)-t0 ))ms"
 
@@ -26,7 +26,7 @@ while :; do echo "$(curl -s -m5 "${H[@]}" "$BASE/v1/p/$ext/8000/kortix/health")"
 echo "runtimeReady +$(( $(nowms)-t0 ))ms"
 
 # ensure-opencode (best-effort: pins root + tracks in comp), then get the id from opencode directly
-ens=$(curl -s -m30 "${H[@]}" -X POST "$BASE/v1/projects/$PID/sessions/$sid/ensure-opencode" -d '{}')
+ens=$(curl -s -m30 "${H[@]}" -X POST "$BASE/v1/workspaces/$PID/sessions/$sid/ensure-opencode" -d '{}')
 echo "  ensure-opencode raw: $(echo "$ens" | head -c 200)"
 oc=$(curl -s -m10 "${H[@]}" "$BASE/v1/p/$ext/8000/session?directory=%2Fworkspace" | python3 -c "
 import sys,json

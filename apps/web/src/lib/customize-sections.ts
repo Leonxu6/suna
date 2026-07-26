@@ -1,13 +1,13 @@
 /**
  * Customize section identifiers + helpers.
  *
- * The /projects/[id]/customize page reads its active section from either the
+ * The /workspaces/[id]/customize page reads its active section from either the
  * path segment (`/customize/skills`) or the legacy `?section=` query param.
  * This module keeps the section enum, the default, and a parser in one spot
  * so the page, the sidebar, and any deep-link helpers all agree on the
  * canonical list.
  *
- * Files is NOT a customize section — it's the standalone /projects/[id]/files
+ * Files is NOT a customize section — it's the standalone /workspaces/[id]/files
  * page (any member can browse it). Deep-link routes still accept the legacy
  * `files` section and redirect there.
  */
@@ -68,12 +68,12 @@ export const CUSTOMIZE_SECTIONS: readonly CustomizeSection[] = [
 ];
 
 export function legacyCustomizeFilesRedirect(
-  projectId: string,
+  workspaceId: string,
   rawSection: string | null | undefined,
 ): string | null {
-  if (rawSection === 'files') return `/projects/${projectId}/files`;
+  if (rawSection === 'files') return `/workspaces/${workspaceId}/files`;
   if (rawSection === 'changes') {
-    return `/projects/${projectId}/files?panel=proposed-changes`;
+    return `/workspaces/${workspaceId}/files?panel=proposed-changes`;
   }
   return null;
 }

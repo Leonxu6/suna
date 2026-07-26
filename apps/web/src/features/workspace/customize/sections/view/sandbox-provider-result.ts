@@ -1,10 +1,10 @@
 import type { QueryClient } from '@tanstack/react-query';
 import {
-  getProjectSandboxProviderTransition,
-  type KortixProject,
-  type ProjectDetail,
+  getWorkspaceSandboxProviderTransition,
+  type KortixWorkspace,
+  type WorkspaceDetail,
   type SandboxProviderTransitionState,
-  type UpdateProjectSandboxProviderResult,
+  type UpdateWorkspaceSandboxProviderResult,
 } from '@kortix/sdk';
 
 /**
@@ -32,34 +32,34 @@ type CacheClient = Pick<QueryClient, 'setQueryData' | 'invalidateQueries'>;
 /**
  * FIX-L: apply the PATCH /sandbox-provider result to the query cache.
  *
- * Writes the project caches ONLY for the immediate `kind:'project'` result. A
- * `kind:'preparation'` result is a durable TRANSITION object, not a project —
- * writing it into `['project', id]` would corrupt the cached project shape (it
+ * Writes the workspace caches ONLY for the immediate `kind:'workspace'` result. A
+ * `kind:'preparation'` result is a durable TRANSITION object, not a workspace —
+ * writing it into `['workspace', id]` would corrupt the cached workspace shape (it
  * has no repo_url / metadata / experimental_features …). On preparation we leave
- * the project cache untouched and return `'preparation'` so the caller polls the
+ * the workspace cache untouched and return `'preparation'` so the caller polls the
  * transition instead. Returns the result's kind.
  */
 export function applySandboxProviderResult(
   queryClient: CacheClient,
-  projectId: string,
-  result: UpdateProjectSandboxProviderResult,
-): 'project' | 'preparation' {
-  if (result.kind !== 'project') return 'preparation';
-  // Strip the discriminant so the cached value is a pure KortixProject.
-  const { kind: _kind, ...project } = result;
-  const cached = project as KortixProject;
-  queryClient.setQueryData(['project', projectId], cached);
-  queryClient.setQueryData<ProjectDetail | undefined>(['project-detail', projectId], (c) =>
-    c ? { ...c, project: cached } : c,
+  workspaceId: string,
+  result: UpdateWorkspaceSandboxProviderResult,
+): 'workspace' | 'preparation' {
+  if (result.kind !== 'workspace') return 'preparation';
+  // Strip the discriminant so the cached value is a pure KortixWorkspace.
+  const { kind: _kind, ...workspace } = result;
+  const cached = workspace as KortixWorkspace;
+  queryClient.setQueryData(['workspace', workspaceId], cached);
+  queryClient.setQueryData<WorkspaceDetail | undefined>(['workspace-detail', workspaceId], (c) =>
+    c ? { ...c, workspace: cached } : c,
   );
-  queryClient.invalidateQueries({ queryKey: ['project-detail', projectId] });
-  queryClient.invalidateQueries({ queryKey: ['projects'] });
-  return 'project';
+  queryClient.invalidateQueries({ queryKey: ['workspace-detail', workspaceId] });
+  queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+  return 'workspace';
 }
 
 export interface PollSandboxProviderTransitionOptions {
   /** Injected for tests; defaults to the SDK poll call. */
-  fetchState?: (projectId: string) => Promise<SandboxProviderTransitionState>;
+  fetchState?: (workspaceId: string) => Promise<SandboxProviderTransitionState>;
   /** Called once when polling stops (terminal status, no transition, or exhausted).
    *  `null` means the poll ended without a readable state (404/no-transition). */
   onSettled?: (state: SandboxProviderTransitionState | null) => void;
@@ -79,10 +79,10 @@ export interface PollSandboxProviderTransitionOptions {
  * left to poll). Never throws — surfaces progress via `onSettled`.
  */
 export async function pollSandboxProviderTransition(
-  projectId: string,
+  workspaceId: string,
   opts: PollSandboxProviderTransitionOptions = {},
 ): Promise<SandboxProviderTransitionState | null> {
-  const fetchState = opts.fetchState ?? getProjectSandboxProviderTransition;
+  const fetchState = opts.fetchState ?? getWorkspaceSandboxProviderTransition;
   const maxAttempts = opts.maxAttempts ?? 60;
   const baseDelayMs = opts.baseDelayMs ?? 2_000;
   const maxDelayMs = opts.maxDelayMs ?? 15_000;
@@ -92,7 +92,7 @@ export async function pollSandboxProviderTransition(
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (opts.signal?.aborted) return last;
     try {
-      last = await fetchState(projectId);
+      last = await fetchState(workspaceId);
     } catch {
       // 404 / no transition / transient read failure → nothing to keep polling.
       opts.onSettled?.(null);

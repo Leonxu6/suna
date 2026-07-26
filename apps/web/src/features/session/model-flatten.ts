@@ -91,7 +91,7 @@ interface OpencodeCatalogModel {
  * The point of naming the shape at all is that it keeps `provider` and the
  * models.dev passthrough fields type-checked end to end: this file used to
  * recover all of them with `(model as any)` casts because
- * `ProjectLlmCatalogResponse` never declared them.
+ * `WorkspaceLlmCatalogResponse` never declared them.
  */
 type LooseModel = OpencodeCatalogModel & Partial<GatewayCatalogModel>;
 

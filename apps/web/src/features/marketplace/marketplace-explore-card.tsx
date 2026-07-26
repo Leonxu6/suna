@@ -17,12 +17,12 @@ export function MarketplaceExploreCard({
   item: MarketplaceItem;
   showSource?: boolean;
   /** When false, the card is a static tile (no link/button, no chevron) — used
-   *  for a project's own agents/triggers, which aren't their own catalog items
+   *  for a workspace's own agents/triggers, which aren't their own catalog items
    *  but should still read exactly like the skill boxes. */
   navigable?: boolean;
 }) {
   const surface = useMarketplaceSurface();
-  const installed = surface.variant === 'project' && surface.installedNames.has(item.name);
+  const installed = surface.variant === 'workspace' && surface.installedNames.has(item.name);
 
   const className = cn(
     'group bg-popover flex w-full items-center gap-3.5 rounded-md border px-4 py-3 text-left',
@@ -60,7 +60,7 @@ export function MarketplaceExploreCard({
   if (!navigable) {
     return <div className={className}>{inner}</div>;
   }
-  // Public surface renders a real crawlable link; the in-project overlay uses a
+  // Public surface renders a real crawlable link; the in-workspace overlay uses a
   // button that opens the detail store (can't navigate away from the panel).
   if (surface.variant === 'public') {
     return (

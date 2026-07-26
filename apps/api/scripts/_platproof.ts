@@ -31,7 +31,7 @@ async function guestReady(ext: string): Promise<{ready:boolean, body:string}> {
 const runs:number[]=[]; const fails:string[]=[];
 for (let n=1;n<=N;n++){
   const t0 = now();
-  const ses:any = await (await fetch(`${BASE}/v1/projects/${PROJECT}/sessions`, { method:'POST', headers:H, body: JSON.stringify({ provider:'platinum', branch_already_created:false }) })).json();
+  const ses:any = await (await fetch(`${BASE}/v1/workspaces/${PROJECT}/sessions`, { method:'POST', headers:H, body: JSON.stringify({ provider:'platinum', branch_already_created:false }) })).json();
   if(!ses.session_id){ console.log(`[#${n}] session FAIL: ${JSON.stringify(ses).slice(0,200)}`); fails.push('session'); continue; }
   let ext='';
   for(let i=0;i<150;i++){ const [r]=await db.select().from(sessionSandboxes).where(eq(sessionSandboxes.sessionId,ses.session_id)).limit(1); if((r as any)?.externalId){ext=(r as any).externalId;break;} await Bun.sleep(200); }

@@ -1,6 +1,6 @@
 ---
 name: seo-operating-system
-description: Shared operating system for the SEO Department project: intake, data hierarchy, prioritization, memory, approvals, and reporting standards.
+description: Shared operating system for the SEO Department workspace: intake, data hierarchy, prioritization, memory, approvals, and reporting standards.
 ---
 
 # SEO Operating System
@@ -25,7 +25,7 @@ call out the data needed to improve confidence.
 
 ## Company Setup
 
-When the project has just been installed or `.kortix/memory/SEO.md` is mostly
+When the workspace has just been installed or `.kortix/memory/SEO.md` is mostly
 blank, run setup before doing strategy work. A company needs to bring its real
 assets; this starter only provides the department's agents, skills, triggers,
 and operating memory.

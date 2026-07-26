@@ -4,47 +4,47 @@
  */
 
 // ============================================================================
-// Project Tools
+// Workspace Tools
 // ============================================================================
 
-export interface ProjectEntry {
+export interface WorkspaceEntry {
 	name: string;
 	path: string;
 	sessions: number;
 	description: string;
 }
 
-export function parseProjectListOutput(output: string): ProjectEntry[] {
+export function parseWorkspaceListOutput(output: string): WorkspaceEntry[] {
 	if (!output || typeof output !== 'string') return [];
-	const projects: ProjectEntry[] = [];
+	const workspaces: WorkspaceEntry[] = [];
 
 	// Try 4-column format first: | **name** | `/path` | sessions | description |
 	const fourColRe = /^\|\s*\*\*([^*]+)\*\*\s*\|\s*`([^`]+)`\s*\|\s*(\d+)\s*\|\s*([^|]*?)\s*\|$/gm;
 	let m;
 	while ((m = fourColRe.exec(output)) !== null) {
-		projects.push({
+		workspaces.push({
 			name: m[1].trim(),
 			path: m[2].trim(),
 			sessions: parseInt(m[3], 10) || 0,
 			description: m[4].trim() || '—',
 		});
 	}
-	if (projects.length > 0) return projects;
+	if (workspaces.length > 0) return workspaces;
 
 	// Fallback: 3-column format: | **name** | `/path` | description |
 	const threeColRe = /^\|\s*\*\*([^*]+)\*\*\s*\|\s*`([^`]+)`\s*\|\s*([^|]*?)\s*\|$/gm;
 	while ((m = threeColRe.exec(output)) !== null) {
-		projects.push({
+		workspaces.push({
 			name: m[1].trim(),
 			path: m[2].trim(),
 			sessions: 0,
 			description: m[3].trim() || '—',
 		});
 	}
-	return projects;
+	return workspaces;
 }
 
-export interface ProjectGetData {
+export interface WorkspaceGetData {
 	name: string;
 	path: string;
 	description: string | null;
@@ -54,7 +54,7 @@ export interface ProjectGetData {
 	contextPath: string;
 }
 
-export function parseProjectGetOutput(output: string): ProjectGetData | null {
+export function parseWorkspaceGetOutput(output: string): WorkspaceGetData | null {
 	if (!output || typeof output !== 'string') return null;
 
 	const nameMatch = output.match(/^##\s+(.+)$/m);
@@ -77,7 +77,7 @@ export function parseProjectGetOutput(output: string): ProjectGetData | null {
 	}
 
 	return {
-		name: nameMatch?.[1] || 'Unknown Project',
+		name: nameMatch?.[1] || 'Unknown Workspace',
 		path: pathMatch?.[1] || '',
 		description: descMatch?.[1] || null,
 		id: idMatch?.[1] || '',
@@ -87,15 +87,15 @@ export function parseProjectGetOutput(output: string): ProjectGetData | null {
 	};
 }
 
-export interface ProjectSelectData {
+export interface WorkspaceSelectData {
 	name: string;
 	path: string;
 	success: boolean;
 }
 
-export function parseProjectSelectOutput(output: string): ProjectSelectData | null {
+export function parseWorkspaceSelectOutput(output: string): WorkspaceSelectData | null {
 	if (!output || typeof output !== 'string') return null;
-	const nameMatch = output.match(/Project\s+\*\*([^*]+)\*\*\s+selected/i);
+	const nameMatch = output.match(/Workspace\s+\*\*([^*]+)\*\*\s+selected/i);
 	const pathMatch = output.match(/Path:\s+`([^`]+)`/);
 	if (!nameMatch) return null;
 	return {
@@ -105,16 +105,16 @@ export function parseProjectSelectOutput(output: string): ProjectSelectData | nu
 	};
 }
 
-export interface ProjectCreateData {
+export interface WorkspaceCreateData {
 	name: string;
 	path: string;
 	id: string;
 	success: boolean;
 }
 
-export function parseProjectCreateOutput(output: string): ProjectCreateData | null {
+export function parseWorkspaceCreateOutput(output: string): WorkspaceCreateData | null {
 	if (!output || typeof output !== 'string') return null;
-	const nameMatch = output.match(/Project\s+\*\*([^*]+)\*\*\s+at/i);
+	const nameMatch = output.match(/Workspace\s+\*\*([^*]+)\*\*\s+at/i);
 	const pathMatch = output.match(/at\s+`([^`]+)`/);
 	const idMatch = output.match(/\((proj-[^)]+)\)/);
 	if (!nameMatch) return null;

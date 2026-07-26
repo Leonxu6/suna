@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end test for the `kortix cr` subcommand surface.
 #
-# Boots a fresh local bare git repo, registers it as a Kortix project, mints
+# Boots a fresh local bare git repo, registers it as a Kortix workspace, mints
 # a PAT, then drives the CLI through every CR subcommand against a live API.
 # Asserts on the CLI's text output (stripping ANSI) so we cover both the
 # transport (API call) and the rendering layer.
@@ -60,8 +60,8 @@ cleanup() {
   if [[ -n "${PAT_HASH:-}" ]]; then
     psql_one "delete from kortix.account_tokens where secret_key_hash = '$PAT_HASH';" >/dev/null || true
   fi
-  if [[ -n "${PROJECT_ID:-}" ]]; then
-    psql_one "delete from kortix.projects where project_id = '$PROJECT_ID';" >/dev/null || true
+  if [[ -n "${WORKSPACE_ID:-}" ]]; then
+    psql_one "delete from kortix.projects where project_id = '$WORKSPACE_ID';" >/dev/null || true
   fi
   rm -rf "$REPO_ROOT"
 }
@@ -142,20 +142,20 @@ psql_one "
 " >/dev/null
 dim "pat" "${PAT_SECRET:0:18}…"
 
-bold "3. Registering the test project"
-PROJECT_ID="$(psql_one "
+bold "3. Registering the test workspace"
+WORKSPACE_ID="$(psql_one "
   insert into kortix.projects (account_id, name, repo_url, default_branch, manifest_path)
   values ('$ACCOUNT_ID', 'CLI CR e2e', 'file://$REPO_ROOT/origin.git', 'main', 'kortix.yaml')
   returning project_id;
 ")"
-[[ -z "$PROJECT_ID" ]] && fail "failed to insert project"
-dim "project" "$PROJECT_ID"
+[[ -z "$WORKSPACE_ID" ]] && fail "failed to insert workspace"
+dim "workspace" "$WORKSPACE_ID"
 
 # ───────────────────────────────────────────────────────────────────────────
 
 export KORTIX_CLI_TOKEN="$PAT_SECRET"
 export KORTIX_API_URL="$API_URL"
-export KORTIX_PROJECT_ID="$PROJECT_ID"
+export KORTIX_WORKSPACE_ID="$WORKSPACE_ID"
 
 cli() {
   bun run "$CLI_DIR/src/index.ts" "$@"
@@ -231,7 +231,7 @@ strip_ansi <"$WORK_DIR/ls-merged.out" | grep -q "docs: status line" \
 ok "status filter works"
 
 bold "14. cr show on a uuid (not just a number)"
-CR2_ID="$(psql_one "select cr_id from kortix.change_requests where project_id='$PROJECT_ID' and number=2;")"
+CR2_ID="$(psql_one "select cr_id from kortix.change_requests where project_id='$WORKSPACE_ID' and number=2;")"
 cli cr show "$CR2_ID" >"$WORK_DIR/show-uuid.out" 2>&1
 contains "$WORK_DIR/show-uuid.out" "docs: status line"
 ok "show accepts a uuid as well as a number"

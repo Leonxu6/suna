@@ -701,8 +701,8 @@ else
   FRONTEND_PID=$!
 
   # Pre-compile the heavy routes so the FIRST human navigation doesn't pay
-  # Turbopack's on-demand compile (measured: /projects/[id] 16.1s,
-  # /projects/[id]/sessions/[sessionId] 5.2s — which read as "creating a
+  # Turbopack's on-demand compile (measured: /workspaces/[id] 16.1s,
+  # /workspaces/[id]/sessions/[sessionId] 5.2s — which read as "creating a
   # session takes 6+ seconds" when it was the ROUTE compiling, not the
   # sandbox). Unauthenticated requests still compile the route bundle before
   # the auth redirect, so dummy ids are fine.
@@ -743,7 +743,7 @@ PYC
     fi
     _hdr=()
     [[ -n "$WARM_COOKIE" ]] && _hdr=(-H "Cookie: sb-kortix-auth-token-${WEB_PORT:-3000}=$WARM_COOKIE")
-    for p in "/projects" "/projects/warmup-id" "/projects/warmup-id/sessions/warmup-id" "/projects/warmup-id/files"; do
+    for p in "/workspaces" "/workspaces/warmup-id" "/workspaces/warmup-id/sessions/warmup-id" "/workspaces/warmup-id/files"; do
       curl -s -o /dev/null -m 120 "${_hdr[@]}" "http://localhost:${WEB_PORT:-3000}$p" || true
     done
     if [[ -n "$WARM_COOKIE" ]]; then

@@ -27,7 +27,7 @@ npm install @kortix/sdk
 import { createKortix } from '@kortix/sdk';
 
 const kortix = createKortix({ backendUrl: 'https://api.kortix.com/v1', getToken });
-await kortix.projects.list();
+await kortix.workspaces.list();
 ```
 
 ## No bundler, no framework
@@ -59,7 +59,7 @@ Three others exist, each for a reason that fits in one sentence:
 | `@kortix/sdk/server` | imports `node:async_hooks` |
 | `@kortix/sdk/internal/*` | unsupported, outside semver |
 
-Older subpaths (`@kortix/sdk/projects-client`, `/turns`, …) still work and are
+Additional subpaths (`@kortix/sdk/workspaces-client`, `/turns`, …) still work and are
 `@deprecated`. Import from the root instead — see **API-MAP.md**'s Stability
 table for the full list (20 of them).
 
@@ -87,26 +87,26 @@ const warm = await kortix.project(pid).sessions.ensureWarm();
 await kortix.project(pid).sessions.claimWarm({ session_id: warm.session.session_id });
 
 // Sessions (id-bound handle)
-const s = kortix.session(pid, sid);
+const s = kortix.session(workspaceId, sessionId);
 await s.send('Build me a widget');   // provisions/resumes if needed, then prompts
 await s.previews();
 
 // Lower level: the typed opencode client for THIS session's runtime.
 // `.runtime` throws until the runtime is resolved, and the runtime is keyed by
-// the OpenCode session id (NOT the Kortix `sid`) — resolve both via ensureReady.
+// the OpenCode session id (NOT the Kortix `sessionId`) — resolve both via ensureReady.
 const { opencodeSessionId } = await s.ensureReady();
 await s.runtime.session.prompt({ sessionID: opencodeSessionId, parts });
 ```
 
 ### React runtime transport
 
-`useSession(projectId, sessionId)` uses the transport selected by `POST /start`.
-The default is the OpenCode REST client. A project with the `acp_runtime`
+`useSession(workspaceId, sessionId)` uses the transport selected by `POST /start`.
+The default is the OpenCode REST client. A workspace with the `acp_runtime`
 experiment uses OpenCode ACP through the authenticated sandbox bridge.
 The hook keeps one return shape for both transports. It routes messages,
 cancellation, commands, permissions, and questions inside the SDK. A host does
 not construct ACP routes or branch on the selected transport. Disable
-`acp_runtime` to return that project to REST without a frontend deployment.
+`acp_runtime` to return that workspace to REST without a frontend deployment.
 
 ## The facade surface
 
@@ -115,19 +115,19 @@ exhaustive — see `API-MAP.md` for the full per-domain surface:
 
 | namespace | what |
 |---|---|
-| `kortix.projects` | list · get · detail · create · provision · update · archive · llmCatalog · modelPicker · sandboxTemplates · sessions (+ more: `listForAccount`, `sandboxHealth`, `createSession`) |
+| `kortix.workspaces` | list · get · detail · create · provision · update · archive · llmCatalog · modelPicker · sandboxTemplates · sessions (+ more: `listForAccount`, `sandboxHealth`, `createSession`) |
 | `kortix.accounts` | list · get · create · members · invites · `tokens.{list,create,revoke}` (account-scoped CLI PATs, `kortix_pat_…`) · `audit.{log,export,webhooks.*}` (Enterprise audit trail) (+ more: `updateName`, `leave`, `invite`, `removeMember`, `updateMemberRole`) |
 | `kortix.billing` | entitlement/usage reads: `accountState` · `accountStateMinimal` · `transactions` · `transactionsSummary` · `creditBreakdown` · `usageHistory` · `tierConfigurations` — plus a curated mutation surface: `checkout.{createSession,confirmSession}` · `subscription.{createPortalSession,cancel,reactivate,scheduleDowngrade,cancelScheduledChange,prorationPreview}` · `credits.{purchase,autoTopupSettings,configureAutoTopup}` |
-| `kortix.marketplace` | public marketplace catalog browse + sources (not project-scoped): `items` · `item` · `itemFile` · `marketplaces` · `featured` · `sources.{list,add,remove}` — distinct from the install-scoped `project(id).marketplace` |
+| `kortix.marketplace` | public marketplace catalog browse + sources (not workspace-scoped): `items` · `item` · `itemFile` · `marketplaces` · `featured` · `sources.{list,add,remove}` — distinct from the install-scoped `workspace(id).marketplace` |
 | `kortix.validateToken()` | pasted-API-key validation helper — `GET /accounts/me`, never throws, resolves `{valid, identity?, error?}` |
-| `kortix.project(id)` | id-bound handle: `.secrets` · `.access` · `.connectors` · `.policies` · `.triggers` · `.files` · `.git` · `.changeRequests` (incl. `requestChanges`) · `.sessions` · `.tokens` (project-scoped CLI PATs — the `KORTIX_TOKEN` shape) · `.marketplace` / `.registry` (install/update/remove catalog items) · `.setupLinks.{requestSecret,requestConnector}` (agent-minted secret-entry / connector links) · `.validateManifest` · `.gitToken` · `.setDefaultAgent(name)` · `.session(sid)` (+ more namespaces: `.review`, `.approvals`, `.gateway` (incl. `.routing` and `.playground`), `.channels`, `.modelDefaults`, `.sandbox`) |
-| `kortix.session(pid, sid)` | id-bound handle: lifecycle (`get`/`update`/`delete`/`start`/`restart`/`stop`/`setSharing`/`previews`/`commit`/`publicShares`/`ensureReady`) · `send`/`abort`/`setModel`/`setAgent` (opinionated prompt wrappers) · `stream()` (live SSE, framework-free) · `transcript()` (compact server-side transcript read) · `.files` (the 12-op workspace-files surface, bound to THIS session's own runtime) · **its own runtime** (`health`/`previewUrl`/`proxyUrl` — sandbox resolved for you) + `.runtime` (the typed opencode client) |
+| `kortix.workspace(id)` | id-bound handle: `.secrets` · `.access` · `.connectors` · `.policies` · `.triggers` · `.files` · `.git` · `.changeRequests` (incl. `requestChanges`) · `.sessions` · `.tokens` (workspace-scoped CLI PATs — the `KORTIX_TOKEN` shape) · `.marketplace` / `.registry` (install/update/remove catalog items) · `.setupLinks.{requestSecret,requestConnector}` (agent-minted secret-entry / connector links) · `.validateManifest` · `.gitToken` · `.setDefaultAgent(name)` · `.session(sessionId)` (+ more namespaces: `.review`, `.approvals`, `.gateway` (incl. `.routing` and `.playground`), `.channels`, `.modelDefaults`, `.sandbox`) |
+| `kortix.session(workspaceId, sessionId)` | id-bound handle: lifecycle (`get`/`update`/`delete`/`start`/`restart`/`stop`/`setSharing`/`previews`/`commit`/`publicShares`/`ensureReady`) · `send`/`abort`/`setModel`/`setAgent` (opinionated prompt wrappers) · `stream()` (live SSE, framework-free) · `transcript()` (compact server-side transcript read) · `.files` (the 12-op workspace-files surface, bound to THIS session's own runtime) · **its own runtime** (`health`/`previewUrl`/`proxyUrl` — sandbox resolved for you) + `.runtime` (the typed opencode client) |
 | `kortix.runtime()` | the opencode v2 client for the active sandbox (escape hatch) |
 
 Runnable, self-contained scripts for the highest-value flows live in
-[`examples/`](./examples): list projects with a PAT, send + stream, the
+[`examples/`](./examples): list workspaces with a PAT, send + stream, the
 multi-tenant server-wrapper pattern, headless transcript rendering, cost
-pass-through / re-billing, and session files + project secrets. Each file's
+pass-through / re-billing, and session files + workspace secrets. Each file's
 header comment states the env vars and the exact `bun run examples/….ts`
 invocation.
 
@@ -136,7 +136,7 @@ session. It is persisted across cold recovery/replacement restart and exposed
 to the agent only as one `KORTIX_SESSION_CONTEXT` JSON envelope:
 
 ```ts
-await kortix.project(projectId).sessions.create({
+await kortix.workspace(workspaceId).sessions.create({
   runtime_context: { workspace_id: 'org_123', locale: 'de' },
 });
 ```
@@ -146,8 +146,8 @@ operator-managed connection profile, store its credential through the dedicated
 credential endpoint, and pass only the non-secret profile id at session create:
 
 ```ts
-const project = kortix.project(projectId);
-const profile = await project.connectors.profiles.reconcile({
+const workspace = kortix.workspace(workspaceId);
+const profile = await workspace.connectors.profiles.reconcile({
   connector_alias: 'customer-data',
   owner_type: 'external',
   owner_id: wrapperUserId,
@@ -156,16 +156,16 @@ const profile = await project.connectors.profiles.reconcile({
 });
 
 // Omit `auth` when creating to apply source-advertised authentication.
-const auth = await project.connectors.auth.discover({
+const auth = await workspace.connectors.auth.discover({
   slug: 'hubspot',
   provider: 'postman',
   spec: 'https://github.com/HubSpot/HubSpot-public-api-spec-collection',
 });
-await project.connectors.profiles.updateCredential(profile.profile_id, {
+await workspace.connectors.profiles.updateCredential(profile.profile_id, {
   value: shortLivedCapability,
   kind: 'secret',
 });
-await project.sessions.create({
+await workspace.sessions.create({
   runtime_context: { locale: 'de' },
   connector_bindings: {
     'customer-data': { profile_id: profile.profile_id },
@@ -178,21 +178,21 @@ profile without supplying an owner id; Kortix derives ownership from the bearer
 token:
 
 ```ts
-const profile = await project.connectors.profiles.reconcileMember({
+const profile = await workspace.connectors.profiles.reconcileMember({
   connector_alias: 'gmail',
   label: 'My Gmail',
 });
-await project.connectors.profiles.pipedreamConnect(profile.profile_id);
+await workspace.connectors.profiles.pipedreamConnect(profile.profile_id);
 // Complete OAuth, then:
-await project.connectors.profiles.pipedreamFinalize(profile.profile_id);
-await project.sessions.create({
+await workspace.connectors.profiles.pipedreamFinalize(profile.profile_id);
+await workspace.sessions.create({
   connector_bindings: { gmail: { profile_id: profile.profile_id } },
 });
 ```
 
-Member profiles are owner-only even for project managers, and sessions using
-one must remain private. Project defaults remain shared; external/agent/subject
-profiles remain operator-managed. Every profile is project/connector scoped
+Member profiles are owner-only even for workspace managers, and sessions using
+one must remain private. Workspace defaults remain shared; external/agent/subject
+profiles remain operator-managed. Every profile is workspace/connector scoped
 and resolved on every Executor request, so revocation takes effect without a
 restart. Credentials are encrypted server-side and are never returned, placed
 in `KORTIX_SESSION_CONTEXT`, or injected into the sandbox environment. Raw env
@@ -206,7 +206,7 @@ required — safe to call from a server-side "Kortix as a Backend" wrapper
 (Node/Bun), a worker, or a CLI:
 
 ```ts
-const handle = await kortix.session(pid, sid).stream({
+const handle = await kortix.session(workspaceId, sessionId).stream({
   onEvent: (event) => console.log(event.type, event),
   onGapRehydrate: (gapMs) => console.warn(`reconnected after a ${gapMs}ms gap`),
 });
@@ -236,17 +236,17 @@ import { createScopedKortix } from '@kortix/sdk/server';
 // Express/Hono/Bun.serve — any per-request handler. One scoped client PER
 // REQUEST; each end user's token stays isolated to that request's own async
 // call tree, even across `await`s, even under concurrency.
-app.get('/projects', async (req, res) => {
+app.get('/workspaces', async (req, res) => {
   const kortix = createScopedKortix({
     backendUrl: process.env.KORTIX_API_URL!,
     getToken: async () => resolveKortixTokenFor(req), // per-end-user PAT/token
   });
-  res.json(await kortix.projects.list());
+  res.json(await kortix.workspaces.list());
 });
 ```
 
 `createScopedKortix(config)` has the same shape as `createKortix(config)` —
-every method call (including calls through `.project(id)` / `.session(pid, sid)`
+every method call (including calls through `.workspace(id)` / `.session(workspaceId, sessionId)`
 handles minted at call time) automatically runs inside that config's scope, and
 it never writes the process-global singleton. For middleware-style wrapping of
 an entire request body instead, use the lower-level primitive:
@@ -265,7 +265,7 @@ app.use(async (req, res, next) => {
 ```
 
 A runnable version of the pattern is `examples/03-server-wrapper.ts`, and the
-full production-shaped reference (per-user project isolation, route policy,
+full production-shaped reference (per-user workspace isolation, route policy,
 rate limiting, cost markup for re-billing) is `apps/whitelabel-demo` in wrapper
 mode — see its README.
 
@@ -346,7 +346,7 @@ through to your own client for re-billing, instead of leaking a Kortix error:
 import { ApiError, AuthError, BillingError } from '@kortix/sdk';
 
 try {
-  await kortix.session(pid, sid).send(prompt);
+  await kortix.session(workspaceId, sessionId).send(prompt);
 } catch (err) {
   if (err instanceof BillingError) {
     // 402 — surface the upgrade/cost payload under YOUR billing story.
@@ -380,12 +380,12 @@ Stable, tree-shakeable surfaces (also reachable via the facade). Not exhaustive
 |---|---|
 | `@kortix/sdk` | `createKortix`, `configureKortix`, `files`, the error classes, `classifyPart`/`classifyTurn`, `narrowChatEvent`, `openEventStream`, domain result types |
 | `@kortix/sdk/server` | **Node/Bun only** — `runWithKortix`, `createScopedKortix`, `getScopedConfig` (per-request config isolation; see "Kortix as a Backend") |
-| `@kortix/sdk/react` | every `useOpenCode*` hook + providers (reactive data), `useSession`, `useChatTurns`/`renderParts`, domain hooks (`useProjectSecrets`/`useProjectTriggers`/`useChangeRequests`) |
+| `@kortix/sdk/react` | every `useOpenCode*` hook + providers (reactive data), `useSession`, `useChatTurns`/`renderParts`, domain hooks (`useWorkspaceSecrets`/`useWorkspaceTriggers`/`useChangeRequests`) |
 | `@kortix/sdk/turns` | framework-free part/turn classification (`classifyPart`, `classifyTurn`, `toolInfo`, turn grouping/cost helpers) |
 | `@kortix/sdk/files` | workspace file ops (daemon `/file` + `/find`): `listFiles`, `readFile`, `readBlob`, `getFileStatus`, `findFiles`, `findText`, `uploadFile`, `deleteFile`, `mkdir`, `renameFile`, … |
 | `@kortix/sdk/session` | a session's runtime surface — `getSessionHealth`/`isRuntimeReady` + proxy/preview URL builders (`rewriteLocalhostUrl`, `proxyLocalhostUrl`, `detectLocalhostUrls`, …) + preview-auth helpers. **No "sandbox" in the public surface** — a session owns its runtime |
 | `@kortix/sdk/opencode-client` | `getClient`, `getClientForUrl` + the **full opencode v2 type surface** (`Event`, `Part`, `Message`, `Session`, `Pty`, `Config`, …) |
-| `@kortix/sdk/projects-client` | the raw REST functions (the facade wraps these) |
+| `@kortix/sdk/workspaces-client` | the raw REST functions (the facade wraps these) |
 | `@kortix/sdk/auth` | `authenticatedFetch`, token accessors |
 | `@kortix/sdk/api-client` | the raw `backendApi` primitive — host code should go through the facade or another subpath module instead of calling this directly |
 | `@kortix/sdk/server-store` · `@kortix/sdk/sync-store` | active-sandbox state · live message/part/status store |
@@ -413,7 +413,7 @@ its token getter and toast/notify sinks; the SDK does the rest. Today that's pro
 in React DOM (`apps/web` and the `apps/whitelabel-demo` reference app are the
 `configureKortix`/`@kortix/sdk/react` consumers).
 The framework-free core modules — `turns`, `session/url`, `session` (health),
-`projects-client`, `files`, `transcript` — have no React or DOM dependency and are
+`workspaces-client`, `files`, `transcript` — have no React or DOM dependency and are
 usable from any JS host; `apps/mobile` already imports `@kortix/sdk/turns` this way.
 React Native does not use `@kortix/sdk/react`. Mobile now uses the framework-free
 `createHttpSessionSyncController` for message history, status recovery, and older
@@ -441,7 +441,7 @@ Native cannot consume the SDK's fetch-based SSE stream.
 
 ```sh
 pnpm --filter @kortix/sdk typecheck  # package + examples/ (examples/tsconfig.json)
-pnpm --filter @kortix/sdk test   # facade, files, react hooks, turns, transcript, session url/health, projects-client domains
+pnpm --filter @kortix/sdk test   # facade, files, react hooks, turns, transcript, session url/health, workspaces-client domains
 ```
 
 See **`API-MAP.md`** for the complete endpoint catalogue (REST + opencode runtime)

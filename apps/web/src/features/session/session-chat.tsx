@@ -130,7 +130,7 @@ import {
   type FileRefLike,
   buildAgentRefsBlock,
   buildFileRefsBlock,
-} from '@/lib/project-preamble';
+} from '@/lib/workspace-preamble';
 import { playSound } from '@/lib/sounds';
 import { track } from '@/lib/track';
 import { cn } from '@/lib/utils';
@@ -168,7 +168,7 @@ import {
   replayStartStash,
   sendAndRecover,
   usePermissionSelfHeal,
-  useProjectConfig,
+  useWorkspaceConfig,
   useQuestionSelfHeal,
 } from '@kortix/sdk/react';
 // Shared UI primitives (framework-agnostic, reusable on mobile)
@@ -440,10 +440,10 @@ function HighlightMentions({
   agentNames?: string[];
   onFileClick?: (path: string) => void;
 }) {
-  // Strip every ref block (project/file/agent/session) before processing
+  // Strip every ref block (workspace/file/agent/session) before processing
   // inline @ mentions so the visible text never shows raw XML.
   const { cleanText, sessions } = useMemo(() => {
-    const a = parseProjectReferences(text);
+    const a = parseWorkspaceReferences(text);
     const b = parseFileMentionReferences(a.cleanText);
     const c = parseAgentMentionReferences(b.cleanText);
     const d = parseSessionReferences(c.cleanText);
@@ -643,10 +643,10 @@ function parseSessionReferences(text: string): {
 }
 
 // ============================================================================
-// Parse <project_ref> XML references from project mentions / selector
+// Parse <workspace_ref> XML references from workspace mentions / selector
 // ============================================================================
 
-export interface ParsedProjectRef {
+export interface ParsedWorkspaceRef {
   id?: string;
   name: string;
   path?: string;
@@ -657,18 +657,18 @@ function unescapeAttr(v: string): string {
   return v.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
 }
 
-function parseProjectReferences(text: string): {
+function parseWorkspaceReferences(text: string): {
   cleanText: string;
-  projects: ParsedProjectRef[];
+  workspaces: ParsedWorkspaceRef[];
 } {
-  // Historical messages may contain <project_ref/> blocks. Projects are no
+  // Historical messages may contain <workspace_ref/> blocks. Workspaces are no
   // longer a user-facing/runtime concept, so strip the metadata without
-  // rendering project chips or passing project refs forward.
-  let cleaned = text.replace(/<project_ref\b([\s\S]*?)\/>/g, '');
+  // rendering workspace chips or passing workspace refs forward.
+  let cleaned = text.replace(/<workspace_ref\b([\s\S]*?)\/>/g, '');
   // Strip the instruction header (description uses [^)]* which is safe
   // because the header never contains a literal `)` before its closing one).
-  cleaned = cleaned.replace(/\n*Referenced projects \([^)]*\):\n?/g, '').trim();
-  return { cleanText: cleaned, projects: [] };
+  cleaned = cleaned.replace(/\n*Referenced workspaces \([^)]*\):\n?/g, '').trim();
+  return { cleanText: cleaned, workspaces: [] };
 }
 
 // ============================================================================
@@ -1292,13 +1292,13 @@ function UserMessageRow({
     () => parseFileReferences(textAfterReply),
     [textAfterReply],
   );
-  const { cleanText: textAfterProjects } = useMemo(
-    () => parseProjectReferences(textAfterFiles),
+  const { cleanText: textAfterWorkspaces } = useMemo(
+    () => parseWorkspaceReferences(textAfterFiles),
     [textAfterFiles],
   );
   const { cleanText: textAfterFileMentions, files: fileMentionRefs } = useMemo(
-    () => parseFileMentionReferences(textAfterProjects),
-    [textAfterProjects],
+    () => parseFileMentionReferences(textAfterWorkspaces),
+    [textAfterWorkspaces],
   );
   const { cleanText: textAfterAgentMentions, agents: agentMentionRefs } = useMemo(
     () => parseAgentMentionReferences(textAfterFileMentions),
@@ -1688,7 +1688,7 @@ function UserMessageRow({
           </div>
         )}
 
-        {/* Project references — compact neutral chips, one per referenced project */}
+        {/* Workspace references — compact neutral chips, one per referenced workspace */}
         {/* Reply context banner */}
         {replyContext && (
           <div className="bg-primary/5 border-primary/10 mx-3 mt-3 mb-0 flex items-center gap-2 rounded-2xl border px-3 py-1.5">
@@ -2415,10 +2415,10 @@ export function SessionReportCard({
         {/* One meta line, truncated by CSS against the real available width —
             the old 60-character slice cut mid-word at every viewport and still
             overflowed narrow ones. */}
-        {(report.project || report.prompt) && (
+        {(report.workspace || report.prompt) && (
           <span className="text-muted-foreground block truncate text-xs">
-            {report.project}
-            {report.project && report.prompt && (
+            {report.workspace}
+            {report.workspace && report.prompt && (
               <span className="text-muted-foreground/40"> &bull; </span>
             )}
             {report.prompt}
@@ -3057,7 +3057,7 @@ function SessionTurn({
             open={sessionReportModalOpen}
             onOpenChange={setSessionReportModalOpen}
             sessionId={sessionReport.sessionId}
-            title={`Worker${sessionReport.project ? ` · ${sessionReport.project}` : ''}`}
+            title={`Worker${sessionReport.workspace ? ` · ${sessionReport.workspace}` : ''}`}
           />
         </>
       )}
@@ -3501,9 +3501,9 @@ interface SessionChatProps {
   sessionId: string;
   /** Complete SDK state for the root session. Omit for a read-only child session. */
   sessionState?: UseSessionResult;
-  /** Project id lets agent pickers use the server-side project manifest/catalog. */
-  projectId?: string;
-  /** Immutable project-session agent. When set, prompts are locked to this agent. */
+  /** Workspace id lets agent pickers use the server-side workspace manifest/catalog. */
+  workspaceId?: string;
+  /** Immutable workspace-session agent. When set, prompts are locked to this agent. */
   boundAgentName?: string | null;
   /** Optional element rendered at the leading (left) edge of the session header */
   headerLeadingAction?: React.ReactNode;
@@ -3518,7 +3518,7 @@ interface SessionChatProps {
 export function SessionChat({
   sessionId,
   sessionState,
-  projectId,
+  workspaceId,
   boundAgentName,
   headerLeadingAction,
   hideHeader,
@@ -3532,8 +3532,8 @@ export function SessionChat({
   // Every open session tab is pre-mounted at once (see layout-content.tsx), so
   // only the visible tab may be treated as "active" — otherwise every busy
   // session would react to global shortcuts (ESC-to-stop, auto question
-  // handling) at the same time. The standalone project session route
-  // (/projects/[id]/sessions/[sessionId]) mounts a single SessionChat whose id
+  // handling) at the same time. The standalone workspace session route
+  // (/workspaces/[id]/sessions/[sessionId]) mounts a single SessionChat whose id
   // is never registered in this tab store; there it's the only chat mounted, so
   // it's always active.
   //
@@ -3667,15 +3667,15 @@ export function SessionChat({
   } = sessionState ?? localSync;
   const messages = syncMessages.length > 0 ? syncMessages : undefined;
   const messagesLoading = syncMessagesLoading;
-  // Project sessions use the server-side project agent roster. Non-project
+  // Workspace sessions use the server-side workspace agent roster. Non-workspace
   // sessions fall back to OpenCode's directory-scoped runtime discovery.
-  const { data: agents } = useRuntimeAgents({ directory: session?.directory, projectId });
+  const { data: agents } = useRuntimeAgents({ directory: session?.directory, workspaceId });
   // Pending connector-approvals for this session pause the run — lock the
   // composer (like a question) until they're resolved. Shares the query key with
   // SessionApprovalPrompt, so it's one request.
   const approvalRouteParams = useParams<{ id?: string; sessionId?: string }>();
   const { data: approvalAudit } = useSessionAudit(
-    projectId ?? approvalRouteParams.id,
+    workspaceId ?? approvalRouteParams.id,
     approvalRouteParams.sessionId,
     { refetchInterval: 5_000 },
   );
@@ -3684,7 +3684,7 @@ export function SessionChat({
   const { data: providers, isLoading: providersLoading } = useRuntimeProviders();
   const { data: allSessions } = useRuntimeSessions();
   const { data: config } = useRuntimeConfig();
-  const projectConfig = useProjectConfig(projectId);
+  const workspaceConfig = useWorkspaceConfig(workspaceId);
   const abortSession = useAbortRuntimeSession();
   const executeCommand = useExecuteRuntimeCommand();
 
@@ -3695,7 +3695,7 @@ export function SessionChat({
     config,
     sessionId,
     boundAgentName,
-    defaultAgentName: projectConfig?.open_code_default_agent,
+    defaultAgentName: workspaceConfig?.open_code_default_agent,
   });
   // Session agent-lock is DISABLED (mirrors the backend KORTIX_ENFORCE_SESSION_AGENT_LOCK,
   // default off): the picker still defaults to the session's agent (seeded via
@@ -3779,7 +3779,7 @@ export function SessionChat({
   const [pendingSendMessageId, setPendingSendMessageId] = useState<string | null>(null);
   // Grace period: don't stop polling immediately on idle after a recent send
   const lastSendTimeRef = useRef<number>(0);
-  // ---- Optimistic prompt (from dashboard/project page) ----
+  // ---- Optimistic prompt (from dashboard/workspace page) ----
   // Backed by the SDK's start-stash (`readStartStash`/`clearStartStash`), which
   // understands both the modern `kortix:start:<id>` shape and every legacy
   // producer's bare `opencode_pending_prompt:<id>` + `opencode_pending_options:<id>`
@@ -3793,7 +3793,7 @@ export function SessionChat({
   });
 
   // Hydrate options from the SDK's start-stash and send the pending prompt for
-  // new sessions. The dashboard/project page (or the instant session shell)
+  // new sessions. The dashboard/workspace page (or the instant session shell)
   // stashes the prompt and navigates here. We send the message from here (not
   // the producer) so that SSE listeners and polling are already active when the
   // response starts streaming back.
@@ -4862,9 +4862,9 @@ export function SessionChat({
             messageId: messageID,
             parts: mappedParts,
             options: {
-              // Pass the session's directory so opencode resolves project-scoped
-              // agents (.opencode/agent/*.md under the project) and applies them
-              // when the user picked a project agent from the picker.
+              // Pass the session's directory so opencode resolves workspace-scoped
+              // agents (.opencode/agent/*.md under the workspace) and applies them
+              // when the user picked a workspace agent from the picker.
               ...(session?.directory ? { directory: session.directory } : {}),
               ...(selectedAgent ? { agent: selectedAgent } : {}),
               ...(selectedModel ? { model: formatPromptModel(selectedModel) } : {}),
@@ -5175,15 +5175,15 @@ export function SessionChat({
   const { data: parentSessionData } = useRuntimeSession(session?.parentID || '');
   const threadContext = useMemo(() => {
     if (!session?.parentID || !parentSessionData) return undefined;
-    const projectRoute = pathname?.match(/^\/projects\/([^/]+)\/sessions\/([^/]+)/);
+    const workspaceRoute = pathname?.match(/^\/workspaces\/([^/]+)\/sessions\/([^/]+)/);
     return {
       parentTitle: parentSessionData.title || 'Parent session',
       onBackToParent: () => {
-        if (projectRoute) {
-          const [, projectId, projectSessionId] = projectRoute;
+        if (workspaceRoute) {
+          const [, workspaceId, workspaceSessionId] = workspaceRoute;
           const href = parentSessionData.parentID
-            ? `/projects/${projectId}/sessions/${projectSessionId}?oc=${encodeURIComponent(parentSessionData.id)}`
-            : `/projects/${projectId}/sessions/${projectSessionId}`;
+            ? `/workspaces/${workspaceId}/sessions/${workspaceSessionId}?oc=${encodeURIComponent(parentSessionData.id)}`
+            : `/workspaces/${workspaceId}/sessions/${workspaceSessionId}`;
           router.push(href);
           return;
         }
@@ -5249,8 +5249,8 @@ export function SessionChat({
               if (name) void local.model.defaults.setAgentDefault(name, m);
             }
           : undefined,
-      onSetProjectDefault: (m) => {
-        void local.model.defaults.setProjectDefault(m);
+      onSetWorkspaceDefault: (m) => {
+        void local.model.defaults.setWorkspaceDefault(m);
       },
     }),
     [lockedAgentName, local.agent, local.model.defaults],
@@ -5377,7 +5377,7 @@ export function SessionChat({
   // staged loader — never the session shell (header + input) at the same time.
   // Showing both reads as "loaded and loading at once" (the very contradiction
   // the loader exists to avoid). The connection keeps running in the parent
-  // ProjectSessionRuntimeConnection, so as soon as the runtime is ready
+  // WorkspaceSessionRuntimeConnection, so as soon as the runtime is ready
   // isDataLoading flips and the full shell renders in one shot.
   if (isDataLoading) {
     return (
@@ -5402,7 +5402,7 @@ export function SessionChat({
       data-testid="session-chat"
     >
       {/* Full-bleed welcome wallpaper — spans the entire session (behind header,
-          messages, project selector, and chat input). Input renders as frosted
+          messages, workspace selector, and chat input). Input renders as frosted
           glass so the wallpaper reads through uninterrupted. Portaled into
           SessionLayout's root layer when present so it stays full width even
           with the side panel open; falls back to inline otherwise. */}
@@ -5481,9 +5481,9 @@ export function SessionChat({
                           const { cleanText: afterReply, replyContext: optReply } =
                             parseReplyContext(optimisticPrompt || '');
                           const { cleanText: afterFiles, files } = parseFileReferences(afterReply);
-                          const { cleanText: afterProjects } = parseProjectReferences(afterFiles);
+                          const { cleanText: afterWorkspaces } = parseWorkspaceReferences(afterFiles);
                           const { cleanText: afterFileMentions } =
-                            parseFileMentionReferences(afterProjects);
+                            parseFileMentionReferences(afterWorkspaces);
                           const { cleanText: afterAgentMentions } =
                             parseAgentMentionReferences(afterFileMentions);
                           const { cleanText } = parseSessionReferences(afterAgentMentions);
@@ -5765,7 +5765,7 @@ export function SessionChat({
           onVariantChange={handleVariantChange}
           messages={messages}
           sessionId={sessionId}
-          projectId={projectId}
+          workspaceId={workspaceId}
           onFileSearch={handleFileSearch}
           providers={providers}
           modelRequired

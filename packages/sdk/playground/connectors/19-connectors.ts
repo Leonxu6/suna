@@ -1,16 +1,16 @@
 /**
  * 19 — connectors (integrations): the deployment-wide easy-connect flag,
- * the project's connector list, and the first connector's config + policies.
+ * the workspace's connector list, and the first connector's config + policies.
  * All reads.
  *
- * Run (from packages/sdk):  bun run playground/connectors/19-connectors.ts [projectId]
+ * Run (from packages/sdk):  bun run playground/connectors/19-connectors.ts [workspaceId]
  */
-import { makeKortix, pickProjectId, run } from "../_shared";
+import { makeKortix, pickWorkspaceId, run } from "../_shared";
 
 run("connectors", async () => {
   const kortix = makeKortix();
-  const projectId = await pickProjectId(kortix, process.argv[2]);
-  const connectors = kortix.project(projectId).connectors;
+  const workspaceId = await pickWorkspaceId(kortix, process.argv[2]);
+  const connectors = kortix.workspace(workspaceId).connectors;
 
   const status = await kortix.connectStatus();
   console.log(`✓ connectStatus(): ${JSON.stringify(status)}`);

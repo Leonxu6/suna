@@ -1,7 +1,7 @@
 /**
  * Shared Agent + Model picker fields for the git-backed trigger (Schedules /
  * Webhooks) create + detail sheets — mobile parity for
- * apps/web/src/components/projects/schedule-view.tsx's AgentModelSection.
+ * apps/web/src/components/workspaces/schedule-view.tsx's AgentModelSection.
  *
  * Inline expand/collapse rows (matching this file family's existing Timezone
  * picker pattern) rather than a nested bottom sheet — @gorhom/bottom-sheet
@@ -14,9 +14,9 @@ import { ChevronRight, Check } from 'lucide-react-native';
 import { Text } from '@/components/ui/text';
 import { useThemeColors } from '@/lib/theme-colors';
 import {
-  useProjectAgentsForTrigger,
-  useProjectModelCatalogForTrigger,
-} from '@/lib/projects/hooks';
+  useWorkspaceAgentsForTrigger,
+  useWorkspaceModelCatalogForTrigger,
+} from '@/lib/workspaces/hooks';
 import { haptics } from '@/lib/haptics';
 
 const MONO = 'Menlo';
@@ -41,12 +41,12 @@ function FieldLabel({ children, muted }: { children: React.ReactNode; muted: str
 // ─── Agent ────────────────────────────────────────────────────────────────────
 
 export function AgentPickerField({
-  projectId,
+  workspaceId,
   value,
   onChange,
   isDark,
 }: {
-  projectId: string;
+  workspaceId: string;
   /** Selected agent name, or null to leave unset (server defaults to "default"). */
   value: string | null;
   onChange: (name: string) => void;
@@ -55,7 +55,7 @@ export function AgentPickerField({
   const theme = useThemeColors();
   const { fg, muted, border, inputBg } = useFieldColors(isDark);
   const [open, setOpen] = useState(false);
-  const { agents, isLoading } = useProjectAgentsForTrigger(projectId);
+  const { agents, isLoading } = useWorkspaceAgentsForTrigger(workspaceId);
 
   return (
     <View>
@@ -78,7 +78,7 @@ export function AgentPickerField({
         <View style={{ marginTop: 8, borderRadius: 11, borderWidth: 1, borderColor: border, overflow: 'hidden' }}>
           {agents.length === 0 && !isLoading && (
             <View style={{ paddingHorizontal: 12, paddingVertical: 11 }}>
-              <Text style={{ fontSize: 13, color: muted }}>No agents found for this project.</Text>
+              <Text style={{ fontSize: 13, color: muted }}>No agents found for this workspace.</Text>
             </View>
           )}
           {agents.map((a, i) => {
@@ -109,12 +109,12 @@ export function AgentPickerField({
 // ─── Model ────────────────────────────────────────────────────────────────────
 
 export function ModelPickerField({
-  projectId,
+  workspaceId,
   value,
   onChange,
   isDark,
 }: {
-  projectId: string;
+  workspaceId: string;
   /** Selected wire model id, or null to resolve the agent/account/platform default at fire time. */
   value: string | null;
   onChange: (modelID: string | null) => void;
@@ -123,7 +123,7 @@ export function ModelPickerField({
   const theme = useThemeColors();
   const { fg, muted, border, inputBg } = useFieldColors(isDark);
   const [open, setOpen] = useState(false);
-  const { models, isLoading, gatewayDisabled } = useProjectModelCatalogForTrigger(projectId);
+  const { models, isLoading, gatewayDisabled } = useWorkspaceModelCatalogForTrigger(workspaceId);
   const current = models.find((m) => m.modelID === value);
 
   if (gatewayDisabled) {
@@ -131,7 +131,7 @@ export function ModelPickerField({
       <View>
         <FieldLabel muted={muted}>Model</FieldLabel>
         <Text style={{ fontSize: 12.5, color: muted, lineHeight: 18 }}>
-          Enable the LLM gateway for this project (Settings → LLM) to pin a model for this trigger.
+          Enable the LLM gateway for this workspace (Settings → LLM) to pin a model for this trigger.
         </Text>
       </View>
     );

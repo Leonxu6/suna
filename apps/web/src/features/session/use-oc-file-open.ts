@@ -12,13 +12,13 @@ import {
 
 /**
  * Module-level cache of candidate prefixes.
- * We collect multiple possible root paths (from project.current() and path.get())
+ * We collect multiple possible root paths (from workspace.current() and path.get())
  * and try each one when converting absolute → relative.
  */
 let cachedPrefixes: string[] | null = null;
 let prefixFetchPromise: Promise<string[]> | null = null;
 
-/** Try stripping each candidate prefix from an absolute path → project-relative */
+/** Try stripping each candidate prefix from an absolute path → workspace-relative */
 function toRelative(absPath: string, prefixes: string[]): string {
   for (const wt of prefixes) {
     if (!wt || wt === '/') continue;
@@ -35,8 +35,8 @@ function toRelative(absPath: string, prefixes: string[]): string {
  * Fetch all candidate worktree/directory prefixes.
  *
  * CONSOLIDATED: First checks the React Query cache (shared with
- * useRuntimeCurrentProject and useRuntimePathInfo). Only makes SDK calls
- * as a fallback if the cache is empty. This prevents duplicate /project/current
+ * useRuntimeCurrentWorkspace and useRuntimePathInfo). Only makes SDK calls
+ * as a fallback if the cache is empty. This prevents duplicate /workspace/current
  * and /path requests that were previously made on every tool-view mount.
  */
 async function fetchPrefixesFromSdk(queryClient?: ReturnType<typeof useQueryClient>): Promise<string[]> {
@@ -54,8 +54,8 @@ async function fetchPrefixesFromSdkUncached(queryClient?: ReturnType<typeof useQ
 
   // 1) Try React Query cache first (shared with other hooks)
   if (queryClient) {
-    const cachedProject = queryClient.getQueryData<any>(runtimeKeys.currentProject());
-    if (cachedProject?.worktree) candidates.push(cachedProject.worktree);
+    const cachedWorkspace = queryClient.getQueryData<any>(runtimeKeys.currentProject());
+    if (cachedWorkspace?.worktree) candidates.push(cachedWorkspace.worktree);
 
     const cachedPath = queryClient.getQueryData<any>(runtimeKeys.pathInfo());
     if (cachedPath?.directory) candidates.push(cachedPath.directory);
@@ -73,8 +73,8 @@ async function fetchPrefixesFromSdkUncached(queryClient?: ReturnType<typeof useQ
   // 3) Fallback: SDK calls (only on first mount before cache is populated)
   // If the sandbox URL isn't ready yet, skip for now and let the next render retry.
   try {
-    const project = await getRuntimeProjectInfo();
-    if (project?.worktree) candidates.push(project.worktree);
+    const workspace = await getRuntimeProjectInfo();
+    if (workspace?.worktree) candidates.push(workspace.worktree);
   } catch {
     // non-critical
   }
@@ -98,7 +98,7 @@ async function fetchPrefixesFromSdkUncached(queryClient?: ReturnType<typeof useQ
 }
 
 /**
- * Last-resort fallback: discover the project root by probing the file API
+ * Last-resort fallback: discover the workspace root by probing the file API
  * with progressively shorter suffixes of the absolute path.
  * Starts from just the filename and adds parent segments until a read succeeds.
  * Caches the discovered prefix for future use.
@@ -138,8 +138,8 @@ async function discoverPrefixViaFileApi(absPath: string): Promise<string | null>
 /**
  * Hook: file-open handlers & path display for OC tool views.
  *
- * Collects candidate root prefixes from project.current() and path.get(),
- * then tries each when converting absolute paths → project-relative paths.
+ * Collects candidate root prefixes from workspace.current() and path.get(),
+ * then tries each when converting absolute paths → workspace-relative paths.
  */
 export function useOcFileOpen() {
   const openFileInComputer = useKortixComputerStore((s) => s.openFileInComputer);

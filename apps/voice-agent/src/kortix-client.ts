@@ -23,9 +23,9 @@ const TURN_TIMEOUT_MS = 6_000;
 
 type PostResult = { ok: true; data: unknown } | { ok: false; error: string };
 
-function endpoint(ctx: CallContext, path: string): string {
+export function buildVoiceEndpoint(ctx: CallContext, path: string): string {
   const base = ctx.kortixApiUrl.replace(/\/+$/, '');
-  return `${base}/v1/projects/${encodeURIComponent(ctx.projectId)}/sessions/${encodeURIComponent(ctx.sessionId)}/voice/${path}`;
+  return `${base}/v1/workspaces/${encodeURIComponent(ctx.workspaceId)}/sessions/${encodeURIComponent(ctx.sessionId)}/voice/${path}`;
 }
 
 async function postJson(
@@ -35,7 +35,7 @@ async function postJson(
   timeoutMs: number,
 ): Promise<PostResult> {
   let res: Response;
-  const url = endpoint(ctx, path);
+  const url = buildVoiceEndpoint(ctx, path);
   console.log('[voice-agent] postJson fetch ->', url, { body });
   try {
     res = await fetch(url, {

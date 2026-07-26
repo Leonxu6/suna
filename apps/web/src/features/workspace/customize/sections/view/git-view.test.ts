@@ -10,10 +10,10 @@ test('formats the live Code Storage provider identifier', () => {
 });
 
 test('only links repository providers with a human web page', () => {
-  expect(repositoryWebUrl('github', 'https://github.com/acme/project.git')).toBe(
-    'https://github.com/acme/project',
+  expect(repositoryWebUrl('github', 'https://github.com/acme/workspace.git')).toBe(
+    'https://github.com/acme/workspace',
   );
-  expect(repositoryWebUrl('code-storage', 'https://kortix.code.storage/project.git')).toBeNull();
+  expect(repositoryWebUrl('code-storage', 'https://kortix.code.storage/workspace.git')).toBeNull();
 });
 
 test('copy control keeps both icons in an animated fixed-size box', () => {

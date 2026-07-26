@@ -69,7 +69,7 @@ export function createTestKortix(app: AppInstance, token: string) {
 
 /** Remove the suite's per-user ownership JSON store (the temp
  *  `TEST_DATA_DIR`, never the app dir's real `.lumen-data`). Always call this
- *  before AND after a boot that will provision/own projects, so test files
+ *  before AND after a boot that will provision/own workspaces, so test files
  *  don't leak state into each other via the shared store. */
 export function resetUsersStore(): void {
   rmSync(TEST_DATA_DIR, { recursive: true, force: true });

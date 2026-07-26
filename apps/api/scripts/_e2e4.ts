@@ -25,8 +25,8 @@ async function ptExec(extId: string){
 console.log(`######## comp full-path multi-run (${RUNS}x) ########`);
 for (let n=1; n<=RUNS; n++){
   const t0 = now();
-  const prov:any = await (await fetch(`${BASE}/v1/projects/provision`, { method:'POST', headers:H, body: JSON.stringify({ name:`e2e4-${t0}-${n}`, seed_starter:true }) })).json();
-  const ses:any = await (await fetch(`${BASE}/v1/projects/${prov.project_id}/sessions`, { method:'POST', headers:H, body: JSON.stringify({ branch_already_created:false }) })).json();
+  const prov:any = await (await fetch(`${BASE}/v1/workspaces/provision`, { method:'POST', headers:H, body: JSON.stringify({ name:`e2e4-${t0}-${n}`, seed_starter:true }) })).json();
+  const ses:any = await (await fetch(`${BASE}/v1/workspaces/${prov.project_id}/sessions`, { method:'POST', headers:H, body: JSON.stringify({ branch_already_created:false }) })).json();
   const provSesS = ((now()-t0)/1000).toFixed(2);
   if (!ses.session_id){ console.log(`[#${n}] SESSION FAILED: ${JSON.stringify(ses).slice(0,160)}`); continue; }
 

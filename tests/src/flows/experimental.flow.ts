@@ -2,7 +2,7 @@
  * Experimental features — the unified per-project feature-flag surface.
  * Maps to spec §EXP-*.
  *
- * `PATCH /v1/projects/:projectId/experimental {feature, enabled}` is the single
+ * `PATCH /v1/workspaces/:workspaceId/experimental {feature, enabled}` is the single
  * write path for opting a project into an experimental feature (agent_tunnel,
  * review_center, …). State is DB-only (projects.metadata.experimental). The
  * response is the serialized project, which carries `experimental` (effective
@@ -16,20 +16,20 @@ import { flow } from "../core/flow";
 flow(
   "EXP-1",
   {
-    domain: "projects",
+    domain: "workspaces",
     tags: ["experimental"],
-    routes: ["PATCH /v1/projects/:projectId/experimental"],
+    routes: ["PATCH /v1/workspaces/:workspaceId/experimental"],
   },
   async (ctx) => {
-    const p = await ctx.fixtures.project();
+    const p = await ctx.fixtures.workspace();
 
     await ctx.step("OWNER enables agent_tunnel → 200 + catalog in body", async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .patch(
-          "/v1/projects/:projectId/experimental",
+          "/v1/workspaces/:workspaceId/experimental",
           { feature: "agent_tunnel", enabled: true },
-          { params: { projectId: p.id } },
+          { params: { workspaceId: p.id } },
         );
       r.status(200).body().exists("$.experimental_features").exists("$.experimental");
     });
@@ -38,9 +38,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .patch(
-          "/v1/projects/:projectId/experimental",
+          "/v1/workspaces/:workspaceId/experimental",
           { feature: "agent_tunnel", enabled: null },
-          { params: { projectId: p.id } },
+          { params: { workspaceId: p.id } },
         );
       r.status(200);
     });
@@ -52,9 +52,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .patch(
-          "/v1/projects/:projectId/experimental",
+          "/v1/workspaces/:workspaceId/experimental",
           { feature: "voice", enabled: true },
-          { params: { projectId: p.id } },
+          { params: { workspaceId: p.id } },
         );
       r.status(200).body().exists("$.experimental_features").exists("$.experimental");
     });
@@ -63,9 +63,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .patch(
-          "/v1/projects/:projectId/experimental",
+          "/v1/workspaces/:workspaceId/experimental",
           { feature: "voice", enabled: null },
-          { params: { projectId: p.id } },
+          { params: { workspaceId: p.id } },
         );
       r.status(200);
     });
@@ -74,9 +74,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .patch(
-          "/v1/projects/:projectId/experimental",
+          "/v1/workspaces/:workspaceId/experimental",
           { feature: "not_a_feature", enabled: true },
-          { params: { projectId: p.id } },
+          { params: { workspaceId: p.id } },
         );
       r.status(400);
     });
@@ -85,9 +85,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .patch(
-          "/v1/projects/:projectId/experimental",
+          "/v1/workspaces/:workspaceId/experimental",
           { feature: "apps", enabled: "yes" },
-          { params: { projectId: p.id } },
+          { params: { workspaceId: p.id } },
         );
       r.status(400);
     });
@@ -96,9 +96,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.NONMEMBER)
         .patch(
-          "/v1/projects/:projectId/experimental",
+          "/v1/workspaces/:workspaceId/experimental",
           { feature: "apps", enabled: true },
-          { params: { projectId: p.id } },
+          { params: { workspaceId: p.id } },
         );
       r.status([403, 404]);
     });
@@ -107,9 +107,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.ANON)
         .patch(
-          "/v1/projects/:projectId/experimental",
+          "/v1/workspaces/:workspaceId/experimental",
           { feature: "apps", enabled: true },
-          { params: { projectId: p.id } },
+          { params: { workspaceId: p.id } },
         );
       r.status(401);
     });

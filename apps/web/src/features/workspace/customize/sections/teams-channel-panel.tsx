@@ -14,8 +14,8 @@ import {
 import { Check, ChevronDown, Copy, ExternalLink, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
-export function TeamsChannelPanel({ projectId }: { projectId: string }) {
-  const { data: mode, isLoading } = useTeamsMode(projectId);
+export function TeamsChannelPanel({ workspaceId }: { workspaceId: string }) {
+  const { data: mode, isLoading } = useTeamsMode(workspaceId);
   const [open, setOpen] = useState(false);
 
   if (isLoading || !mode?.enabled) return null;
@@ -39,14 +39,14 @@ export function TeamsChannelPanel({ projectId }: { projectId: string }) {
       </button>
       {open ? (
         <div className="border-border/60 border-t p-4">
-          <InstallFlow projectId={projectId} mode={mode} />
+          <InstallFlow workspaceId={workspaceId} mode={mode} />
         </div>
       ) : null}
     </div>
   );
 }
 
-function InstallFlow({ projectId, mode }: { projectId: string; mode: TeamsMode | undefined }) {
+function InstallFlow({ workspaceId, mode }: { workspaceId: string; mode: TeamsMode | undefined }) {
   const managedAvailable = Boolean(mode?.available && !mode.byo);
   const [copied, setCopied] = useState(false);
   const [tenantId, setTenantId] = useState('');
@@ -56,7 +56,7 @@ function InstallFlow({ projectId, mode }: { projectId: string; mode: TeamsMode |
   const [appPassword, setAppPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const connect = useConnectTeams();
-  const manifest = useTeamsManifest(projectId);
+  const manifest = useTeamsManifest(workspaceId);
   const manifestText = manifest.data ?? '';
 
   const copyManifest = async () => {
@@ -70,7 +70,7 @@ function InstallFlow({ projectId, mode }: { projectId: string; mode: TeamsMode |
     setError(null);
     connect.mutate(
       {
-        projectId,
+        workspaceId,
         tenant_id: tenantId.trim(),
         team_name: teamName.trim() || undefined,
         ...(byo ? { app_id: appId.trim(), app_password: appPassword.trim() } : {}),
@@ -84,7 +84,7 @@ function InstallFlow({ projectId, mode }: { projectId: string; mode: TeamsMode |
   return (
     <SectionCard
       title="Add Kortix to Microsoft Teams"
-      description="Install the Kortix app into your Teams tenant, then bind this project to that tenant."
+      description="Install the Kortix app into your Teams tenant, then bind this workspace to that tenant."
     >
       <div className="space-y-5">
         {managedAvailable && !byo ? (
@@ -120,7 +120,7 @@ function InstallFlow({ projectId, mode }: { projectId: string; mode: TeamsMode |
               {[
                 'Grant admin consent so the Kortix bot can run in your tenant.',
                 'In Teams Admin Center (or Teams → Apps → Manage your apps → Upload), upload an app package built from the manifest above (plus color.png + outline.png icons).',
-                'Add the app to a chat or channel, then paste your Azure AD tenant ID below to bind it to this project.',
+                'Add the app to a chat or channel, then paste your Azure AD tenant ID below to bind it to this workspace.',
               ].map((line, i) => (
                 <li key={i} className="flex gap-3">
                   <span className="bg-muted text-muted-foreground mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-medium">
@@ -141,7 +141,7 @@ function InstallFlow({ projectId, mode }: { projectId: string; mode: TeamsMode |
         ) : (
           <InfoBanner tone="neutral">
             No managed Kortix Teams bot is configured on this server. Register a multi-tenant Azure Bot and connect its
-            credentials below; after connecting, point its messaging endpoint at this project&apos;s Teams webhook.
+            credentials below; after connecting, point its messaging endpoint at this workspace&apos;s Teams webhook.
           </InfoBanner>
         )}
 

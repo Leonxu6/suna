@@ -81,7 +81,7 @@ const isAbortError = (error: unknown): boolean =>
 // persisted — so it resets on reload and can't linger silently. When on, every
 // request from this client carries `x-kortix-admin-bypass: 1`; the API only
 // honors it for a real platform admin/super_admin on a `read` action (see
-// apps/api/src/projects/lib/access.ts), so this is safe to set unconditionally
+// apps/api/src/workspaces/lib/access.ts), so this is safe to set unconditionally
 // here rather than threading it through every call site.
 let adminBypassEnabled = false;
 

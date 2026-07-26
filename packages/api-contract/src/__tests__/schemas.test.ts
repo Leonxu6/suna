@@ -43,7 +43,7 @@ function projectFixture(overrides: Record<string, unknown> = {}) {
     updated_at: NOW,
     project_role: 'manager',
     effective_project_role: 'manager',
-    dashboard_url: 'https://kortix.com/projects/11111111-2222-4333-8444-555555555555',
+    dashboard_url: 'https://kortix.com/workspaces/11111111-2222-4333-8444-555555555555',
     experimental: {
       agent_tunnel: false,
       marketplace: false,
@@ -345,7 +345,7 @@ describe('TriggerSchema', () => {
           type: 'webhook',
           cron: null,
           secret_env: 'HOOK_SECRET',
-          webhook_url: 'https://api.kortix.com/v1/webhooks/projects/p/hook',
+          webhook_url: 'https://api.kortix.com/v1/webhooks/workspaces/p/hook',
         }),
       ),
     ).not.toThrow();
@@ -649,17 +649,17 @@ describe('native OAuth2 lifecycle schemas', () => {
   test('validates authorization and device start inputs', () => {
     expect(
       OAuth2AuthorizationStartInputSchema.parse({
-        success_redirect_uri: 'https://dev.kortix.com/projects/p1',
+        success_redirect_uri: 'https://dev.kortix.com/workspaces/p1',
       }),
-    ).toEqual({ success_redirect_uri: 'https://dev.kortix.com/projects/p1' });
+    ).toEqual({ success_redirect_uri: 'https://dev.kortix.com/workspaces/p1' });
     expect(
       OAuth2AuthorizationStartInputSchema.safeParse({
-        success_redirect_uri: 'http://localhost:15300/projects/p1',
+        success_redirect_uri: 'http://localhost:15300/workspaces/p1',
       }).success,
     ).toBe(true);
     expect(
       OAuth2AuthorizationStartInputSchema.safeParse({
-        success_redirect_uri: 'http://example.com/projects/p1',
+        success_redirect_uri: 'http://example.com/workspaces/p1',
       }).success,
     ).toBe(false);
     expect(OAuth2DeviceAuthorizationStartInputSchema.parse({ scopes: ['read'] })).toEqual({

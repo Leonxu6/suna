@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FileNode } from '../types';
-import { getFileIcon } from '@/features/project-files/components/file-icon';
+import { getFileIcon } from '@/features/workspace-files/components/file-icon';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -228,7 +228,7 @@ export function FileTreeItem({ node, onClick, onDownload, onRename, onDelete, on
           )}
         />
         {nameConflict && (
-          <p className="text-xs text-destructive">{tHardcodedUi.raw('featuresProjectFilesComponentsFileTreeItem.line229JsxTextAFileOrFolderWithThatNameAlready')}</p>
+          <p className="text-xs text-destructive">{tHardcodedUi.raw('featuresWorkspaceFilesComponentsFileTreeItem.line229JsxTextAFileOrFolderWithThatNameAlready')}</p>
         )}
       </div>
     </div>
@@ -319,7 +319,7 @@ export function FileTreeItem({ node, onClick, onDownload, onRename, onDelete, on
 
         {node.type === 'file' && onHistory && (
           <ContextMenuItem onClick={() => onHistory(node)}>
-            <History className="mr-2 h-4 w-4" />{tHardcodedUi.raw('featuresProjectFilesComponentsFileTreeItem.line322JsxTextCheckpointHistory')}</ContextMenuItem>
+            <History className="mr-2 h-4 w-4" />{tHardcodedUi.raw('featuresWorkspaceFilesComponentsFileTreeItem.line322JsxTextCheckpointHistory')}</ContextMenuItem>
         )}
 
         <ContextMenuSeparator />
@@ -347,7 +347,7 @@ export function FileTreeItem({ node, onClick, onDownload, onRename, onDelete, on
             navigator.clipboard.writeText(node.path);
           }}
         >
-          <Copy className="mr-2 h-4 w-4" />{tHardcodedUi.raw('featuresProjectFilesComponentsFileTreeItem.line352JsxTextCopyPath')}</ContextMenuItem>
+          <Copy className="mr-2 h-4 w-4" />{tHardcodedUi.raw('featuresWorkspaceFilesComponentsFileTreeItem.line352JsxTextCopyPath')}</ContextMenuItem>
 
         {onRename && (
           <>

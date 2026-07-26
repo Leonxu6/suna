@@ -1,10 +1,10 @@
 'use client';
 
 /**
- * The cost pass-through surface: per-project, per-session Kortix gateway
+ * The cost pass-through surface: per-workspace, per-session Kortix gateway
  * costs alongside the marked-up "your price" this wrapper would actually bill
  * its own users — backed by `GET /api/usage` (server-side aggregation over
- * every project the signed-in user owns; see `src/app/api/usage/route.ts`).
+ * every workspace the signed-in user owns; see `src/app/api/usage/route.ts`).
  *
  * Wrapper-mode only — direct mode has no per-user ownership model to scope
  * this to, so it gets the same short explainer pattern as `/account` in
@@ -32,8 +32,8 @@ interface UsageSession {
   billed_cost?: number;
 }
 
-interface UsageProject {
-  projectId: string;
+interface UsageWorkspace {
+  workspaceId: string;
   sessions: UsageSession[];
   error?: string;
 }
@@ -41,7 +41,7 @@ interface UsageProject {
 interface UsageResponse {
   markup: number;
   totals: { raw: number; billed: number };
-  projects: UsageProject[];
+  workspaces: UsageWorkspace[];
 }
 
 async function fetchUsage(): Promise<UsageResponse> {
@@ -70,12 +70,12 @@ function NotInDirectMode() {
         <BrandMark className="mx-auto mb-4" />
         <h1 className="text-lg font-semibold tracking-tight">Wrapper mode only</h1>
         <p className="mt-1.5 text-sm text-muted-foreground">
-          Cost pass-through is scoped to per-user project ownership, which only exists when this
+          Cost pass-through is scoped to per-user workspace ownership, which only exists when this
           app runs in wrapper mode (`KORTIX_API_KEY` set on the server).
         </p>
         <Button asChild className="mt-5 gap-2">
           <Link href="/">
-            <ArrowLeft className="size-4" /> Back to projects
+            <ArrowLeft className="size-4" /> Back to workspaces
           </Link>
         </Button>
       </Card>
@@ -95,7 +95,7 @@ function UsageDashboard() {
             href="/"
             className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
-            <ArrowLeft className="size-4" /> Back to projects
+            <ArrowLeft className="size-4" /> Back to workspaces
           </Link>
         </div>
       </header>
@@ -141,25 +141,25 @@ function UsageDashboard() {
               </Card>
             </div>
 
-            {data.projects.length === 0 && (
+            {data.workspaces.length === 0 && (
               <Card className="mt-6 p-8 text-center text-sm text-muted-foreground">
-                No projects yet — usage will show up here once you&apos;ve run a session.
+                No workspaces yet — usage will show up here once you&apos;ve run a session.
               </Card>
             )}
 
-            {data.projects.map((project) => (
-              <Card key={project.projectId} className="mt-4 overflow-hidden p-0">
+            {data.workspaces.map((workspace) => (
+              <Card key={workspace.workspaceId} className="mt-4 overflow-hidden p-0">
                 <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5">
                   <span className="truncate font-mono text-xs text-muted-foreground">
-                    {project.projectId}
+                    {workspace.workspaceId}
                   </span>
                   <Badge variant="secondary" className="shrink-0">
-                    {project.sessions.length} session{project.sessions.length === 1 ? '' : 's'}
+                    {workspace.sessions.length} session{workspace.sessions.length === 1 ? '' : 's'}
                   </Badge>
                 </div>
-                {project.error ? (
-                  <p className="px-4 py-4 text-xs text-destructive">{project.error}</p>
-                ) : project.sessions.length === 0 ? (
+                {workspace.error ? (
+                  <p className="px-4 py-4 text-xs text-destructive">{workspace.error}</p>
+                ) : workspace.sessions.length === 0 ? (
                   <p className="px-4 py-4 text-xs text-muted-foreground">No sessions yet.</p>
                 ) : (
                   <div className="overflow-x-auto">
@@ -174,7 +174,7 @@ function UsageDashboard() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
-                        {project.sessions.map((s) => (
+                        {workspace.sessions.map((s) => (
                           <tr key={s.session_id}>
                             <td className="max-w-[10rem] truncate px-4 py-2 font-mono text-xs">
                               {s.session_id}

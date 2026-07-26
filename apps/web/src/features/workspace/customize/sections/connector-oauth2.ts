@@ -158,27 +158,27 @@ export function mergeOAuth2DiscoveryMetadata(
 }
 
 export async function createConnectorWithOptionalOAuth2(
-  projectId: string,
+  workspaceId: string,
   draft: ConnectorDraftInput,
   oauth2: OAuth2CredentialForm | null,
   deps: {
-    createConnector: (projectId: string, draft: ConnectorDraftInput) => Promise<unknown>;
-    deleteConnector: (projectId: string, slug: string) => Promise<unknown>;
+    createConnector: (workspaceId: string, draft: ConnectorDraftInput) => Promise<unknown>;
+    deleteConnector: (workspaceId: string, slug: string) => Promise<unknown>;
     setConnectorCredential: (
-      projectId: string,
+      workspaceId: string,
       slug: string,
       credential: ConnectionProfileCredentialInput,
     ) => Promise<unknown>;
   },
 ): Promise<void> {
-  await deps.createConnector(projectId, draft);
+  await deps.createConnector(workspaceId, draft);
   if (!oauth2) return;
 
   try {
-    await deps.setConnectorCredential(projectId, draft.slug, buildOAuth2CredentialInput(oauth2));
+    await deps.setConnectorCredential(workspaceId, draft.slug, buildOAuth2CredentialInput(oauth2));
   } catch (credentialError) {
     try {
-      await deps.deleteConnector(projectId, draft.slug);
+      await deps.deleteConnector(workspaceId, draft.slug);
     } catch (rollbackError) {
       const credentialMessage =
         credentialError instanceof Error ? credentialError.message : String(credentialError);

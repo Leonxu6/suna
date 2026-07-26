@@ -1,7 +1,7 @@
 /**
  * UI e2e for the workspace-less sandbox-templates refactor.
  *
- * Mirrors the auth pattern from `08-accounts-project-access.spec.ts`:
+ * Mirrors the auth pattern from `08-accounts-workspace-access.spec.ts`:
  * provisions a fresh Supabase user via the admin API, signs them in to get a
  * session, then drives the Next dashboard. We verify the Customize → Sandbox
  * panel:

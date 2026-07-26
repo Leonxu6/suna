@@ -83,13 +83,13 @@ stack — admin-create a confirmed user, then password-grant — exactly as
 `tests/e2e/helpers/auth.ts` does; the root `AGENTS.md` ("Authenticating to the
 live API") walks through the four calls. A JWT works everywhere a PAT does.
 
-## 4. Create a project and a session
+## 4. Create a workspace and a session
 
-Easiest: do it in the web UI at `localhost:3000` (create a project, open a
+Easiest: do it in the web UI at `localhost:3000` (create a workspace, open a
 session) and copy the ids out of the URL:
 
 ```bash
-export KORTIX_PROJECT_ID=proj_...
+export KORTIX_WORKSPACE_ID=workspace_...
 export KORTIX_SESSION_ID=...
 ```
 
@@ -103,11 +103,11 @@ const kortix = createKortix({
   getToken: async () => process.env.KORTIX_API_KEY!,
 });
 
-const project = await kortix.projects.provision(/* … */);
-const session = await kortix.projects.createSession(/* … */);
+const workspace = await kortix.workspaces.provision(/* … */);
+const session = await kortix.workspaces.createSession(/* … */);
 ```
 
-(Exact input shapes: see `core/rest/projects-client/projects.ts` /
+(Exact input shapes: see `core/rest/workspaces-client/workspaces.ts` /
 `sessions.ts`, or just hover the types — the facade re-exports them 1:1.)
 
 ## 5. Drive it — the examples ladder
@@ -119,15 +119,15 @@ that changes is `import { … } from '@kortix/sdk'`.
 
 | Example | What it proves | Needs |
 |---|---|---|
-| `01-list-projects.ts` | minimum viable client: `createKortix` + PAT → `projects.list()` | PAT |
-| `02-send-and-stream.ts` | `ensureReady()` → `stream()` → `send()`, live SSE via `narrowChatEvent` | PAT + project + session |
+| `01-list-workspaces.ts` | minimum viable client: `createKortix` + PAT → `workspaces.list()` | PAT |
+| `02-send-and-stream.ts` | `ensureReady()` → `stream()` → `send()`, live SSE via `narrowChatEvent` | PAT + workspace + session |
 | `03-server-wrapper.ts` | `createScopedKortix` — per-request isolation for a multi-tenant server | PAT |
-| `04-render-transcript.ts` | render a transcript to text with `classifyTurn` | PAT + project + session |
-| `05-cost-passthrough.ts` | gateway usage / cost data | PAT + project |
-| `06-files-and-secrets.ts` | session-scoped workspace files + project secrets | PAT + project + session |
-| `07-vanilla.ts` | **the whole flow in one file** — list → ready → stream → send → classify | PAT + project + session |
+| `04-render-transcript.ts` | render a transcript to text with `classifyTurn` | PAT + workspace + session |
+| `05-cost-passthrough.ts` | gateway usage / cost data | PAT + workspace |
+| `06-files-and-secrets.ts` | session-scoped workspace files + workspace secrets | PAT + workspace + session |
+| `07-vanilla.ts` | **the whole flow in one file** — list → ready → stream → send → classify | PAT + workspace + session |
 | `08-cdn.html` | the same thing from a `<script>` tag, **no build step, no framework** | bundles built + browser |
-| `09-kaab-backend-wrapper.ts` | **Kortix as a Backend, end-to-end** — mint a connector → per-user profile → backend-origin session (`origin_ref` + `secrets` + `connector_bindings`) → stream; one-shot CLI **and** an SSE service | PAT + project |
+| `09-kaab-backend-wrapper.ts` | **Kortix as a Backend, end-to-end** — mint a connector → per-user profile → backend-origin session (`origin_ref` + `secrets` + `connector_bindings`) → stream; one-shot CLI **and** an SSE service | PAT + workspace |
 
 See [`examples/README.md`](./examples/README.md) for the full index and per-example
 env vars, and [`docs/KORTIX_AS_A_BACKEND_GUIDE.md`](../../docs/KORTIX_AS_A_BACKEND_GUIDE.md)
@@ -137,7 +137,7 @@ Start with:
 
 ```bash
 cd packages/sdk
-bun run examples/01-list-projects.ts
+bun run examples/01-list-workspaces.ts
 ```
 
 Then the full flow:
@@ -159,7 +159,7 @@ cd packages/sdk && python3 -m http.server 8099
 Open (real browser, stack running):
 
 ```
-http://localhost:8099/examples/08-cdn.html?key=kortix_pat_...&project=<id>&session=<id>
+http://localhost:8099/examples/08-cdn.html?key=kortix_pat_...&workspace=<id>&session=<id>
 ```
 
 Expected: `sent — streaming…` followed by `· message.part.updated` lines.

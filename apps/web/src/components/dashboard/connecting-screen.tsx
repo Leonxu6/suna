@@ -26,8 +26,8 @@ import {
 import { type SandboxRecoveryPhase, useRuntimeConnectionStore } from '@kortix/sdk/react';
 
 /**
- * ConnectingScreen — canonical lightweight loader for auth, project routing,
- * and project-session connectivity.
+ * ConnectingScreen — canonical lightweight loader for auth, workspace routing,
+ * and workspace-session connectivity.
  *
  * Modes (determined by props, and fall back to the sandbox-connection store
  * for the dashboard case):
@@ -75,7 +75,7 @@ export function ConnectingScreen({
   const runtimeSummary = 'Runtime services degraded';
 
   const handleSwitch = () => {
-    router.push(backHref || '/projects');
+    router.push(backHref || '/workspaces');
   };
 
   const serverLabel = labelOverride?.trim() || 'workspace';
@@ -465,7 +465,7 @@ function StoppedView({
       <div className="flex flex-col items-center gap-1">
         <h1 className="text-sm font-medium text-foreground/90">
           {label}{tHardcodedUi.raw('componentsDashboardConnectingScreen.line469JsxTextIsStopped')}</h1>
-        <p className="max-w-[300px] text-center text-xs leading-relaxed text-muted-foreground/55">{tHardcodedUi.raw('componentsDashboardConnectingScreen.line472JsxTextOpenANewSessionOrReturnToProjects')}</p>
+        <p className="max-w-[300px] text-center text-xs leading-relaxed text-muted-foreground/55">{tHardcodedUi.raw('componentsDashboardConnectingScreen.line472JsxTextOpenANewSessionOrReturnToWorkspaces')}</p>
       </div>
 
       <div className="flex items-center gap-2">
@@ -548,7 +548,7 @@ function UnreachableView({
               ? 'The workload restart was accepted. Waiting for the container and core services to come back online.'
             : degraded
               ? 'The host is reachable, but the core workspace runtime is failing requests. Restart the runtime or workload to recover services.'
-            : 'This workspace is unreachable. Return to projects and open or create another session.'}
+            : 'This workspace is unreachable. Return to workspaces and open or create another session.'}
         </p>
         {sandboxId ? (
           <p className="text-xs font-mono text-muted-foreground/35">Sandbox {sandboxId.slice(0, 8)}</p>
@@ -577,7 +577,7 @@ function UnreachableView({
           className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border/40 px-4 text-xs font-medium text-foreground/70 transition-colors hover:border-border/70 hover:text-foreground cursor-pointer"
         >
           <ArrowLeftRight className="h-3 w-3" />
-          Projects
+          Workspaces
         </button>
       </div>
     </>
@@ -625,7 +625,7 @@ function ReconnectPill({
           className="rounded-full"
         >
           <ArrowLeftRight className="h-2.5 w-2.5" />
-          Projects
+          Workspaces
         </Button>
       </div>
     </div>
@@ -662,7 +662,7 @@ function HealthPill({
           className="rounded-full"
         >
           <ArrowLeftRight className="h-2.5 w-2.5" />
-          Projects
+          Workspaces
         </Button>
       </div>
     </div>

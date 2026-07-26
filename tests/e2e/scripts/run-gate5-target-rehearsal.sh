@@ -282,7 +282,7 @@ PLAYWRIGHT_JSON_OUTPUT_FILE="$EVIDENCE_DIR/playwright-report.json" \
 pnpm --dir tests exec playwright test \
   -c playwright.config.ts \
   --reporter=line,json \
-  e2e/specs/08-accounts-project-access.spec.ts \
+  e2e/specs/08-accounts-workspace-access.spec.ts \
   e2e/specs/09-admin-ops.spec.ts \
   e2e/specs/10-production-golden-paths.spec.ts \
   e2e/specs/11-production-boundaries.spec.ts

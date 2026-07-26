@@ -1,6 +1,6 @@
 'use client';
 
-import { listProjectsForAccount, type KortixProject } from '@kortix/sdk';
+import { listWorkspacesForAccount, type KortixWorkspace } from '@kortix/sdk';
 import { Loader2, LogIn, MessagesSquare, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -40,8 +40,8 @@ export function TemplateSessionInstallDialog({
   const signInHref = `/auth?returnUrl=${encodeURIComponent(pathname ?? '/')}`;
 
   const [error, setError] = useState<string | null>(null);
-  const [projects, setProjects] = useState<KortixProject[]>([]);
-  const [projectId, setProjectId] = useState('');
+  const [workspaces, setWorkspaces] = useState<KortixWorkspace[]>([]);
+  const [workspaceId, setWorkspaceId] = useState('');
   const [opening, setOpening] = useState(false);
 
   useEffect(() => {
@@ -49,29 +49,29 @@ export function TemplateSessionInstallDialog({
     setError(null);
     setOpening(false);
     if (!user) {
-      setProjects([]);
-      setProjectId('');
+      setWorkspaces([]);
+      setWorkspaceId('');
       return;
     }
-    listProjectsForAccount()
+    listWorkspacesForAccount()
       .then((list) => {
         const active = (list ?? []).filter((p) => p.status === 'active');
-        setProjects(active);
-        setProjectId((prev) => prev || active[0]?.project_id || '');
+        setWorkspaces(active);
+        setWorkspaceId((prev) => prev || active[0]?.workspace_id || '');
       })
-      .catch(() => setProjects([]));
+      .catch(() => setWorkspaces([]));
   }, [open, user]);
 
   async function openSession() {
-    if (!projectId) return;
+    if (!workspaceId) return;
     setOpening(true);
     setError(null);
     try {
       const { session_id } = await installMarketplaceItemAsSession(
-        projectId,
+        workspaceId,
         `${TEMPLATE_CATALOG_NAMESPACE}:${templateId}`,
       );
-      router.push(`/projects/${projectId}/sessions/${session_id}`);
+      router.push(`/workspaces/${workspaceId}/sessions/${session_id}`);
     } catch (e) {
       setError((e as Error).message || 'Could not open the install session');
       setOpening(false);
@@ -90,12 +90,12 @@ export function TemplateSessionInstallDialog({
             </span>
             <div>
               <h3 className="text-foreground text-sm font-medium">Set it up with the agent</h3>
-              <p className="text-muted-foreground text-xs">Guided install, right in your project</p>
+              <p className="text-muted-foreground text-xs">Guided install, right in your workspace</p>
             </div>
           </div>
 
           <p className="text-muted-foreground mt-4 text-sm leading-relaxed">
-            We&apos;ll open a chat in your project and an agent will walk you through it — ask for the
+            We&apos;ll open a chat in your workspace and an agent will walk you through it — ask for the
             details it needs, connect your accounts, and turn it on when you&apos;re ready. Nothing runs
             until you say go.
           </p>
@@ -115,31 +115,31 @@ export function TemplateSessionInstallDialog({
                 <div>
                   <p className="text-foreground text-sm font-medium">Sign in to install this automation</p>
                   <p className="text-muted-foreground mx-auto mt-1 max-w-xs text-xs leading-relaxed">
-                    Sign in to pick a project and open the install chat — we&apos;ll bring you right back
+                    Sign in to pick a workspace and open the install chat — we&apos;ll bring you right back
                     here.
                   </p>
                 </div>
               </div>
-            ) : projects.length === 0 ? (
+            ) : workspaces.length === 0 ? (
               <div className="border-border/60 bg-muted/30 rounded-xl border px-4 py-4">
-                <p className="text-foreground text-sm font-medium">No projects yet</p>
+                <p className="text-foreground text-sm font-medium">No workspaces yet</p>
                 <p className="text-muted-foreground mt-0.5 text-xs">
-                  Create a project first, then come back to set this up.
+                  Create a workspace first, then come back to set this up.
                 </p>
                 <Button asChild size="sm" variant="outline" className="mt-3">
-                  <Link href="/projects">Go to projects</Link>
+                  <Link href="/workspaces">Go to workspaces</Link>
                 </Button>
               </div>
             ) : (
               <div className="space-y-1.5">
                 <Label className="text-sm">Open the install chat in</Label>
-                <Select value={projectId} onValueChange={setProjectId}>
+                <Select value={workspaceId} onValueChange={setWorkspaceId}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Choose a project" />
+                    <SelectValue placeholder="Choose a workspace" />
                   </SelectTrigger>
                   <SelectContent>
-                    {projects.map((p) => (
-                      <SelectItem key={p.project_id} value={p.project_id}>
+                    {workspaces.map((p) => (
+                      <SelectItem key={p.workspace_id} value={p.workspace_id}>
                         {p.name}
                       </SelectItem>
                     ))}
@@ -160,7 +160,7 @@ export function TemplateSessionInstallDialog({
                 </Link>
               </Button>
             ) : (
-              <Button size="sm" disabled={!projectId || opening} onClick={openSession}>
+              <Button size="sm" disabled={!workspaceId || opening} onClick={openSession}>
                 {opening ? (
                   <>
                     <Loader2 className="size-4 animate-spin" /> Opening chat…

@@ -45,7 +45,7 @@ Work as a department, not a chat bot:
    content, SERP intelligence, reporting, or approval.
 2. Gather facts before recommendations. Use connected data first; use web search
    for external SERP and competitor context; label estimates clearly.
-3. Route specialist work by applying the relevant project skill in the current
+3. Route specialist work by applying the relevant workspace skill in the current
    session:
    `technical-seo-audit`, `seo-repo-monitoring`, `content-seo-workflow`, or
    `serp-intelligence`.

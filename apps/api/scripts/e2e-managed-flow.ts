@@ -79,7 +79,7 @@ async function main() {
 
   try {
     // ── 2. provision (web "Create project", seeded) ───────────────────────
-    const prov = await api('POST', '/projects/provision', token, {
+    const prov = await api('POST', '/workspaces/provision', token, {
       account_id: owner!.accountId,
       name: `e2e flow ${Date.now()}`,
       seed_starter: true,
@@ -93,7 +93,7 @@ async function main() {
     repoUrl = prov.json.repo_url;
 
     // ── 3. seeded starter actually landed in the repo ─────────────────────
-    const tk = await api('POST', `/projects/${projectId}/git-token`, token);
+    const tk = await api('POST', `/workspaces/${projectId}/git-token`, token);
     assert(tk.status === 200 && tk.json.push_token, 'git-token minted', `${tk.status}`);
     const dir = await mkdtemp(join(tmpdir(), 'e2e-flow-'));
     await execFileAsync('git', [...gitEnvArgs(tk.json.push_token), 'clone', '-q', repoUrl, dir]);
@@ -112,7 +112,7 @@ async function main() {
     await rm(dir, { recursive: true, force: true });
 
     // ── 5. create a session (the path that 403'd on managed git) ──────────
-    const sess = await api('POST', `/projects/${projectId}/sessions`, token, {});
+    const sess = await api('POST', `/workspaces/${projectId}/sessions`, token, {});
     assert(
       sess.status >= 200 && sess.status < 300,
       'session create succeeds (managed git auth resolves — no 403/502)',
@@ -123,10 +123,10 @@ async function main() {
   } finally {
     // ── 6. cleanup ────────────────────────────────────────────────────────
     if (sessionId && projectId) {
-      await api('DELETE', `/projects/${projectId}/sessions/${sessionId}`, token).catch(() => undefined);
+      await api('DELETE', `/workspaces/${projectId}/sessions/${sessionId}`, token).catch(() => undefined);
     }
     if (projectId) {
-      const del = await api('DELETE', `/projects/${projectId}?purge=true`, token);
+      const del = await api('DELETE', `/workspaces/${projectId}?purge=true`, token);
       assert(del.status === 200, 'rm --purge → 200', `${del.status} ${JSON.stringify(del.json)}`);
       assert(del.json?.repo_deleted === true, 'managed repo deleted on purge');
     }

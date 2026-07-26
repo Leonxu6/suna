@@ -4,7 +4,7 @@
  * does not cause cross-app Supabase sign-out/session churn.
  *
  * Browsers scope cookies by host, not port. If two local apps on localhost use
- * the same cookie name and the same Supabase project, auth operations in one
+ * the same cookie name and the same Supabase workspace, auth operations in one
  * app can overwrite or clear the other's session cookie.
  */
 function resolveAuthCookieName() {

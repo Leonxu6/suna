@@ -87,8 +87,8 @@ export const EasyPanel = memo(function EasyPanel({
   sessionId,
   messages,
   isSessionBusy = false,
-  projectId,
-  projectSessionId,
+  workspaceId,
+  workspaceSessionId,
 }: {
   sessionId: string;
   messages: MessageWithParts[] | undefined;
@@ -97,8 +97,8 @@ export const EasyPanel = memo(function EasyPanel({
   /** Route ids the Audit detail needs to resolve a session's audit trail —
    *  see `session-audit-shared.ts`. Absent while booting/transient, in which
    *  case the palette's "Open Audit" consume below becomes a no-op. */
-  projectId?: string;
-  projectSessionId?: string;
+  workspaceId?: string;
+  workspaceSessionId?: string;
 }) {
   const parts = useMemo(() => collectAllToolParts(messages), [messages]);
   const steps = useMemo(() => groupSteps(parts), [parts]);
@@ -282,7 +282,7 @@ export const EasyPanel = memo(function EasyPanel({
   // — the /presentation router the sandbox agent server mounts at its root,
   // i.e. Kortix Master, port 8000). It is never a raw sandbox host: the old
   // daytona-style "sandbox_url" this component was written against
-  // (apps/web/src/types/project.ts) doesn't exist in the opencode/proxy
+  // (apps/web/src/types/workspace.ts) doesn't exist in the opencode/proxy
   // architecture Easy mode runs on — every sandbox surface here (AppPreview,
   // browser/desktop tabs) reaches its port through this same proxy.
   const { getServiceUrl } = useSandboxProxy();
@@ -412,7 +412,7 @@ export const EasyPanel = memo(function EasyPanel({
             name={displayName}
             fileName={output.name}
             shareContext={
-              projectId && projectSessionId ? { projectId, sessionId: projectSessionId } : undefined
+              workspaceId && workspaceSessionId ? { workspaceId, sessionId: workspaceSessionId } : undefined
             }
             onClose={closeDetail}
             onAskForChanges={askForChanges}
@@ -422,7 +422,7 @@ export const EasyPanel = memo(function EasyPanel({
       });
       setPanelSplit(split);
     },
-    [sessionId, getServiceUrl, closeDetail, openDetail, setPanelSplit, projectId, projectSessionId],
+    [sessionId, getServiceUrl, closeDetail, openDetail, setPanelSplit, workspaceId, workspaceSessionId],
   );
 
   const outcome = useMemo(
@@ -559,9 +559,9 @@ export const EasyPanel = memo(function EasyPanel({
       key: 'audit',
       title: 'Audit',
       padded: false,
-      body: <SessionAuditPanel projectId={projectId} projectSessionId={projectSessionId} />,
+      body: <SessionAuditPanel workspaceId={workspaceId} workspaceSessionId={workspaceSessionId} />,
     });
-  }, [openDetail, projectId, projectSessionId]);
+  }, [openDetail, workspaceId, workspaceSessionId]);
 
   /**
    * The opt-in File Explorer (Marko's ask). Never a default view and never a
@@ -585,15 +585,15 @@ export const EasyPanel = memo(function EasyPanel({
         body: (
           <SessionFilesExplorer
             chatSessionId={sessionId}
-            projectId={projectId}
-            projectSessionId={projectSessionId}
+            workspaceId={workspaceId}
+            workspaceSessionId={workspaceSessionId}
             ephemeral
             initialMode={changes ? 'changes' : 'files'}
           />
         ),
       });
     },
-    [openDetail, sessionId, projectId, projectSessionId],
+    [openDetail, sessionId, workspaceId, workspaceSessionId],
   );
 
   /**
@@ -624,7 +624,7 @@ export const EasyPanel = memo(function EasyPanel({
   // pending request VALUE, not the stable `consumeQuickView` action — desktop
   // keeps this panel mounted behind a closed side panel, so a palette
   // selection must itself re-render us or the handoff silently dead-ends.
-  // Audit with no project context (booting/transient session) is a
+  // Audit with no workspace context (booting/transient session) is a
   // deliberate no-op: the panel is already open by the time this runs,
   // there's just nothing to drill into yet — Advanced mode's Audit tab shows
   // its own empty state instead (this command routes through Advanced's own
@@ -636,7 +636,7 @@ export const EasyPanel = memo(function EasyPanel({
     const { view, target } = request;
     if (view === 'terminal') {
       openTerminal();
-    } else if (view === 'audit' && projectId && projectSessionId) {
+    } else if (view === 'audit' && workspaceId && workspaceSessionId) {
       openAudit();
     } else if (view === 'browser') {
       openBrowser(target);
@@ -646,8 +646,8 @@ export const EasyPanel = memo(function EasyPanel({
   }, [
     pendingQuickView,
     sessionId,
-    projectId,
-    projectSessionId,
+    workspaceId,
+    workspaceSessionId,
     openTerminal,
     openAudit,
     openBrowser,
@@ -707,7 +707,7 @@ export const EasyPanel = memo(function EasyPanel({
               </DrawerTitle>
             </DrawerHeader>
             <div className="min-h-0 flex-1 overflow-hidden">
-              <SessionTerminalPanel sessionId={sessionId} projectSessionId={projectSessionId} />
+              <SessionTerminalPanel sessionId={sessionId} workspaceSessionId={workspaceSessionId} />
             </div>
           </DrawerContent>
         </Drawer>
@@ -747,7 +747,7 @@ export const EasyPanel = memo(function EasyPanel({
             <div className="min-h-0 flex-1 overflow-hidden">
               <SessionTerminalPanel
                 sessionId={sessionId}
-                projectSessionId={projectSessionId}
+                workspaceSessionId={workspaceSessionId}
                 hidden={!terminalOpen}
               />
             </div>

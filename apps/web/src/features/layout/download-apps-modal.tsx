@@ -146,7 +146,7 @@ function TerminalMockup() {
         </div>
         <div>
           <span className="text-emerald-400">$</span>{' '}
-          {tI18nHardcoded.raw('autoFeaturesLayoutDownloadAppsModalJsxTextKortixMyProjectdd5d950f')}
+          {tI18nHardcoded.raw('autoFeaturesLayoutDownloadAppsModalJsxTextKortixMyWorkspacedd5d950f')}
         </div>
         <div className="text-zinc-500">
           {tI18nHardcoded.raw('autoFeaturesLayoutDownloadAppsModalJsxTextScaffolding6a800c2c')}

@@ -3146,8 +3146,3 @@ Post-rebase live ACP and REST presentation plus question parity:
 
 **Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
 and deployed ACP plus REST parity remain.
-||||||| parent of f571c3b92 (chore(sdk): complete Workspace API task)
-||||||| parent of 2967a40d8 (chore(sdk): mark Workspace domain task complete)
-**Shippable to production: NOT YET.** Tasks 4 through 9 remain.
-||||||| parent of 025345ce8 (chore(sdk): complete Workspace CLI task)
-**Shippable to production: NOT YET.** Tasks 5 through 9 remain.

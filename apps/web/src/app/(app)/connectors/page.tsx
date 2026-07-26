@@ -16,7 +16,7 @@ import { isConnectorsEnabled } from '@/lib/config';
  *
  * Self-host without Pipedream configured never initiates this OAuth flow, so
  * this route should never legitimately be hit there — but guard it anyway
- * (a stale bookmark/link) by bouncing to /projects instead of confirming a
+ * (a stale bookmark/link) by bouncing to /workspaces instead of confirming a
  * "connection" for a feature that isn't enabled.
  */
 export default function ConnectorsPage() {
@@ -34,7 +34,7 @@ function ConnectorResult() {
   const connectorsEnabled = isConnectorsEnabled();
 
   useEffect(() => {
-    if (!connectorsEnabled) router.replace('/projects');
+    if (!connectorsEnabled) router.replace('/workspaces');
   }, [connectorsEnabled, router]);
 
   const ok = params.get('connected') === 'true';
@@ -70,8 +70,8 @@ function ConnectorResult() {
             <Plug className="h-4 w-4" />
             {tI18nHardcoded.raw('autoAppAppConnectorsPageJsxTextCloseWindowa183ed6a')}
           </Button>
-          <Button variant="ghost" onClick={() => router.replace('/projects')}>
-            {tI18nHardcoded.raw('autoAppAppConnectorsPageJsxTextGoToProjectsfb39e5ad')}
+          <Button variant="ghost" onClick={() => router.replace('/workspaces')}>
+            {tI18nHardcoded.raw('autoAppAppConnectorsPageJsxTextGoToWorkspacesfb39e5ad')}
           </Button>
         </div>
       </div>

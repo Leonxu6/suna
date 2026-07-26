@@ -20,7 +20,7 @@
     // re-baking the sandbox image.
     "kortix-voice": {
       "type": "remote",
-      "url": "{env:KORTIX_API_URL}/v1/projects/{env:KORTIX_PROJECT_ID}/mcp/voice",
+      "url": "{env:KORTIX_API_URL}/v1/workspaces/{env:KORTIX_WORKSPACE_ID}/mcp/voice",
       "enabled": true,
       "headers": {
         "Authorization": "Bearer {env:KORTIX_CLI_TOKEN}"

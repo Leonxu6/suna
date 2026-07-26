@@ -4,7 +4,7 @@
  * + active sessions, PAT policy, service accounts, and audit webhooks.
  */
 
-import { apiFetch } from '@/lib/projects/projects-client';
+import { apiFetch } from '@/lib/workspaces/workspaces-client';
 
 const iam = (accountId: string) => `/accounts/${encodeURIComponent(accountId)}/iam`;
 
@@ -143,9 +143,9 @@ export interface MemberGroupSummary {
   name: string;
   added_at: string;
 }
-export interface MemberProjectAccess {
-  project_id: string;
-  project_name: string;
+export interface MemberWorkspaceAccess {
+  workspace_id: string;
+  workspace_name: string;
   role: 'manager' | 'editor' | 'member';
   sources: Array<'implicit' | 'direct' | 'group'>;
 }
@@ -154,9 +154,9 @@ export async function listMemberGroups(accountId: string, userId: string) {
   const res = await apiFetch<{ groups: MemberGroupSummary[] }>(`${iam(accountId)}/members/${encodeURIComponent(userId)}/groups`);
   return res.groups;
 }
-export async function listMemberProjectAccess(accountId: string, userId: string) {
-  const res = await apiFetch<{ projects: MemberProjectAccess[] }>(`${iam(accountId)}/members/${encodeURIComponent(userId)}/project-access`);
-  return res.projects;
+export async function listMemberWorkspaceAccess(accountId: string, userId: string) {
+  const res = await apiFetch<{ workspaces: MemberWorkspaceAccess[] }>(`${iam(accountId)}/members/${encodeURIComponent(userId)}/workspace-access`);
+  return res.workspaces;
 }
 export function setMemberSuperAdmin(accountId: string, userId: string, isSuperAdmin: boolean) {
   return apiFetch<{ user_id: string; is_super_admin: boolean }>(`${iam(accountId)}/members/${encodeURIComponent(userId)}/super-admin`, {

@@ -100,7 +100,7 @@ const MARKETING_RECORDS: PublicContentRecord[] = [
     slug: 'marketplace',
     title: 'Kortix Marketplace',
     description:
-      'Browse skills, agents, and commands from every source. Add them to a Kortix project in one click.',
+      'Browse skills, agents, and commands from every source. Add them to a Kortix workspace in one click.',
     htmlPath: '/marketplace',
   },
   {

@@ -20,13 +20,13 @@ export function buildInstallSuccessSummary(
   };
 }
 
-/** Deep-link destination for "View in project" — the customize overlay's
- *  Marketplace section (installed tab lives there), scoped to the project the
+/** Deep-link destination for "View in workspace" — the customize overlay's
+ *  Marketplace section (installed tab lives there), scoped to the workspace the
  *  item just landed in. Kept as a plain path builder (no router dependency)
  *  so it's testable and reusable from both in-app navigation and a toast
  *  action that has to work from any page, including the public marketplace. */
-export function projectMarketplaceHref(projectId: string): string {
-  return `/projects/${encodeURIComponent(projectId)}/customize/marketplace`;
+export function workspaceMarketplaceHref(workspaceId: string): string {
+  return `/workspaces/${encodeURIComponent(workspaceId)}/customize/marketplace`;
 }
 
 /** True when an item exposes any secrets/connectors/tools it needs — used to
@@ -43,13 +43,13 @@ export function capabilityCount(caps: ItemCapabilities | null | undefined): numb
 }
 
 /** Whether the install control should be disabled: no item resolved yet, no
- *  destination project chosen (picker mode), or a request already in flight —
+ *  destination workspace chosen (picker mode), or a request already in flight —
  *  the single source of truth so the button and the Enter-to-submit handler
  *  can't disagree about when a submit is valid. */
 export function isInstallDisabled(params: {
   hasItem: boolean;
-  targetProjectId: string;
+  targetWorkspaceId: string;
   pending: boolean;
 }): boolean {
-  return !params.hasItem || !params.targetProjectId || params.pending;
+  return !params.hasItem || !params.targetWorkspaceId || params.pending;
 }

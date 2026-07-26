@@ -10,6 +10,7 @@ export interface KortixAccount {
   slug?: string;
   account_role?: string;
   is_primary_owner?: boolean;
+  default_workspace_id?: string | null;
 }
 
 export interface AccountDetail {
@@ -26,6 +27,7 @@ export interface AccountDetail {
   mfa_required?: boolean;
   created_at: string;
   updated_at: string;
+  default_workspace_id?: string | null;
 }
 
 export interface AccountMemberGroup {

@@ -3,7 +3,7 @@
  *
  * Zod schemas + inferred TS types describing EXACTLY what apps/api serializes
  * onto the wire today. The API serializers
- * (apps/api/src/projects/lib/serializers.ts et al) are the behavioral source
+ * (apps/api/src/workspaces/lib/serializers.ts et al) are the behavioral source
  * of truth; these schemas are purely descriptive — nothing here validates
  * requests or reshapes responses.
  *
@@ -525,7 +525,7 @@ export type UpdateConnectionProfileCredentialInput = z.infer<
   typeof UpdateConnectionProfileCredentialInputSchema
 >;
 
-/** Authoritative public body for POST /v1/projects/:projectId/sessions. */
+/** Authoritative public body for POST /v1/workspaces/:workspaceId/sessions. */
 export const SessionCreateInputSchema = z
   .object({
     base_ref: z.string().min(1).optional(),
@@ -772,7 +772,7 @@ export const SessionStartResultSchema = z.object({
 export type SessionStartResult = z.infer<typeof SessionStartResultSchema>;
 
 /**
- * The 202 envelope of POST /v1/projects/:id/sessions when the create is
+ * The 202 envelope of POST /v1/workspaces/:id/sessions when the create is
  * accepted asynchronously instead of returning a session row.
  */
 export const SessionCreateAcceptedSchema = z.object({
@@ -817,7 +817,7 @@ export const TriggerSchema = z.object({
 export type Trigger = z.infer<typeof TriggerSchema>;
 
 /**
- * The actual GET /v1/projects/:id/triggers response: an envelope, not a bare
+ * The actual GET /v1/workspaces/:id/triggers response: an envelope, not a bare
  * array (specs + per-project pause switch + manifest parse errors).
  */
 export const TriggerListSchema = z.object({

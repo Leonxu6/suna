@@ -15,7 +15,7 @@ import {
   useRuntimeCommands,
   useRuntimeProviders,
 } from '@kortix/sdk/react';
-import { useProjectConfig } from '@kortix/sdk/react';
+import { useWorkspaceConfig } from '@kortix/sdk/react';
 
 export interface ComposerOptions {
   agent?: string;
@@ -36,7 +36,7 @@ export function ComposerChatInput({
   onSend,
   onCommand,
   sessionId,
-  projectId,
+  workspaceId,
   isBusy,
   stopDisabled,
   isSending,
@@ -56,14 +56,14 @@ export function ComposerChatInput({
   onSend: (text: string, files: AttachedFile[] | undefined, options: ComposerOptions) => void;
   onCommand?: (command: Command, args: string | undefined, options: ComposerOptions) => void;
   sessionId?: string;
-  projectId?: string;
+  workspaceId?: string;
   isBusy?: boolean;
   /** Show a disabled stop button while busy (e.g. the computer is still booting). */
   stopDisabled?: boolean;
   /** Send in flight, not yet settled — spinner in the send slot (see SessionChatInput.isSending). */
   isSending?: boolean;
   disabled?: boolean;
-  /** Clear the composer optimistically on send. Set false on the project-home
+  /** Clear the composer optimistically on send. Set false on the workspace-home
    *  composer, whose send navigates it away (see SessionChatInput.clearOnSend). */
   clearOnSend?: boolean;
   autoFocus?: boolean;
@@ -76,27 +76,27 @@ export function ComposerChatInput({
   } | null;
   inputSlot?: ReactNode;
   toolbarSlot?: ReactNode;
-  /** Extra classes for the input card (e.g. the project-home radius override). */
+  /** Extra classes for the input card (e.g. the workspace-home radius override). */
   cardClassName?: string;
-  /** Immutable project-session agent. When set, sends are locked to this agent. */
+  /** Immutable workspace-session agent. When set, sends are locked to this agent. */
   boundAgentName?: string | null;
   /** Queued-while-busy support, passed straight through to SessionChatInput. */
   queuedMessages?: { id: string; text: string }[];
   onQueueMessage?: (text: string, files?: AttachedFile[], mentions?: TrackedMention[]) => void;
   onRemoveQueuedMessage?: (id: string) => void;
 }) {
-  const { data: agents } = useRuntimeAgents({ projectId });
+  const { data: agents } = useRuntimeAgents({ workspaceId });
   const { data: providers, isLoading: providersLoading } = useRuntimeProviders();
   const { data: commands } = useRuntimeCommands();
   const { data: config } = useRuntimeConfig();
-  const projectConfig = useProjectConfig(projectId);
+  const workspaceConfig = useWorkspaceConfig(workspaceId);
   const local = useSessionModelSelection({
     agents,
     providers,
     config,
     sessionId,
     boundAgentName,
-    defaultAgentName: projectConfig?.open_code_default_agent,
+    defaultAgentName: workspaceConfig?.open_code_default_agent,
   });
   // Session agent-lock disabled (see KORTIX_ENFORCE_SESSION_AGENT_LOCK / session-chat.tsx):
   // the new-session picker is switchable; the chosen agent rides through on create.
@@ -132,7 +132,7 @@ export function ComposerChatInput({
       toolbarSlot={toolbarSlot}
       cardClassName={cardClassName}
       sessionId={sessionId}
-      projectId={projectId}
+      workspaceId={workspaceId}
       providers={providers}
       agents={local.agent.list}
       selectedAgent={lockedAgentName ?? local.agent.current?.name ?? null}

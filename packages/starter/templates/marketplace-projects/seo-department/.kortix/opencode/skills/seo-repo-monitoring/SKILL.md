@@ -21,10 +21,10 @@ Start by identifying:
 If the repo connector is not available, ask for it with a setup link and still
 produce a checklist the operator can run manually.
 
-For a company install, remember that the SEO Department project repo may only
+For a company install, remember that the SEO Department workspace repo may only
 contain this department's configuration. The monitored website or product code
 can be a separate repository. Ask for that website repo explicitly and store it
-as `SEO_REPO_URL`; do not assume the current project repo is the site.
+as `SEO_REPO_URL`; do not assume the current workspace repo is the site.
 
 ## High-Signal Files
 

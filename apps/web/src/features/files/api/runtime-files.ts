@@ -16,7 +16,7 @@ export {
   deleteFile,
   findFiles,
   findText,
-  getCurrentProject,
+  getCurrentProject as getCurrentWorkspace,
   getFileStatus,
   getServerHealth,
   isServerReachable,

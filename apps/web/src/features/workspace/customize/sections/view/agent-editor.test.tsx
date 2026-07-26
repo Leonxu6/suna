@@ -95,21 +95,21 @@ describe('Segmented control', () => {
 describe('KORTIX_CLI_CATALOG — grantable action mirror', () => {
   const all = KORTIX_CLI_CATALOG.flatMap((g) => g.actions);
 
-  test('only project-scoped actions appear (account-scoped admin never grantable)', () => {
+  test('only workspace-scoped actions appear (account-scoped admin never grantable)', () => {
     for (const a of all) {
-      expect(a.startsWith('project.')).toBe(true);
+      expect(a.startsWith('workspace.')).toBe(true);
     }
     expect(all).not.toContain('billing.read');
     expect(all).not.toContain('member.invite');
-    expect(all).not.toContain('project.create');
+    expect(all).not.toContain('workspace.create');
   });
 
-  // The three manager-tier project leaves are grantable again — reachable via
-  // a project's `manager` role, so an agent can carry them too.
-  test('the three manager-tier project leaves are present', () => {
-    expect(all).toContain('project.delete');
-    expect(all).toContain('project.members.manage');
-    expect(all).toContain('project.gateway.keys.manage');
+  // The three manager-tier workspace leaves are grantable again — reachable via
+  // a workspace's `manager` role, so an agent can carry them too.
+  test('the three manager-tier workspace leaves are present', () => {
+    expect(all).toContain('workspace.delete');
+    expect(all).toContain('workspace.members.manage');
+    expect(all).toContain('workspace.gateway.keys.manage');
   });
 
   test('full-array equality against the real GRANTABLE_KORTIX_CLI_ACTIONS (order-independent)', () => {

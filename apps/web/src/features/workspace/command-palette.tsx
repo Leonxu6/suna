@@ -25,25 +25,25 @@ import { SidebarContext } from '@/components/ui/sidebar';
 import { errorToast, successToast } from '@/components/ui/toast';
 import { openSessionQuickView } from '@/features/session/open-session-quick-view';
 import { useRuntimeAgents, useRuntimeProviders } from '@kortix/sdk/react';
-import { useNewProjectSession } from '@/hooks/projects/use-new-project-session';
+import { useNewWorkspaceSession } from '@/hooks/workspaces/use-new-workspace-session';
 import { parseCustomizeSection } from '@/lib/customize-sections';
 import { type MenuItemDef, type SettingsTabId, getItemsForSurface } from '@/lib/menu-registry';
 import { cn } from '@/lib/utils';
 import { useCurrentAccountStore } from '@/stores/current-account-store';
 import { useCustomizeStore } from '@/stores/customize-store';
-import { useProjectSessionTabsStore } from '@/stores/project-session-tabs-store';
+import { useWorkspaceSessionTabsStore } from '@/stores/workspace-session-tabs-store';
 import { featureFlags } from '@kortix/sdk/feature-flags';
 import { normalizeAppPathname } from '@kortix/sdk/instance-routes';
 import { systemReload } from '@kortix/sdk';
 import {
   type ExperimentalFeatureKey,
   type KortixAccount,
-  type KortixProject,
-  type ProjectSession,
-  getProjectDetail,
+  type KortixWorkspace,
+  type WorkspaceSession,
+  getWorkspaceDetail,
   listAccounts,
-  listProjectSessions,
-  listProjectsForAccount,
+  listWorkspaceSessions,
+  listWorkspacesForAccount,
 } from '@kortix/sdk';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -113,7 +113,7 @@ type PalettePage =
   | 'agents'
   | 'models'
   | 'messages'
-  | 'projects'
+  | 'workspaces'
   | 'accounts'
   | 'sessions'
   | 'files';
@@ -148,7 +148,7 @@ const LEGACY_PALETTE_HIDDEN = new Set([
 ]);
 
 const SUBMENU_PAGE_BY_ID: Record<string, PalettePage> = {
-  'nav-projects': 'projects',
+  'nav-workspaces': 'workspaces',
   'nav-accounts': 'accounts',
   'proj-sessions': 'sessions',
 };
@@ -172,7 +172,7 @@ function FileSearchPage({
         <div className="space-y-1 text-center">
           <p className="text-muted-foreground/60 text-sm">
             {tHardcodedUi.raw(
-              'componentsCommandPalette.line183JsxTextSearchFilesInThisProjectSRepo',
+              'componentsCommandPalette.line183JsxTextSearchFilesInThisWorkspaceSRepo',
             )}
           </p>
           <p className="text-muted-foreground/30 text-xs">
@@ -375,8 +375,8 @@ export function CommandPalette() {
   const pathname = normalizeAppPathname(rawPathname);
   const params = useParams<{ id?: string; sessionId?: string }>();
   const queryClient = useQueryClient();
-  const openProjectTab = useProjectSessionTabsStore((s) => s.openTab);
-  const projectId = rawPathname?.startsWith('/projects/') ? (params?.id ?? null) : null;
+  const openWorkspaceTab = useWorkspaceSessionTabsStore((s) => s.openTab);
+  const workspaceId = rawPathname?.startsWith('/workspaces/') ? (params?.id ?? null) : null;
   const currentSessionId = useMemo(() => {
     if (params?.sessionId) return params.sessionId;
     const match = pathname?.match(/^\/sessions\/([^/]+)/);
@@ -409,33 +409,33 @@ export function CommandPalette() {
     accountsList?.[0] ??
     null;
   const activeAccountId = activeAccount?.account_id ?? null;
-  const { data: projectsList } = useQuery({
-    queryKey: ['projects', activeAccountId],
-    queryFn: () => listProjectsForAccount(activeAccountId || undefined),
+  const { data: workspacesList } = useQuery({
+    queryKey: ['workspaces', activeAccountId],
+    queryFn: () => listWorkspacesForAccount(activeAccountId || undefined),
     enabled: open && !!activeAccountId,
     staleTime: 30_000,
   });
-  const { data: projectSessionsList } = useQuery({
-    queryKey: ['project-sessions', projectId],
-    queryFn: () => listProjectSessions(projectId!),
-    enabled: open && !!projectId,
+  const { data: workspaceSessionsList } = useQuery({
+    queryKey: ['workspace-sessions', workspaceId],
+    queryFn: () => listWorkspaceSessions(workspaceId!),
+    enabled: open && !!workspaceId,
     staleTime: 15_000,
   });
 
-  const { data: projectDetail } = useQuery({
-    queryKey: ['project-detail', projectId],
-    queryFn: () => getProjectDetail(projectId!),
-    enabled: open && !!projectId,
+  const { data: workspaceDetail } = useQuery({
+    queryKey: ['workspace-detail', workspaceId],
+    queryFn: () => getWorkspaceDetail(workspaceId!),
+    enabled: open && !!workspaceId,
     staleTime: 60_000,
   });
   const isExperimentalEnabled = useCallback(
     (key: ExperimentalFeatureKey) => {
-      const project = projectDetail?.project;
-      if (!project) return false;
-      if (key === 'llm_gateway') return isLlmGatewayAvailable(project);
-      return project.experimental?.[key] === true;
+      const workspace = workspaceDetail?.workspace;
+      if (!workspace) return false;
+      if (key === 'llm_gateway') return isLlmGatewayAvailable(workspace);
+      return workspace.experimental?.[key] === true;
     },
-    [projectDetail],
+    [workspaceDetail],
   );
 
   const allModels = useMemo(() => flattenModels(providers), [providers]);
@@ -561,17 +561,17 @@ export function CommandPalette() {
         if (item.id === 'toggle-sidebar' && !sidebarCtx) return false;
         if (item.requiresBilling && !billingEnabled) return false;
         if (item.requiresSession && !currentSessionId) return false;
-        if (item.requiresProject && !projectId) return false;
+        if (item.requiresWorkspace && !workspaceId) return false;
         if (item.requiresExperimental && !isExperimentalEnabled(item.requiresExperimental))
           return false;
         return true;
       })
       .map((item) =>
-        item.href?.includes('{projectId}') && projectId
-          ? { ...item, href: item.href.replaceAll('{projectId}', projectId) }
+        item.href?.includes('{workspaceId}') && workspaceId
+          ? { ...item, href: item.href.replaceAll('{workspaceId}', workspaceId) }
           : item,
       );
-  }, [billingEnabled, currentSessionId, projectId, sidebarCtx, isExperimentalEnabled]);
+  }, [billingEnabled, currentSessionId, workspaceId, sidebarCtx, isExperimentalEnabled]);
 
   const filteredNavItems = useMemo(() => {
     if (!hasQuery) return allPaletteItems;
@@ -587,9 +587,9 @@ export function CommandPalette() {
 
   const visibleAgents = useMemo(() => {
     if (!agents) return [];
-    const projectOnlyAgents = new Set(['project-manager']);
+    const workspaceOnlyAgents = new Set(['workspace-manager']);
     return agents.filter(
-      (a) => !a.hidden && (featureFlags.enableProjects || !projectOnlyAgents.has(a.name)),
+      (a) => !a.hidden && (featureFlags.enableProjects || !workspaceOnlyAgents.has(a.name)),
     );
   }, [agents]);
 
@@ -693,12 +693,12 @@ export function CommandPalette() {
   const hasNavResults = filteredNavItems.length > 0;
   const hasSessionActionResults = sessionActionItems.length > 0;
 
-  const newSession = useNewProjectSession(projectId ?? undefined);
+  const newSession = useNewWorkspaceSession(workspaceId ?? undefined);
   const handleNewSession = useCallback(() => {
-    if (projectId) {
+    if (workspaceId) {
       newSession({
         onNavigate: (sessionId) => {
-          openProjectTab(projectId, sessionId);
+          openWorkspaceTab(workspaceId, sessionId);
           close();
         },
       });
@@ -723,13 +723,13 @@ export function CommandPalette() {
       })
       .catch(() => errorToast('Failed to create session'))
       .finally(() => setIsCreating(false));
-  }, [isCreating, projectId, newSession, createSession, openProjectTab, close]);
+  }, [isCreating, workspaceId, newSession, createSession, openWorkspaceTab, close]);
 
   const setSelectedAccountId = useCurrentAccountStore((s) => s.setSelectedAccountId);
 
-  const handleSelectProject = useCallback(
-    (p: KortixProject) => {
-      router.push(`/projects/${p.project_id}`);
+  const handleSelectWorkspace = useCallback(
+    (p: KortixWorkspace) => {
+      router.push(`/workspaces/${p.workspace_id}`);
       close();
     },
     [router, close],
@@ -738,50 +738,50 @@ export function CommandPalette() {
   const handleSelectAccount = useCallback(
     (a: KortixAccount) => {
       setSelectedAccountId(a.account_id);
-      router.push('/projects');
+      router.push('/workspaces');
       close();
     },
     [setSelectedAccountId, router, close],
   );
 
-  const handleSelectProjectSession = useCallback(
-    (s: ProjectSession) => {
-      if (!projectId) return close();
-      openProjectTab(projectId, s.session_id);
-      router.push(`/projects/${projectId}/sessions/${s.session_id}`);
+  const handleSelectWorkspaceSession = useCallback(
+    (s: WorkspaceSession) => {
+      if (!workspaceId) return close();
+      openWorkspaceTab(workspaceId, s.session_id);
+      router.push(`/workspaces/${workspaceId}/sessions/${s.session_id}`);
       close();
     },
-    [projectId, openProjectTab, router, close],
+    [workspaceId, openWorkspaceTab, router, close],
   );
 
-  const sessionName = (s: ProjectSession) =>
+  const sessionName = (s: WorkspaceSession) =>
     s.name ||
     (typeof s.metadata?.session_name === 'string' ? s.metadata.session_name : '') ||
     s.branch_name ||
     s.session_id.slice(0, 8);
 
-  const sortedProjects = useMemo(
+  const sortedWorkspaces = useMemo(
     () =>
-      [...(projectsList ?? [])].sort((a, b) =>
+      [...(workspacesList ?? [])].sort((a, b) =>
         (b.last_opened_at || b.updated_at).localeCompare(a.last_opened_at || a.updated_at),
       ),
-    [projectsList],
+    [workspacesList],
   );
 
-  const filteredProjectsList = useMemo(() => {
+  const filteredWorkspacesList = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (
-      q ? sortedProjects.filter((p) => p.name.toLowerCase().includes(q)) : sortedProjects
+      q ? sortedWorkspaces.filter((p) => p.name.toLowerCase().includes(q)) : sortedWorkspaces
     ).slice(0, 50);
-  }, [sortedProjects, query]);
+  }, [sortedWorkspaces, query]);
 
-  const recentProjectSessions = useMemo(() => {
-    return [...(projectSessionsList ?? [])]
+  const recentWorkspaceSessions = useMemo(() => {
+    return [...(workspaceSessionsList ?? [])]
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
       .slice(0, 5);
-  }, [projectSessionsList]);
+  }, [workspaceSessionsList]);
 
-  const recentProjects = useMemo(() => sortedProjects.slice(0, 5), [sortedProjects]);
+  const recentWorkspaces = useMemo(() => sortedWorkspaces.slice(0, 5), [sortedWorkspaces]);
 
   const filteredAccountsList = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -791,31 +791,31 @@ export function CommandPalette() {
     return q ? sorted.filter((a) => (a.name || '').toLowerCase().includes(q)) : sorted;
   }, [accountsList, query]);
 
-  const filteredProjectSessionsList = useMemo(() => {
+  const filteredWorkspaceSessionsList = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const sorted = [...(projectSessionsList ?? [])].sort(
+    const sorted = [...(workspaceSessionsList ?? [])].sort(
       (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
     );
     return (q ? sorted.filter((s) => sessionName(s).toLowerCase().includes(q)) : sorted).slice(
       0,
       50,
     );
-  }, [projectSessionsList, query]);
+  }, [workspaceSessionsList, query]);
 
   const rootSessionResults = useMemo(() => {
-    if (!hasQuery || !projectId) return [];
-    return filteredProjectSessionsList.slice(0, 8);
-  }, [hasQuery, projectId, filteredProjectSessionsList]);
+    if (!hasQuery || !workspaceId) return [];
+    return filteredWorkspaceSessionsList.slice(0, 8);
+  }, [hasQuery, workspaceId, filteredWorkspaceSessionsList]);
 
-  const rootProjectResults = useMemo(() => {
-    if (!hasQuery || projectId) return [];
-    return filteredProjectsList.slice(0, 8);
-  }, [hasQuery, projectId, filteredProjectsList]);
+  const rootWorkspaceResults = useMemo(() => {
+    if (!hasQuery || workspaceId) return [];
+    return filteredWorkspacesList.slice(0, 8);
+  }, [hasQuery, workspaceId, filteredWorkspacesList]);
 
   const hasSessionResults = rootSessionResults.length > 0;
-  const hasProjectResults = rootProjectResults.length > 0;
+  const hasWorkspaceResults = rootWorkspaceResults.length > 0;
   const hasAnyResults =
-    hasNavResults || hasSessionResults || hasProjectResults || hasSessionActionResults;
+    hasNavResults || hasSessionResults || hasWorkspaceResults || hasSessionActionResults;
 
   const showNoResults = hasQuery && queryLongEnough && !hasAnyResults;
 
@@ -838,11 +838,11 @@ export function CommandPalette() {
 
   const handleSelectFile = useCallback(
     (_filePath: string, _lineNumber?: number) => {
-      if (!projectId) return close();
-      router.push(`/projects/${projectId}/files`);
+      if (!workspaceId) return close();
+      router.push(`/workspaces/${workspaceId}/files`);
       close();
     },
-    [projectId, router, close],
+    [workspaceId, router, close],
   );
 
   const jumpToMessage = useMessageJumpStore((s) => s.jumpToMessage);
@@ -1199,7 +1199,7 @@ export function CommandPalette() {
             break;
           }
 
-          if (href.startsWith('/projects') || href.startsWith('/accounts')) {
+          if (href.startsWith('/workspaces') || href.startsWith('/accounts')) {
             router.push(href);
             close();
             break;
@@ -1267,15 +1267,15 @@ export function CommandPalette() {
   const totalSearchResults = useMemo(() => {
     if (page === 'agents') return filteredAgents.length;
     if (page === 'models') return visibleModels.length;
-    if (page === 'projects') return filteredProjectsList.length;
+    if (page === 'workspaces') return filteredWorkspacesList.length;
     if (page === 'accounts') return filteredAccountsList.length;
-    if (page === 'sessions') return filteredProjectSessionsList.length;
+    if (page === 'sessions') return filteredWorkspaceSessionsList.length;
     if (page === 'messages') return 0;
     if (!hasQuery) return 0;
     return (
       filteredNavItems.length +
       rootSessionResults.length +
-      rootProjectResults.length +
+      rootWorkspaceResults.length +
       sessionActionItems.length
     );
   }, [
@@ -1283,21 +1283,21 @@ export function CommandPalette() {
     hasQuery,
     filteredNavItems,
     rootSessionResults,
-    rootProjectResults,
+    rootWorkspaceResults,
     sessionActionItems,
     filteredAgents,
     visibleModels,
-    filteredProjectsList,
+    filteredWorkspacesList,
     filteredAccountsList,
-    filteredProjectSessionsList,
+    filteredWorkspaceSessionsList,
   ]);
 
   const placeholder = useMemo(() => {
     if (page === 'agents') return 'Search agents...';
     if (page === 'models') return 'Search models...';
-    if (page === 'files') return 'Search files in this project...';
+    if (page === 'files') return 'Search files in this workspace...';
     if (page === 'messages') return 'Search messages...';
-    if (page === 'projects') return 'Search projects...';
+    if (page === 'workspaces') return 'Search workspaces...';
     if (page === 'accounts') return 'Search accounts...';
     if (page === 'sessions') return 'Search sessions...';
     return 'Search commands, sessions...';
@@ -1308,7 +1308,7 @@ export function CommandPalette() {
     if (page === 'models') return 'Change Model';
     if (page === 'files') return 'Search Files';
     if (page === 'messages') return 'Jump to Message';
-    if (page === 'projects') return 'Switch Project';
+    if (page === 'workspaces') return 'Switch Workspace';
     if (page === 'accounts') return 'Switch Account';
     if (page === 'sessions') return 'Open Session';
     return null;
@@ -1441,7 +1441,7 @@ export function CommandPalette() {
                         </>
                       )}
 
-                      {projectId && (
+                      {workspaceId && (
                         <CommandItem
                           value="suggestion search files find file grep repo content"
                           onSelect={() => goToPage('files')}
@@ -1460,20 +1460,20 @@ export function CommandPalette() {
                       )}
                     </CommandGroup>
 
-                    {projectId && recentProjectSessions.length > 0 && (
+                    {workspaceId && recentWorkspaceSessions.length > 0 && (
                       <CommandGroup
                         heading={tHardcodedUi.raw(
                           'componentsCommandPalette.line1260JsxAttrHeadingRecentSessions',
                         )}
                         forceMount
                       >
-                        {recentProjectSessions.map((session) => (
+                        {recentWorkspaceSessions.map((session) => (
                           <CommandItem
                             key={session.session_id}
                             value={sanitizeCmdkValue(
                               `recent ${sessionName(session)} ${session.session_id}`,
                             )}
-                            onSelect={() => handleSelectProjectSession(session)}
+                            onSelect={() => handleSelectWorkspaceSession(session)}
                           >
                             <MessageCircle className="size-4 flex-shrink-0" />
                             <span className="flex-1 truncate">{sessionName(session)}</span>
@@ -1485,27 +1485,27 @@ export function CommandPalette() {
                       </CommandGroup>
                     )}
 
-                    {!projectId && recentProjects.length > 0 && (
+                    {!workspaceId && recentWorkspaces.length > 0 && (
                       <CommandGroup
                         heading={tHardcodedUi.raw(
-                          'componentsCommandPalette.line1281JsxAttrHeadingRecentProjects',
+                          'componentsCommandPalette.line1281JsxAttrHeadingRecentWorkspaces',
                         )}
                         forceMount
                       >
-                        {recentProjects.map((project) => (
+                        {recentWorkspaces.map((workspace) => (
                           <CommandItem
-                            key={project.project_id}
+                            key={workspace.workspace_id}
                             value={sanitizeCmdkValue(
-                              `recent project ${project.name} ${project.project_id}`,
+                              `recent workspace ${workspace.name} ${workspace.workspace_id}`,
                             )}
-                            onSelect={() => handleSelectProject(project)}
+                            onSelect={() => handleSelectWorkspace(workspace)}
                           >
                             <FolderGit2 className="size-4 flex-shrink-0" />
-                            <span className="flex-1 truncate">{project.name}</span>
-                            {(project.last_opened_at || project.updated_at) && (
+                            <span className="flex-1 truncate">{workspace.name}</span>
+                            {(workspace.last_opened_at || workspace.updated_at) && (
                               <span className="text-muted-foreground/30 flex-shrink-0 text-xs tabular-nums">
                                 {formatRelativeTime(
-                                  new Date(project.last_opened_at || project.updated_at).getTime(),
+                                  new Date(workspace.last_opened_at || workspace.updated_at).getTime(),
                                 )}
                               </span>
                             )}
@@ -1603,7 +1603,7 @@ export function CommandPalette() {
                             value={sanitizeCmdkValue(
                               `session ${sessionName(session)} ${session.session_id}`,
                             )}
-                            onSelect={() => handleSelectProjectSession(session)}
+                            onSelect={() => handleSelectWorkspaceSession(session)}
                           >
                             <MessageCircle className="size-4 flex-shrink-0" />
                             <span className="flex-1 truncate">{sessionName(session)}</span>
@@ -1618,22 +1618,22 @@ export function CommandPalette() {
                       </CommandGroup>
                     )}
 
-                    {hasProjectResults && (
-                      <CommandGroup heading="Projects" forceMount>
-                        {rootProjectResults.map((project) => (
+                    {hasWorkspaceResults && (
+                      <CommandGroup heading="Workspaces" forceMount>
+                        {rootWorkspaceResults.map((workspace) => (
                           <CommandItem
-                            key={project.project_id}
+                            key={workspace.workspace_id}
                             value={sanitizeCmdkValue(
-                              `project ${project.name} ${project.project_id}`,
+                              `workspace ${workspace.name} ${workspace.workspace_id}`,
                             )}
-                            onSelect={() => handleSelectProject(project)}
+                            onSelect={() => handleSelectWorkspace(workspace)}
                           >
                             <FolderGit2 className="size-4 flex-shrink-0" />
-                            <span className="flex-1 truncate">{project.name}</span>
-                            {(project.last_opened_at || project.updated_at) && (
+                            <span className="flex-1 truncate">{workspace.name}</span>
+                            {(workspace.last_opened_at || workspace.updated_at) && (
                               <span className="text-muted-foreground/40 flex-shrink-0 text-xs tabular-nums">
                                 {formatRelativeTime(
-                                  new Date(project.last_opened_at || project.updated_at).getTime(),
+                                  new Date(workspace.last_opened_at || workspace.updated_at).getTime(),
                                 )}
                               </span>
                             )}
@@ -1668,7 +1668,7 @@ export function CommandPalette() {
                       </CommandGroup>
                     )}
 
-                    {queryLongEnough && !detectedUrl && projectId && (
+                    {queryLongEnough && !detectedUrl && workspaceId && (
                       <CommandGroup
                         heading={tHardcodedUi.raw(
                           'componentsCommandPalette.line1437JsxAttrHeadingFileSearch',
@@ -1879,22 +1879,22 @@ export function CommandPalette() {
               </>
             )}
 
-            {page === 'files' && projectId && (
+            {page === 'files' && workspaceId && (
               <FileSearchPage query={query} onSelect={handleSelectFile} />
             )}
 
-            {page === 'projects' &&
-              (filteredProjectsList.length > 0 ? (
-                <CommandGroup heading="Projects" forceMount>
-                  {filteredProjectsList.map((project) => (
+            {page === 'workspaces' &&
+              (filteredWorkspacesList.length > 0 ? (
+                <CommandGroup heading="Workspaces" forceMount>
+                  {filteredWorkspacesList.map((workspace) => (
                     <CommandItem
-                      key={project.project_id}
-                      value={sanitizeCmdkValue(`project ${project.name} ${project.project_id}`)}
-                      onSelect={() => handleSelectProject(project)}
+                      key={workspace.workspace_id}
+                      value={sanitizeCmdkValue(`workspace ${workspace.name} ${workspace.workspace_id}`)}
+                      onSelect={() => handleSelectWorkspace(workspace)}
                     >
                       <FolderGit2 className="text-muted-foreground size-4 shrink-0" />
-                      <span className="flex-1 truncate">{project.name}</span>
-                      {project.project_id === params?.id && (
+                      <span className="flex-1 truncate">{workspace.name}</span>
+                      {workspace.workspace_id === params?.id && (
                         <Check className="text-primary h-3.5 w-3.5 shrink-0" />
                       )}
                     </CommandItem>
@@ -1904,7 +1904,7 @@ export function CommandPalette() {
                 <div className="flex flex-col items-center gap-2 py-12" cmdk-empty="">
                   <FolderGit2 className="text-muted-foreground/30 size-5" />
                   <span className="text-muted-foreground/60 text-sm">
-                    {query ? `No projects matching "${query}"` : 'No projects yet'}
+                    {query ? `No workspaces matching "${query}"` : 'No workspaces yet'}
                   </span>
                 </div>
               ))}
@@ -1939,15 +1939,15 @@ export function CommandPalette() {
               ))}
 
             {page === 'sessions' &&
-              (filteredProjectSessionsList.length > 0 ? (
+              (filteredWorkspaceSessionsList.length > 0 ? (
                 <CommandGroup heading="Sessions" forceMount>
-                  {filteredProjectSessionsList.map((session) => (
+                  {filteredWorkspaceSessionsList.map((session) => (
                     <CommandItem
                       key={session.session_id}
                       value={sanitizeCmdkValue(
                         `session ${sessionName(session)} ${session.session_id}`,
                       )}
-                      onSelect={() => handleSelectProjectSession(session)}
+                      onSelect={() => handleSelectWorkspaceSession(session)}
                     >
                       <MessageCircle className="text-muted-foreground size-4 shrink-0" />
                       <span className="flex-1 truncate">{sessionName(session)}</span>

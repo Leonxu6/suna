@@ -1,12 +1,12 @@
 # SEO Department Install Guide
 
 Read this file before setting up the SEO Department. This guide is template
-specific: it tells you how to turn the installed project files into a working
+specific: it tells you how to turn the installed workspace files into a working
 company SEO department.
 
 ## Goal
 
-Do not ask the user to "give this project something to work on." The template
+Do not ask the user to "give this workspace something to work on." The template
 already installed the department's agents, skills, triggers, and memory. The
 company still needs to connect its real website context: domain, repository,
 analytics, Search Console, CMS/content source, competitors, approval channel,
@@ -16,11 +16,11 @@ Your job is to guide the user all the way to a usable setup.
 
 ## Guided Setup Rule
 
-The setup session created immediately after a new SEO Department project is
+The setup session created immediately after a new SEO Department workspace is
 created is the install session. Complete setup in this current session. Do not
 start another session just to install or configure the SEO Department.
 
-If this template is being added into an existing project through a change
+If this template is being added into an existing workspace through a change
 request, keep the flow guided: prepare the CR, ask the user whether to apply it,
 merge it yourself when approved and permitted, then start the first main-backed
 setup session with `seo-director`. Give the user a direct session link or use
@@ -33,7 +33,7 @@ trigger routing. During install, use their skills and checklists from this
 setup session, then explain which specialist will own each future workflow.
 Only recommend starting a separate session if the user explicitly asks to run a
 large audit or content workflow after setup is complete, or if a just-merged
-existing-project install needs the first `seo-director` session to boot from
+existing-workspace install needs the first `seo-director` session to boot from
 main.
 
 ## First Response
@@ -78,7 +78,7 @@ for it. Never ask the user to paste raw secrets in chat.
 Use the `request_secret` / `connect` tools when available. Shell equivalents are
 `kortix secrets request ...` and `kortix connectors link <slug>`.
 
-Request these project values in as few links/messages as possible:
+Request these workspace values in as few links/messages as possible:
 
 - `SEO_PRIMARY_DOMAIN`
 - `SEO_TARGET_MARKET`
@@ -103,7 +103,7 @@ Connect private data sources as the company uses them:
 - Slack or Teams approval/reporting channel,
 - rank tracking, crawler, or SEO platform if available.
 
-If the project's agent grants do not yet expose a needed connector or secret,
+If the workspace's agent grants do not yet expose a needed connector or secret,
 explain the exact access needed and open a change request rather than asking for
 broad access in chat.
 

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { type ExecutionLeaseContext, ExecutionLeaseReporter } from '../execution-lease';
 
 const context: ExecutionLeaseContext = {
-  projectId: 'project-1',
+  workspaceId: 'workspace-1',
   sessionId: 'session-1',
   token: 'kortix_sb_test',
   apiRoot: 'https://api.test/v1',
@@ -33,6 +33,13 @@ describe('ExecutionLeaseReporter', () => {
     await reporter.settled();
     expect(calls.some((call) => call.kind === 'execution_heartbeat')).toBe(true);
     expect(calls.some((call) => call.kind === 'execution_lease_release')).toBe(true);
+    expect(
+      calls.some(
+        (call) =>
+          call.url ===
+          'https://api.test/v1/workspaces/workspace-1/turn-stream',
+      ),
+    ).toBe(true);
     const direct = calls.find((call) => call.url === 'https://edge.test/kortix/health');
     expect(direct).toBeDefined();
     expect(direct?.headers).toMatchObject({

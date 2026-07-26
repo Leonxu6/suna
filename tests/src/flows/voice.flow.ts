@@ -15,30 +15,30 @@ import { flow } from "../core/flow";
 // VOICE-1 — the bot's display name in the call (manage ACL).
 flow(
   "VOICE-1",
-  { domain: "voice", routes: ["PUT /v1/projects/:projectId/channels/meet/name"] },
+  { domain: "voice", routes: ["PUT /v1/workspaces/:workspaceId/channels/meet/name"] },
   async (ctx) => {
-    const p = await ctx.fixtures.sharedProject();
+    const p = await ctx.fixtures.sharedWorkspace();
     await ctx.step("OWNER sets the name → 200", async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .put("/v1/projects/:projectId/channels/meet/name", { name: "Kortix QA" }, {
-          params: { projectId: p.id },
+        .put("/v1/workspaces/:workspaceId/channels/meet/name", { name: "Kortix QA" }, {
+          params: { workspaceId: p.id },
         });
       r.status(200).body().exists("$.bot_name");
     });
     await ctx.step("NONMEMBER → 403/404", async () => {
       const r = await ctx.client
         .as(ctx.P.NONMEMBER)
-        .put("/v1/projects/:projectId/channels/meet/name", { name: "nope" }, {
-          params: { projectId: p.id },
+        .put("/v1/workspaces/:workspaceId/channels/meet/name", { name: "nope" }, {
+          params: { workspaceId: p.id },
         });
       r.status([403, 404]);
     });
     await ctx.step("ANON → 401", async () => {
       const r = await ctx.client
         .as(ctx.P.ANON)
-        .put("/v1/projects/:projectId/channels/meet/name", { name: "nope" }, {
-          params: { projectId: p.id },
+        .put("/v1/workspaces/:workspaceId/channels/meet/name", { name: "nope" }, {
+          params: { workspaceId: p.id },
         });
       r.status(401);
     });
@@ -48,15 +48,15 @@ flow(
 // VOICE-2 — MCP handshake + the tool surface.
 flow(
   "VOICE-2",
-  { domain: "voice", routes: ["POST /v1/projects/:projectId/mcp/voice"] },
+  { domain: "voice", routes: ["POST /v1/workspaces/:workspaceId/mcp/voice"] },
   async (ctx) => {
-    const p = await ctx.fixtures.sharedProject();
+    const p = await ctx.fixtures.sharedWorkspace();
 
     await ctx.step("initialize → server info", async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .post("/v1/projects/:projectId/mcp/voice", { jsonrpc: "2.0", id: 1, method: "initialize" }, {
-          params: { projectId: p.id },
+        .post("/v1/workspaces/:workspaceId/mcp/voice", { jsonrpc: "2.0", id: 1, method: "initialize" }, {
+          params: { workspaceId: p.id },
         });
       // 401 is valid too: a user principal without a session cannot drive a call.
       r.status([200, 401]);
@@ -65,8 +65,8 @@ flow(
     await ctx.step("tools/list exposes no blocking tool", async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .post("/v1/projects/:projectId/mcp/voice", { jsonrpc: "2.0", id: 2, method: "tools/list" }, {
-          params: { projectId: p.id },
+        .post("/v1/workspaces/:workspaceId/mcp/voice", { jsonrpc: "2.0", id: 2, method: "tools/list" }, {
+          params: { workspaceId: p.id },
         });
       r.status([200, 401]);
       // A follow/tail/stream tool would wedge the single-threaded agent loop.
@@ -83,8 +83,8 @@ flow(
     await ctx.step("ANON → 401", async () => {
       const r = await ctx.client
         .as(ctx.P.ANON)
-        .post("/v1/projects/:projectId/mcp/voice", { jsonrpc: "2.0", id: 3, method: "tools/list" }, {
-          params: { projectId: p.id },
+        .post("/v1/workspaces/:workspaceId/mcp/voice", { jsonrpc: "2.0", id: 3, method: "tools/list" }, {
+          params: { workspaceId: p.id },
         });
       r.status(401);
     });
@@ -94,16 +94,16 @@ flow(
 // VOICE-3 — malformed JSON-RPC is a protocol error, not a 500.
 flow(
   "VOICE-3",
-  { domain: "voice", routes: ["POST /v1/projects/:projectId/mcp/voice"] },
+  { domain: "voice", routes: ["POST /v1/workspaces/:workspaceId/mcp/voice"] },
   async (ctx) => {
-    const p = await ctx.fixtures.sharedProject();
+    const p = await ctx.fixtures.sharedWorkspace();
     await ctx.step("unknown method → -32601 (or 401 without a session principal)", async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          "/v1/projects/:projectId/mcp/voice",
+          "/v1/workspaces/:workspaceId/mcp/voice",
           { jsonrpc: "2.0", id: 9, method: "resources/list" },
-          { params: { projectId: p.id } },
+          { params: { workspaceId: p.id } },
         );
       r.status([200, 401]);
     });

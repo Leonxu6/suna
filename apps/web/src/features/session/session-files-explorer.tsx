@@ -19,7 +19,7 @@ import { useEffect, useRef, useState } from 'react';
  * Session side-panel "Files" surface.
  *
  * An elegant version header frames the screen as a standalone copy of the
- * project's main version, with two plain tabs:
+ * workspace's main version, with two plain tabs:
  *   • All files (default) — the SAME Drive-style explorer the /files page
  *                uses ({@link DriveExplorer}), pointed at the live sandbox
  *                via {@link sandboxExplorerSource} (writable, searchable).
@@ -35,14 +35,14 @@ import { useEffect, useRef, useState } from 'react';
  */
 export function SessionFilesExplorer({
   chatSessionId,
-  projectId,
-  projectSessionId,
+  workspaceId,
+  workspaceSessionId,
   ephemeral = false,
   initialMode = 'files',
 }: {
   chatSessionId?: string;
-  projectId?: string;
-  projectSessionId?: string;
+  workspaceId?: string;
+  workspaceSessionId?: string;
   /**
    * Which tab an ephemeral mount lands on. Ignored when not `ephemeral` —
    * a persisted mount takes its mode from `viewBySession`, which is the whole
@@ -64,8 +64,8 @@ export function SessionFilesExplorer({
     <FilesStoreProvider store={store}>
       <SessionFilesExplorerInner
         chatSessionId={chatSessionId}
-        projectId={projectId}
-        projectSessionId={projectSessionId}
+        workspaceId={workspaceId}
+        workspaceSessionId={workspaceSessionId}
         ephemeral={ephemeral}
         initialMode={initialMode}
       />
@@ -75,14 +75,14 @@ export function SessionFilesExplorer({
 
 function SessionFilesExplorerInner({
   chatSessionId,
-  projectId,
-  projectSessionId,
+  workspaceId,
+  workspaceSessionId,
   ephemeral = false,
   initialMode = 'files',
 }: {
   chatSessionId?: string;
-  projectId?: string;
-  projectSessionId?: string;
+  workspaceId?: string;
+  workspaceSessionId?: string;
   initialMode?: SessionPanelMode;
   ephemeral?: boolean;
 }) {
@@ -149,7 +149,7 @@ function SessionFilesExplorerInner({
           <SandboxFileExplorer
             embedded
             shareContext={
-              projectId && projectSessionId ? { projectId, sessionId: projectSessionId } : undefined
+              workspaceId && workspaceSessionId ? { workspaceId, sessionId: workspaceSessionId } : undefined
             }
           />
         )}

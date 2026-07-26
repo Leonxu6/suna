@@ -47,18 +47,18 @@ import { Icon } from '@/features/icon/icon';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import { ErrorState } from '@/features/layout/section/error-state';
 import CustomizeSectionWrapper from '@/features/workspace/customize/sections/component/section-wrapper';
-import { ProjectProviderModal } from '@/features/workspace/customize/sections/llm-provider/llm-provider-modal';
-import { refreshProjectProviderState } from '@kortix/sdk/react';
+import { WorkspaceProviderModal } from '@/features/workspace/customize/sections/llm-provider/llm-provider-modal';
+import { refreshWorkspaceProviderState } from '@kortix/sdk/react';
 import { isLlmGatewayEnabled } from '@/lib/llm-gateway';
 import { cn } from '@/lib/utils';
 import { useCustomizeStore } from '@/stores/customize-store';
 import {
-  type ProjectSecret,
-  type ProjectSecretsResponse,
-  deleteProjectSecret,
-  getProjectDetail,
-  listProjectSecrets,
-  upsertProjectSecret,
+  type WorkspaceSecret,
+  type WorkspaceSecretsResponse,
+  deleteWorkspaceSecret,
+  getWorkspaceDetail,
+  listWorkspaceSecrets,
+  upsertWorkspaceSecret,
 } from '@kortix/sdk';
 import { DangerTriangleSolid, Pencil, Search, TrashSolid } from '@mynaui/icons-react';
 
@@ -68,9 +68,9 @@ const IDENTIFIER_REGEX = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
 type Requirement = 'required' | 'optional' | null;
 
 /**
- * A project secret is `{ identifier, key, value }` — authorization is
+ * A workspace secret is `{ identifier, key, value }` — authorization is
  * centralized on the agent grant (by identifier, in kortix.yaml); this page is
- * project-wide create/configure/value only. `identifier` is the unique handle;
+ * workspace-wide create/configure/value only. `identifier` is the unique handle;
  * `key` (the env var name) is NOT unique — two identifiers may share one.
  */
 interface SecretRow {
@@ -85,22 +85,22 @@ interface SecretRow {
   updatedAt: string | null;
 }
 
-export function SecretsView({ projectId }: { projectId: string }) {
+export function SecretsView({ workspaceId }: { workspaceId: string }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
   const openCustomize = useCustomizeStore((s) => s.openCustomize);
-  const queryKey = useMemo(() => ['project-secrets', projectId], [projectId]);
-  const projectDetailQuery = useQuery({
-    queryKey: ['project-detail', projectId],
-    queryFn: () => getProjectDetail(projectId),
+  const queryKey = useMemo(() => ['workspace-secrets', workspaceId], [workspaceId]);
+  const workspaceDetailQuery = useQuery({
+    queryKey: ['workspace-detail', workspaceId],
+    queryFn: () => getWorkspaceDetail(workspaceId),
     staleTime: 30_000,
   });
-  const llmGatewayEnabled = isLlmGatewayEnabled(projectDetailQuery.data?.project);
+  const llmGatewayEnabled = isLlmGatewayEnabled(workspaceDetailQuery.data?.workspace);
 
   const secretsQuery = useQuery({
     queryKey,
-    queryFn: () => listProjectSecrets(projectId),
+    queryFn: () => listWorkspaceSecrets(workspaceId),
     staleTime: 10_000,
   });
 
@@ -118,11 +118,11 @@ export function SecretsView({ projectId }: { projectId: string }) {
 
   const refreshSecretsAndProviders = useCallback(() => {
     queryClient.invalidateQueries({ queryKey });
-    refreshProjectProviderState(queryClient, projectId);
-  }, [projectId, queryClient, queryKey]);
+    refreshWorkspaceProviderState(queryClient, workspaceId);
+  }, [workspaceId, queryClient, queryKey]);
 
   const removeShared = useMutation({
-    mutationFn: (identifier: string) => deleteProjectSecret(projectId, identifier),
+    mutationFn: (identifier: string) => deleteWorkspaceSecret(workspaceId, identifier),
     onSuccess: refreshSecretsAndProviders,
   });
 
@@ -153,9 +153,9 @@ export function SecretsView({ projectId }: { projectId: string }) {
   return (
     <>
       <CustomizeSectionWrapper
-        title={tHardcodedUi.raw('appProjectsIdCustomizeSecretsPage.line104JsxTextProjectSecrets')}
+        title={tHardcodedUi.raw('appWorkspacesIdCustomizeSecretsPage.line104JsxTextWorkspaceSecrets')}
         description={tHardcodedUi.raw(
-          'appProjectsIdCustomizeSecretsPage.line106JsxTextKeyValuePairsInjectedAsEnvironmentVariablesInto',
+          'appWorkspacesIdCustomizeSecretsPage.line106JsxTextKeyValuePairsInjectedAsEnvironmentVariablesInto',
         )}
         action={
           !secretsQuery.isLoading && !secretsQuery.isError && canManage ? (
@@ -163,7 +163,7 @@ export function SecretsView({ projectId }: { projectId: string }) {
               <Button size="sm" variant="outline" onClick={openProviderManagement}>
                 <Plug className="size-4 shrink-0" />
                 {tI18nHardcoded.raw(
-                  'autoComponentsProjectsCustomizeSectionsSecretsViewJsxTextConnectLLMd75427c8',
+                  'autoComponentsWorkspacesCustomizeSectionsSecretsViewJsxTextConnectLLMd75427c8',
                 )}
               </Button>
               <Button size="sm" variant="secondary" onClick={openCreate}>
@@ -198,7 +198,7 @@ export function SecretsView({ projectId }: { projectId: string }) {
             <ErrorState
               size="sm"
               title={tHardcodedUi.raw(
-                'appProjectsIdCustomizeSecretsPage.line773JsxAttrTitleFailedToLoadSecrets',
+                'appWorkspacesIdCustomizeSecretsPage.line773JsxAttrTitleFailedToLoadSecrets',
               )}
               description={(secretsQuery.error as Error)?.message ?? 'Failed to load secrets'}
               action={
@@ -274,7 +274,7 @@ export function SecretsView({ projectId }: { projectId: string }) {
               <SecretDialog
                 open={dialogOpen}
                 onOpenChange={setDialogOpen}
-                projectId={projectId}
+                workspaceId={workspaceId}
                 row={dialogRow}
                 onSaved={refreshSecretsAndProviders}
               />
@@ -282,8 +282,8 @@ export function SecretsView({ projectId }: { projectId: string }) {
           )}
         </div>
       </CustomizeSectionWrapper>
-      <ProjectProviderModal
-        projectId={projectId}
+      <WorkspaceProviderModal
+        workspaceId={workspaceId}
         open={providerModalOpen}
         onOpenChange={setProviderModalOpen}
         canWrite={canManage}
@@ -321,8 +321,8 @@ export function SecretsView({ projectId }: { projectId: string }) {
  * manifests that left required/optional missing.
  */
 function normalizeResponse(
-  data: ProjectSecretsResponse | ProjectSecret[] | null | undefined,
-): ProjectSecretsResponse {
+  data: WorkspaceSecretsResponse | WorkspaceSecret[] | null | undefined,
+): WorkspaceSecretsResponse {
   if (Array.isArray(data)) {
     return { items: data, required: [], optional: [] };
   }
@@ -337,7 +337,7 @@ function normalizeResponse(
   };
 }
 
-function buildRows(raw: ProjectSecretsResponse | ProjectSecret[] | null | undefined): SecretRow[] {
+function buildRows(raw: WorkspaceSecretsResponse | WorkspaceSecret[] | null | undefined): SecretRow[] {
   const data = normalizeResponse(raw);
   const requirementByKey = new Map<string, Requirement>();
   for (const key of data.required) requirementByKey.set(key, 'required');
@@ -345,7 +345,7 @@ function buildRows(raw: ProjectSecretsResponse | ProjectSecret[] | null | undefi
     if (!requirementByKey.has(key)) requirementByKey.set(key, 'optional');
   }
 
-  const toRow = (item: ProjectSecret, requirement: Requirement): SecretRow => ({
+  const toRow = (item: WorkspaceSecret, requirement: Requirement): SecretRow => ({
     identifier: item.identifier,
     key: item.name,
     requirement,
@@ -452,7 +452,7 @@ function SecretTableRow({
                 size="icon"
                 variant="ghost"
                 aria-label={tI18nHardcoded.raw(
-                  'autoComponentsProjectsCustomizeSectionsSecretsViewJsxAttrAriaLabelda70cb1c',
+                  'autoComponentsWorkspacesCustomizeSectionsSecretsViewJsxAttrAriaLabelda70cb1c',
                 )}
               >
                 {busy ? (
@@ -471,7 +471,7 @@ function SecretTableRow({
                 <DropdownMenuItem onClick={onDelete} variant="destructive">
                   <TrashSolid className="size-3.5 shrink-0" />
                   {tI18nHardcoded.raw(
-                    'autoComponentsProjectsCustomizeSectionsSecretsViewJsxTextDeleteSharedd7bb1731',
+                    'autoComponentsWorkspacesCustomizeSectionsSecretsViewJsxTextDeleteSharedd7bb1731',
                   )}
                 </DropdownMenuItem>
               )}
@@ -486,13 +486,13 @@ function SecretTableRow({
 function SecretDialog({
   open,
   onOpenChange,
-  projectId,
+  workspaceId,
   row,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  projectId: string;
+  workspaceId: string;
   row: SecretRow | null;
   onSaved: () => void;
 }) {
@@ -526,7 +526,7 @@ function SecretDialog({
       if (finalKey.startsWith('KORTIX_')) {
         throw new Error('KORTIX_* keys are reserved for platform variables');
       }
-      return upsertProjectSecret(projectId, {
+      return upsertWorkspaceSecret(workspaceId, {
         name: finalKey,
         identifier: finalIdentifier,
         ...(value.trim() ? { value } : {}),

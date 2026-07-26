@@ -5,7 +5,7 @@ dashboard can do — from a terminal, from a coding agent, from a session
 sandbox. It is **always available** inside a Kortix session sandbox:
 
 - the binary is on `PATH` (`/usr/local/bin/kortix`)
-- `KORTIX_CLI_TOKEN` is pre-injected — a project-scoped token the CLI
+- `KORTIX_CLI_TOKEN` is pre-injected — a workspace-scoped token the CLI
   authenticates with automatically (not `KORTIX_SANDBOX_TOKEN` / its
   deprecated `KORTIX_TOKEN` alias; see "Inside a sandbox" below)
 - `KORTIX_API_URL` points at the platform you're running against
@@ -21,17 +21,17 @@ needs CLI specifics.
 ## Quickstart inside a session
 
 ```sh
-kortix whoami                       # confirms what project + account this token has
-kortix projects info                # the project you're running inside
+kortix whoami                       # confirms what workspace + account this token has
+kortix workspaces info                # the workspace you're running inside
 kortix secrets ls                   # encrypted env vars + manifest [env] spec
-kortix sessions ls                  # every session on this project (incl. you)
+kortix sessions ls                  # every session on this workspace (incl. you)
 kortix cr ls                        # open change requests
 kortix cr open --title "..."        # propose merging your branch into main
 ```
 
-The token in the sandbox is **project-scoped**: it can read + write
-anything on *this* project (secrets, sessions, triggers, change
-requests), but it cannot list other projects or touch
+The token in the sandbox is **workspace-scoped**: it can read + write
+anything on *this* workspace (secrets, sessions, triggers, change
+requests), but it cannot list other workspaces or touch
 account-level resources. See "Token scope" below for the full
 permission model.
 
@@ -46,7 +46,7 @@ kortix login                        # opens browser, you click Authorize
 
 The local CLI uses a **user-scoped** token saved at
 `~/.config/kortix/config.json` (mode 0600). That token can see every
-project on every account you're a member of.
+workspace on every account you're a member of.
 
 ## Command surface
 
@@ -95,28 +95,28 @@ A host is one Kortix API endpoint. You can configure several
 | `kortix hosts current` | Print the active host name (script-friendly). |
 
 `--host <name>` on any command overrides the active host for a single
-invocation: `kortix projects ls --host local`.
+invocation: `kortix workspaces ls --host local`.
 
-### Projects
+### Workspaces
 
 | Command | Effect |
 | --- | --- |
-| `kortix projects ls` | Every project on the active account. |
-| `kortix projects info [<id-or-slug>]` | Show one project (defaults to the linked one — see below). |
-| `kortix projects link [<id>]` | Bind cwd to a remote project. Writes `.kortix/link.json` with `project_id`, `account_id`, `host`, `host_url`. No arg → arrow-key picker. |
-| `kortix projects unlink` | Drop `.kortix/link.json`. |
-| `kortix projects open [<id>]` | Open the dashboard URL for a project in your browser. |
+| `kortix workspaces ls` | Every workspace on the active account. |
+| `kortix workspaces info [<id-or-slug>]` | Show one workspace (defaults to the linked one — see below). |
+| `kortix workspaces link [<id>]` | Bind cwd to a remote workspace. Writes `.kortix/link.json` with `project_id`, `account_id`, `host`, `host_url`. No arg → arrow-key picker. |
+| `kortix workspaces unlink` | Drop `.kortix/link.json`. |
+| `kortix workspaces open [<id>]` | Open the dashboard URL for a workspace in your browser. |
 
-#### How a command finds "the project"
+#### How a command finds "the workspace"
 
 In strict order:
 
-1. `--project <id>` flag.
-2. `KORTIX_PROJECT_ID` env var.
+1. `--workspace <id>` flag.
+2. `KORTIX_WORKSPACE_ID` env var.
 3. `.kortix/link.json` in cwd (or any ancestor — git-style).
-4. Inside a session sandbox: the sandbox's own `KORTIX_PROJECT_ID`.
+4. Inside a session sandbox: the sandbox's own `KORTIX_WORKSPACE_ID`.
 
-If none resolve, the command errors with a pointer to `projects link`.
+If none resolve, the command errors with a pointer to `workspaces link`.
 
 #### How a command finds "the host"
 
@@ -127,7 +127,7 @@ If none resolve, the command errors with a pointer to `projects link`.
 
 ### Secrets
 
-Encrypted env vars stored on the project, injected as plain env
+Encrypted env vars stored on the workspace, injected as plain env
 into every session sandbox at boot.
 
 | Command | Effect |
@@ -179,7 +179,7 @@ Each session is an isolated sandbox VM on its own ephemeral branch.
 
 | Command | Effect |
 | --- | --- |
-| `kortix sessions ls` | All sessions on the project. `--json` for machine-readable output. |
+| `kortix sessions ls` | All sessions on the workspace. `--json` for machine-readable output. |
 | `kortix sessions status [--all] [--json]` | **Mission control** — every session + what each agent is doing *right now* (live: current tool / thinking / idle + last activity). Built for when many run in parallel. Aliases: `overview`, `ps`. |
 | `kortix sessions info <id>` | Detail view: status, branch, base ref, agent, sandbox URL, errors. `--json`. |
 | `kortix sessions log [<id>] [--limit N] [--json]` | **Read-only** peek at a session agent's recent messages — see what another agent is *doing right now* without sending it anything. Aliases: `messages`, `history`. No id → most-recent running (an interactive picker when several run on a TTY). |
@@ -194,7 +194,7 @@ you're running in. `kortix sessions info $KORTIX_SESSION_ID` gives
 you the live view of yourself.
 
 **Watch + talk to other agents.** From any session (or your laptop) you
-can see the whole project's activity and read it live — this is how an
+can see the whole workspace's activity and read it live — this is how an
 agent checks up on every other agent that's running:
 
 ```sh
@@ -243,21 +243,21 @@ the same state.
 
 ### Channels (Slack)
 
-The project's Slack wiring. **Connecting Slack is one command** — never a
+The workspace's Slack wiring. **Connecting Slack is one command** — never a
 manifest, bot token, or secret-intake link on Kortix Cloud.
 
 | Command | Effect |
 | --- | --- |
 | `kortix channels connect` | **THE way to connect Slack.** Prints a one-click "Add to Slack" install link (Kortix Cloud) — surface the URL; the human picks a workspace and clicks Allow. Add `--wait` to block until the install lands. Self-host without the shared Slack app: falls back to manual token mode and says so. `--json` for machine output. |
 | `kortix channels status` | Show the connected workspace (or "not connected"). `--json`. |
-| `kortix channels disconnect` | Drop the project's Slack connection. |
+| `kortix channels disconnect` | Drop the workspace's Slack connection. |
 | `kortix channels manifest` | Slack app manifest JSON — **manual/self-host setup only**. |
 
 ### Change requests (`cr`)
 
 Kortix-native PR layer for session work landing on `main`. A change
 request proposes merging one branch (`head_ref`) into another
-(`base_ref`) inside a project. The CR layer is **Kortix-native** —
+(`base_ref`) inside a workspace. The CR layer is **Kortix-native** —
 it works on top of any git host (GitHub, GitLab, plain
 git) without per-host integration. A CR is the **only sanctioned
 way** for an agent to land session-branch work on `main`; see
@@ -266,16 +266,16 @@ lifecycle.
 
 | Command | Effect |
 | --- | --- |
-| `kortix cr ls [--status open\|merged\|closed\|all] [--project <id>]` | List CRs on the project. Default: `--status open`. |
-| `kortix cr show <cr> [--project <id>]` | Show one CR's metadata. Alias: `kortix cr info`. Includes the merge-preview (clean / fast-forward / conflicts) for open CRs. |
-| `kortix cr diff <cr> [--no-color] [--project <id>]` | Unified diff of the CR. Three-dot diff for open / closed CRs; for merged CRs it uses the SHAs captured at merge time so the patch still renders even though `head_ref` is now reachable from `base_ref`. |
-| `kortix cr open --title "<text>" [--description "<text>"] [--head <ref>] [--base <ref>] [--session <id>] [--project <id>]` | Open a new CR. Aliases: `kortix cr new`, `kortix cr create`. Inside a sandbox, `--head` defaults to `$KORTIX_BRANCH_NAME` and `--session` defaults to `$KORTIX_SESSION_ID`, so `kortix cr open --title "..."` Just Works. `--base` defaults to the project's default branch (usually `main`). `--title` is required. Alias for `--head`: `--from`. Alias for `--base`: `--into`. Alias for `--description`: `--body`. |
-| `kortix cr merge <cr> [--message "<text>"] [--project <id>]` | Merge an open CR into its `base_ref`. Fast-forward when possible, three-way merge otherwise. The default commit message is `Merge CR #<n>: <title>` (override with `-m / --message`). Fails with 409 if the CR is not `open` or there are conflicts. |
-| `kortix cr close <cr> [--project <id>]` | Close an open CR without merging. Cannot close a merged CR. |
-| `kortix cr reopen <cr> [--project <id>]` | Reopen a closed CR (only — merged CRs are terminal). |
+| `kortix cr ls [--status open\|merged\|closed\|all] [--workspace <id>]` | List CRs on the workspace. Default: `--status open`. |
+| `kortix cr show <cr> [--workspace <id>]` | Show one CR's metadata. Alias: `kortix cr info`. Includes the merge-preview (clean / fast-forward / conflicts) for open CRs. |
+| `kortix cr diff <cr> [--no-color] [--workspace <id>]` | Unified diff of the CR. Three-dot diff for open / closed CRs; for merged CRs it uses the SHAs captured at merge time so the patch still renders even though `head_ref` is now reachable from `base_ref`. |
+| `kortix cr open --title "<text>" [--description "<text>"] [--head <ref>] [--base <ref>] [--session <id>] [--workspace <id>]` | Open a new CR. Aliases: `kortix cr new`, `kortix cr create`. Inside a sandbox, `--head` defaults to `$KORTIX_BRANCH_NAME` and `--session` defaults to `$KORTIX_SESSION_ID`, so `kortix cr open --title "..."` Just Works. `--base` defaults to the workspace's default branch (usually `main`). `--title` is required. Alias for `--head`: `--from`. Alias for `--base`: `--into`. Alias for `--description`: `--body`. |
+| `kortix cr merge <cr> [--message "<text>"] [--workspace <id>]` | Merge an open CR into its `base_ref`. Fast-forward when possible, three-way merge otherwise. The default commit message is `Merge CR #<n>: <title>` (override with `-m / --message`). Fails with 409 if the CR is not `open` or there are conflicts. |
+| `kortix cr close <cr> [--workspace <id>]` | Close an open CR without merging. Cannot close a merged CR. |
+| `kortix cr reopen <cr> [--workspace <id>]` | Reopen a closed CR (only — merged CRs are terminal). |
 
-`<cr>` accepts either the short per-project number (`3`, `#3`) or the
-full UUID `cr_id`. Numbers are unique per project, monotonically
+`<cr>` accepts either the short per-workspace number (`3`, `#3`) or the
+full UUID `cr_id`. Numbers are unique per workspace, monotonically
 increasing.
 
 #### Inside a sandbox — the typical agent flow
@@ -338,11 +338,11 @@ title. Sorted newest first.
 | `kortix uninstall` | Removes the binary, /usr/local/bin shim, and `~/.config/kortix/`. `--keep-auth` keeps the token. |
 | `kortix version` | Print the CLI version. |
 
-### Project scaffold
+### Workspace scaffold
 
 | Command | Effect |
 | --- | --- |
-| `kortix init` | Scaffold a Kortix project in the current directory. Writes `kortix.yaml`, `.kortix/Dockerfile`, the OpenCode config dir with the default agent + kortix-system skill, and a `.kortix/link.json` placeholder. Then, for each coding agent you select (opencode/claude/codex/cursor), symlinks the OpenCode config dir into that agent's native location (`.opencode` / `.claude` → `.kortix/opencode`; codex wires `.agents` → `.kortix/opencode`, its documented cross-tool skills dir) so they share its skills + agents; Codex and Cursor also get a root `AGENTS.md` pointer they read natively (so Cursor needs no rule file). Note: Claude scans `.claude/skills` only one level deep, so skills nested under a grouping folder aren't discovered by Claude locally (they still load in the OpenCode sandbox and for Codex). |
+| `kortix init` | Scaffold a Kortix workspace in the current directory. Writes `kortix.yaml`, `.kortix/Dockerfile`, the OpenCode config dir with the default agent + kortix-system skill, and a `.kortix/link.json` placeholder. Then, for each coding agent you select (opencode/claude/codex/cursor), symlinks the OpenCode config dir into that agent's native location (`.opencode` / `.claude` → `.kortix/opencode`; codex wires `.agents` → `.kortix/opencode`, its documented cross-tool skills dir) so they share its skills + agents; Codex and Cursor also get a root `AGENTS.md` pointer they read natively (so Cursor needs no rule file). Note: Claude scans `.claude/skills` only one level deep, so skills nested under a grouping folder aren't discovered by Claude locally (they still load in the OpenCode sandbox and for Codex). |
 
 ## Token scope
 
@@ -352,12 +352,12 @@ column on the token row.
 
 | Type | Scope | Issued by | Typical use |
 | --- | --- | --- | --- |
-| **User token** | All projects on accounts the user belongs to + account-level routes (`/v1/accounts/me`, billing, etc.) | `kortix login` browser flow → minted via `POST /v1/accounts/tokens` | The CLI on your laptop |
-| **Project token** | Read + write everything on **one** project — secrets, sessions, triggers, and change requests. Cannot list other projects or hit account-level routes. | Auto-minted at session create; surfaced via `POST /v1/projects/:id/cli-token` | The CLI inside a sandbox |
+| **User token** | All workspaces on accounts the user belongs to + account-level routes (`/v1/accounts/me`, billing, etc.) | `kortix login` browser flow → minted via `POST /v1/accounts/tokens` | The CLI on your laptop |
+| **Workspace token** | Read + write everything on **one** workspace — secrets, sessions, triggers, and change requests. Cannot list other workspaces or hit account-level routes. | Auto-minted at session create; surfaced via `POST /v1/workspaces/:id/cli-token` | The CLI inside a sandbox |
 
-Enforcement: every project route handler checks the token's
-`project_id` against the URL's `:projectId` parameter. Mismatch → 403.
-Account routes (`/v1/accounts/*`) reject any project-scoped token
+Enforcement: every workspace route handler checks the token's
+`project_id` against the URL's `:workspaceId` parameter. Mismatch → 403.
+Account routes (`/v1/accounts/*`) reject any workspace-scoped token
 outright.
 
 ### Inside a sandbox
@@ -365,11 +365,11 @@ outright.
 The session bootstrap injects:
 
 ```
-KORTIX_CLI_TOKEN=kortix_pat_…       ← project-scoped PAT; what the CLI authenticates with
+KORTIX_CLI_TOKEN=kortix_pat_…       ← workspace-scoped PAT; what the CLI authenticates with
 KORTIX_SANDBOX_TOKEN=kortix_sb_…    ← sandbox service key (runtime/clone/LLM) — NOT for the CLI
 KORTIX_TOKEN=kortix_sb_…            ← deprecated alias for KORTIX_SANDBOX_TOKEN, same value
 KORTIX_API_URL=https://<host>/v1
-KORTIX_PROJECT_ID=<uuid>
+KORTIX_WORKSPACE_ID=<uuid>
 KORTIX_SESSION_ID=<uuid>
 KORTIX_BRANCH_NAME=<session-branch>
 ```
@@ -381,18 +381,9 @@ no `kortix login` needed — `kortix …` just works.
 > **Don't authenticate with `KORTIX_SANDBOX_TOKEN`** (or its deprecated
 > `KORTIX_TOKEN` alias). That's the sandbox *service key* (used for the LLM
 > gateway, the tool router, and just-in-time git clone credentials). The
-> project-scoped routes the CLI calls (`change-requests`, `secrets`, …)
+> workspace-scoped routes the CLI calls (`change-requests`, `secrets`, …)
 > reject it with `401 Invalid or expired token` — it isn't expired, it's
 > simply the wrong token. Use the CLI; it already holds the right one.
-
-### Rotating
-
-```sh
-# From a logged-in user CLI:
-kortix projects info                    # confirm you're on the right project
-kortix project token rotate             # rotates the project token
-# (existing sandboxes keep their token until they restart)
-```
 
 ## Common workflows
 
@@ -426,7 +417,7 @@ $EDITOR .env                            # fill in values locally
 # (don't push — local-only file)
 ```
 
-### Bulk-upload local `.env` to the cloud project
+### Bulk-upload local `.env` to the cloud workspace
 
 ```sh
 kortix env push --from .env
@@ -469,17 +460,17 @@ conflict story, and data model.
 
 | Variable | Purpose |
 | --- | --- |
-| `KORTIX_CLI_TOKEN` | Project-scoped PAT the CLI authenticates with (injected in sandboxes). |
+| `KORTIX_CLI_TOKEN` | Workspace-scoped PAT the CLI authenticates with (injected in sandboxes). |
 | `KORTIX_EXECUTOR_TOKEN` | Same PAT under another name; the CLI falls back to it. |
-| `KORTIX_SANDBOX_TOKEN` | Sandbox **service key** — runtime/clone/LLM auth. **Not** a CLI token; project routes reject it. |
+| `KORTIX_SANDBOX_TOKEN` | Sandbox **service key** — runtime/clone/LLM auth. **Not** a CLI token; workspace routes reject it. |
 | `KORTIX_TOKEN` | Deprecated alias for `KORTIX_SANDBOX_TOKEN`, same value. **Not** a CLI token. |
 | `KORTIX_API_URL` | API base URL. In a sandbox it already includes the `/v1` mount. |
-| `KORTIX_PROJECT_ID` | Override the linked project for one command. |
+| `KORTIX_WORKSPACE_ID` | Override the linked workspace for one command. |
 | `KORTIX_CONFIG_FILE` | Override `~/.config/kortix/config.json` location (useful for tests). |
 | `KORTIX_DASHBOARD_URL` | Override the dashboard URL the `login` flow opens (default: derived from API URL). |
 
 The `KORTIX_*` env-var prefix is **reserved** for platform-injected
-values. Don't declare your own project secrets with that prefix —
+values. Don't declare your own workspace secrets with that prefix —
 the secrets-manager API rejects them, and the manifest validator
 warns.
 
@@ -488,7 +479,7 @@ warns.
 | Code | Meaning |
 | --- | --- |
 | `0` | Success. |
-| `1` | Operation failed (API error, missing project, etc.). Diagnostics printed to stderr. |
+| `1` | Operation failed (API error, missing workspace, etc.). Diagnostics printed to stderr. |
 | `2` | Bad flag, unknown subcommand, missing required arg. |
 
 ## What the CLI is not
@@ -512,5 +503,5 @@ warns.
   lifecycle, REST API, and the "MUST open a CR" agent mandate.
 - `kortix.yaml` — the manifest the dashboard + the CLI both read.
 - `.kortix/Dockerfile` — your sandbox base image.
-- `.kortix/link.json` — current dir's binding to a remote project
+- `.kortix/link.json` — current dir's binding to a remote workspace
   (project_id + host).

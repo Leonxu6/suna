@@ -1,20 +1,20 @@
-import type { KortixProject } from '@kortix/sdk';
+import type { KortixWorkspace } from '@kortix/sdk';
 
-/** True when this project routes LLM calls through the managed gateway. */
-export function isLlmGatewayEnabled(project: KortixProject | undefined): boolean {
-  if (!project) return false;
-  if (project.experimental?.llm_gateway === true) return true;
+/** True when this workspace routes LLM calls through the managed gateway. */
+export function isLlmGatewayEnabled(workspace: KortixWorkspace | undefined): boolean {
+  if (!workspace) return false;
+  if (workspace.experimental?.llm_gateway === true) return true;
   return (
-    project.experimental_features?.some(
+    workspace.experimental_features?.some(
       (feature) => feature.key === 'llm_gateway' && feature.enabled,
     ) ?? false
   );
 }
 
-/** True when the platform exposes LLM Gateway for this project (may still be toggled off). */
-export function isLlmGatewayAvailable(project: KortixProject | undefined): boolean {
+/** True when the platform exposes LLM Gateway for this workspace (may still be toggled off). */
+export function isLlmGatewayAvailable(workspace: KortixWorkspace | undefined): boolean {
   return (
-    project?.experimental_features?.some(
+    workspace?.experimental_features?.some(
       (feature) => feature.key === 'llm_gateway' && feature.available,
     ) ?? false
   );

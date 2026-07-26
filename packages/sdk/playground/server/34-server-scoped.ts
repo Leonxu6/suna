@@ -21,16 +21,16 @@ run("server-scoped", async () => {
   const config = { backendUrl, getToken: async () => apiKey };
 
   const scoped = createScopedKortix(config);
-  const projects = await runWithKortix(config, () => scoped.projects.list());
+  const workspaces = await runWithKortix(config, () => scoped.workspaces.list());
   console.log(
-    `✓ scoped projects.list() inside runWithKortix: ${projects.length} project(s)`,
+    `✓ scoped workspaces.list() inside runWithKortix: ${workspaces.length} workspace(s)`,
   );
 
   const [a, b] = await Promise.all([
-    runWithKortix(config, () => scoped.projects.list()),
+    runWithKortix(config, () => scoped.workspaces.list()),
     runWithKortix(config, () => scoped.validateToken()),
   ]);
   console.log(
-    `✓ two concurrent scoped runs: ${a.length} project(s) + validateToken ${JSON.stringify(b).slice(0, 120)}`,
+    `✓ two concurrent scoped runs: ${a.length} workspace(s) + validateToken ${JSON.stringify(b).slice(0, 120)}`,
   );
 });

@@ -10,7 +10,7 @@ export interface OpsOverview {
   };
   totals: {
     accounts: number;
-    projects: number;
+    workspaces: number;
     active_legacy_sandboxes: number;
   };
   sessions: {

@@ -3,8 +3,8 @@
  * teardown, built once per run. Public-only runs (system/access) need no creds
  * and provision nothing; any auth'd domain triggers full provisioning.
  *
- * NOTE: the full 14-principal matrix (ADMIN, MEMBER, the M_ project roles,
- * BILLING, AUDITOR, RO_ADMIN, DENY_USER, NONMEMBER, PAT_PROJ) is completed in
+ * NOTE: the full 14-principal matrix (ADMIN, MEMBER, the M_ workspace roles,
+ * BILLING, AUDITOR, RO_ADMIN, DENY_USER, NONMEMBER, PAT_WORKSPACE) is completed in
  * fixtures/principals.ts as the
  * route contracts are pinned by the audit. OWNER/ANON/PAT_ACCT/APIKEY + the run
  * account are wired here.
@@ -13,7 +13,7 @@ import { Client, type Identity } from '../core/client';
 import type { Env } from '../core/env';
 import { log } from '../core/log';
 import type {
-  CreatedProject,
+  CreatedWorkspace,
   CreatedSession,
   Fixtures,
   Principal,
@@ -23,7 +23,7 @@ import type { RegisteredFlow } from '../core/flow';
 import { ResourceStack } from './registry';
 import { adminDeleteUser } from './supabase';
 import { provisionMatrix, synthUser, type Provisioned } from './principals';
-import { provisionProject } from './provision';
+import { provisionWorkspace } from './provision';
 import { grantEphemeralPlatformAdmin } from './platform-admin';
 
 const PUBLIC_DOMAINS = new Set(['system', 'access']);
@@ -97,31 +97,31 @@ export async function buildWorld(env: Env, flows: RegisteredFlow[]): Promise<Wor
   const adminClient = new Client(env.apiUrl).as(owner as Identity);
   // Users synthesized mid-run (team members) — deleted in teardownAll.
   const extraUserIds: string[] = [];
-  // One shared read-only project, provisioned at most once per run.
-  let sharedProjectPromise: Promise<CreatedProject> | null = null;
+  // One shared read-only workspace, provisioned at most once per run.
+  let sharedWorkspacePromise: Promise<CreatedWorkspace> | null = null;
   const sharedStack = new ResourceStack(adminClient);
 
   const fixturesFor = (stack: ResourceStack): Fixtures => ({
     name: (slug) => `e2e-${runId}-${slug}`,
-    sharedProject() {
-      if (!sharedProjectPromise) {
-        sharedProjectPromise = (async () => {
-          const id = await provisionProject(adminClient, { name: `e2e-${runId}-shared` });
-          sharedStack.push('project', id);
-          return { id, name: `e2e-${runId}-shared` } as CreatedProject;
+    sharedWorkspace() {
+      if (!sharedWorkspacePromise) {
+        sharedWorkspacePromise = (async () => {
+          const id = await provisionWorkspace(adminClient, { name: `e2e-${runId}-shared` });
+          sharedStack.push('workspace', id);
+          return { id, name: `e2e-${runId}-shared` } as CreatedWorkspace;
         })();
       }
-      return sharedProjectPromise;
+      return sharedWorkspacePromise;
     },
-    async project(opts) {
-      const name = opts?.name ?? `e2e-${runId}-proj-${rand()}`;
-      const id = await provisionProject(adminClient, {
+    async workspace(opts) {
+      const name = opts?.name ?? `e2e-${runId}-workspace-${rand()}`;
+      const id = await provisionWorkspace(adminClient, {
         name,
         ...(opts?.accountId ? { account_id: opts.accountId } : {}),
         ...(opts?.seed ? { seed_starter: true } : {}),
       });
-      stack.push('project', id);
-      return { id, name } as CreatedProject;
+      stack.push('workspace', id);
+      return { id, name } as CreatedWorkspace;
     },
     async team(opts) {
       const res = await adminClient.post('/v1/accounts', {
@@ -145,29 +145,32 @@ export async function buildWorld(env: Env, flows: RegisteredFlow[]): Promise<Wor
         async addMember(role) {
           const u = await synthUser(env, `MEM-${role}`, runId);
           extraUserIds.push(u.user.id);
-          await adminClient.post(
+          const added = await adminClient.post(
             '/v1/accounts/:accountId/members',
             { email: u.user.email, role },
             { params: { accountId } },
           );
+          if (added.statusCode !== 201 || added.json<any>()?.status !== 'added') {
+            throw new Error(`team member add failed: ${added.statusCode} ${added.text()}`);
+          }
           return u.principal;
         },
-        async grantProjectRole(projectId, userId, role) {
+        async grantWorkspaceRole(workspaceId, userId, role) {
           await adminClient.put(
-            '/v1/projects/:projectId/access/:userId',
+            '/v1/workspaces/:workspaceId/access/:userId',
             { role },
-            { params: { projectId, userId } },
+            { params: { workspaceId, userId } },
           );
         },
-        async project(o) {
-          const name = o?.name ?? `e2e-${runId}-tproj-${rand()}`;
-          const id = await provisionProject(adminClient, {
+        async workspace(o) {
+          const name = o?.name ?? `e2e-${runId}-team-workspace-${rand()}`;
+          const id = await provisionWorkspace(adminClient, {
             name,
             account_id: accountId,
             ...(o?.seed ? { seed_starter: true } : {}),
           });
-          stack.push('project', id);
-          return { id, name } as CreatedProject;
+          stack.push('workspace', id);
+          return { id, name } as CreatedWorkspace;
         },
       };
     },
@@ -185,21 +188,21 @@ export async function buildWorld(env: Env, flows: RegisteredFlow[]): Promise<Wor
       }
       return u.principal;
     },
-    async session(project, opts) {
+    async session(workspace, opts) {
       // `prompt` was never consumed by the session API; use the documented
       // field now that the HTTP boundary rejects unknown create properties.
       const res = await adminClient.post(
-        '/v1/projects/:projectId/sessions',
+        '/v1/workspaces/:workspaceId/sessions',
         { initial_prompt: opts?.prompt ?? 'noop' },
         {
-          params: { projectId: project.id },
+          params: { workspaceId: workspace.id },
         },
       );
       const body = res.json<any>();
       const id = body?.session_id ?? body?.sessionId ?? body?.id;
       if (!id) throw new Error(`session create returned no id: ${res.text()}`);
-      stack.push('session', id, { projectId: project.id });
-      return { id, projectId: project.id } as CreatedSession;
+      stack.push('session', id, { workspaceId: workspace.id });
+      return { id, workspaceId: workspace.id } as CreatedSession;
     },
     async pat(opts) {
       const res = await adminClient.post('/v1/accounts/tokens', {
@@ -255,8 +258,8 @@ function makeUnavailableFixtures(): Fixtures {
   };
   return {
     name: (slug) => slug,
-    project: fail as any,
-    sharedProject: fail as any,
+    workspace: fail as any,
+    sharedWorkspace: fail as any,
     session: fail as any,
     pat: fail as any,
     team: fail as any,

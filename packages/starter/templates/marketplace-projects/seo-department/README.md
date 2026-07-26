@@ -1,6 +1,6 @@
 # SEO Department
 
-A complete SEO department you can clone as a Kortix project. It comes with five
+A complete SEO department you can clone as a Kortix workspace. It comes with five
 agents, five SEO-specific skills, persistent SEO memory, and a set of scheduled
 workflows that cover the day-to-day operating rhythm of a serious organic growth
 team.
@@ -54,7 +54,7 @@ some access is not ready yet. Setup happens in that same install session; the
 specialist agents are future operating roles and trigger targets, not extra
 setup sessions to spawn.
 
-When adding this template into an existing project, the template files first
+When adding this template into an existing workspace, the template files first
 land through a change request. The installer should ask to apply that CR and,
 after approval, start the first `seo-director` setup session from the merged
 main branch instead of leaving the user to do that handoff manually.
@@ -64,6 +64,6 @@ main branch instead of leaving the user to do that handoff manually.
 The department can research, audit, draft, report, and open change requests by
 default. It does not publish live content, change production SEO settings,
 contact external sites for outreach, buy tools, or alter paid campaigns without
-explicit approval or a project-level policy that says it may. The repo watchdog
+explicit approval or a workspace-level policy that says it may. The repo watchdog
 can comment, report, draft fixes, and open change requests, but it never merges
 or pushes directly to the default branch.

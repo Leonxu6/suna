@@ -6,31 +6,31 @@ import { flow } from '../core/flow';
 
 flow(
   'TRG-1',
-  { domain: 'triggers', routes: ['GET /v1/projects/:projectId/triggers'] },
+  { domain: 'triggers', routes: ['GET /v1/workspaces/:workspaceId/triggers'] },
   async (ctx) => {
-    const p = await ctx.fixtures.project();
+    const p = await ctx.fixtures.workspace();
     await ctx.step('list triggers', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .get('/v1/projects/:projectId/triggers', { params: { projectId: p.id } });
+        .get('/v1/workspaces/:workspaceId/triggers', { params: { workspaceId: p.id } });
       r.status(200);
     });
     // project.trigger.read gate (IAM enforcement audit) — a stranger with no
-    // project access at all still 404s (loadProjectForUser denies before the
+    // project access at all still 404s (loadWorkspaceForUser denies before the
     // leaf assert is reached); the leaf itself is proven at the unit/integration
-    // level (unit-iam-v2-role-perms + integration-project-read-leaf-gates-http),
+    // level (unit-iam-v2-role-perms + integration-workspace-read-leaf-gates-http),
     // since the built-in floor role always carries project.trigger.read and this
     // suite has no custom-role fixture to withhold just that leaf.
     await ctx.step('NONMEMBER → 403/404', async () => {
       const r = await ctx.client
         .as(ctx.P.NONMEMBER)
-        .get('/v1/projects/:projectId/triggers', { params: { projectId: p.id } });
+        .get('/v1/workspaces/:workspaceId/triggers', { params: { workspaceId: p.id } });
       r.status([403, 404]);
     });
     await ctx.step('ANON → 401', async () => {
       const r = await ctx.client
         .as(ctx.P.ANON)
-        .get('/v1/projects/:projectId/triggers', { params: { projectId: p.id } });
+        .get('/v1/workspaces/:workspaceId/triggers', { params: { workspaceId: p.id } });
       r.status(401);
     });
   },
@@ -38,12 +38,12 @@ flow(
 
 flow(
   'TRG-2',
-  { domain: 'triggers', routes: ['POST /v1/projects/:projectId/triggers'] },
+  { domain: 'triggers', routes: ['POST /v1/workspaces/:workspaceId/triggers'] },
   async (ctx) => {
-    const p = await ctx.fixtures.project();
+    const p = await ctx.fixtures.workspace();
     await ctx.step('create a cron trigger with a pinned model → 201', async () => {
       const r = await ctx.client.as(ctx.P.OWNER).post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         {
           name: 'Nightly',
           type: 'cron',
@@ -52,7 +52,7 @@ flow(
           prompt_template: 'do nightly work',
           model: 'anthropic/claude-sonnet-4-6',
         },
-        { params: { projectId: p.id } },
+        { params: { workspaceId: p.id } },
       );
       r.status(201).body().has('triggers[0].model', 'anthropic/claude-sonnet-4-6');
     });
@@ -60,7 +60,7 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          '/v1/projects/:projectId/triggers',
+          '/v1/workspaces/:workspaceId/triggers',
           {
             name: 'Nightly',
             type: 'cron',
@@ -68,7 +68,7 @@ flow(
             timezone: 'UTC',
             prompt_template: 'again',
           },
-          { params: { projectId: p.id } },
+          { params: { workspaceId: p.id } },
         );
       r.status(409);
     });
@@ -77,13 +77,13 @@ flow(
 
 flow(
   'TRG-3',
-  { domain: 'triggers', routes: ['PATCH /v1/projects/:projectId/triggers/:slug'] },
+  { domain: 'triggers', routes: ['PATCH /v1/workspaces/:workspaceId/triggers/:slug'] },
   async (ctx) => {
-    const p = await ctx.fixtures.project();
+    const p = await ctx.fixtures.workspace();
     await ctx.client
       .as(ctx.P.OWNER)
       .post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         {
           name: 'Toggle Me',
           type: 'cron',
@@ -91,15 +91,15 @@ flow(
           timezone: 'UTC',
           prompt_template: 'x',
         },
-        { params: { projectId: p.id } },
+        { params: { workspaceId: p.id } },
       );
     await ctx.step('disable trigger → 200', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .patch(
-          '/v1/projects/:projectId/triggers/:slug',
+          '/v1/workspaces/:workspaceId/triggers/:slug',
           { enabled: false },
-          { params: { projectId: p.id, slug: 'toggle-me' } },
+          { params: { workspaceId: p.id, slug: 'toggle-me' } },
         );
       r.status(200);
     });
@@ -109,9 +109,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .patch(
-          '/v1/projects/:projectId/triggers/:slug',
+          '/v1/workspaces/:workspaceId/triggers/:slug',
           { model: 'openai/gpt-5' },
-          { params: { projectId: p.id, slug: 'toggle-me' } },
+          { params: { workspaceId: p.id, slug: 'toggle-me' } },
         );
       r.status(200).body().has('triggers[0].model', 'openai/gpt-5');
     });
@@ -120,13 +120,13 @@ flow(
 
 flow(
   'TRG-4',
-  { domain: 'triggers', routes: ['DELETE /v1/projects/:projectId/triggers/:slug'] },
+  { domain: 'triggers', routes: ['DELETE /v1/workspaces/:workspaceId/triggers/:slug'] },
   async (ctx) => {
-    const p = await ctx.fixtures.project();
+    const p = await ctx.fixtures.workspace();
     await ctx.client
       .as(ctx.P.OWNER)
       .post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         {
           name: 'Delete Me',
           type: 'cron',
@@ -134,13 +134,13 @@ flow(
           timezone: 'UTC',
           prompt_template: 'x',
         },
-        { params: { projectId: p.id } },
+        { params: { workspaceId: p.id } },
       );
     await ctx.step('delete trigger → 200', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .del('/v1/projects/:projectId/triggers/:slug', {
-          params: { projectId: p.id, slug: 'delete-me' },
+        .del('/v1/workspaces/:workspaceId/triggers/:slug', {
+          params: { workspaceId: p.id, slug: 'delete-me' },
         });
       r.status(200);
     });
@@ -160,7 +160,7 @@ flow(
   {
     domain: 'triggers',
     routes: [
-      'GET /v1/projects/:projectId/triggers',
+      'GET /v1/workspaces/:workspaceId/triggers',
       'PUT /v1/accounts/:accountId/iam/enterprise-demo',
       'POST /v1/accounts/:accountId/iam/roles',
       'POST /v1/accounts/:accountId/iam/policies',
@@ -168,7 +168,7 @@ flow(
   },
   async (ctx) => {
     const team = await ctx.fixtures.team();
-    const project = await team.project();
+    const project = await team.workspace();
     const noTriggerRead = await team.addMember('member');
     const floorMember = await team.addMember('member');
     const roleKey = `notrig_${team.id.replace(/-/g, '').slice(0, 10)}`;
@@ -226,15 +226,15 @@ flow(
     await ctx.step('member WITHOUT trigger.read → GET /triggers 403 (leaf gate)', async () => {
       const r = await ctx.client
         .as(noTriggerRead)
-        .get('/v1/projects/:projectId/triggers', { params: { projectId: project.id } });
+        .get('/v1/workspaces/:workspaceId/triggers', { params: { workspaceId: project.id } });
       r.status(403);
     });
 
     await ctx.step('floor member WITH trigger.read → GET /triggers 200', async () => {
-      await team.grantProjectRole(project.id, floorMember.userId!, 'user');
+      await team.grantWorkspaceRole(project.id, floorMember.userId!, 'user');
       const r = await ctx.client
         .as(floorMember)
-        .get('/v1/projects/:projectId/triggers', { params: { projectId: project.id } });
+        .get('/v1/workspaces/:workspaceId/triggers', { params: { workspaceId: project.id } });
       r.status(200);
     });
   },
@@ -261,19 +261,19 @@ flow(
   {
     domain: 'triggers',
     routes: [
-      'GET /v1/projects/:projectId/triggers',
-      'POST /v1/projects/:projectId/triggers',
-      'PATCH /v1/projects/:projectId/triggers/:slug',
-      'DELETE /v1/projects/:projectId/triggers/:slug',
-      'POST /v1/projects/:projectId/triggers/:slug/fire',
-      'PATCH /v1/projects/:projectId/triggers/activation',
+      'GET /v1/workspaces/:workspaceId/triggers',
+      'POST /v1/workspaces/:workspaceId/triggers',
+      'PATCH /v1/workspaces/:workspaceId/triggers/:slug',
+      'DELETE /v1/workspaces/:workspaceId/triggers/:slug',
+      'POST /v1/workspaces/:workspaceId/triggers/:slug/fire',
+      'PATCH /v1/workspaces/:workspaceId/triggers/activation',
     ],
   },
   async (ctx) => {
     const team = await ctx.fixtures.team();
-    const project = await team.project();
+    const project = await team.workspace();
     const member = await team.addMember('member');
-    await team.grantProjectRole(project.id, member.userId!, 'user');
+    await team.grantWorkspaceRole(project.id, member.userId!, 'user');
     const asMember = ctx.client.as(member);
 
     // Seed one trigger so PATCH/DELETE/fire have a real slug to target (the
@@ -281,7 +281,7 @@ flow(
     // missing slug would still 403 — but using a real slug proves the denial
     // is the authz gate, not a 404 masquerading as a denial).
     await ctx.client.as(ctx.P.OWNER).post(
-      '/v1/projects/:projectId/triggers',
+      '/v1/workspaces/:workspaceId/triggers',
       {
         name: 'Target Trigger',
         type: 'cron',
@@ -289,7 +289,7 @@ flow(
         timezone: 'UTC',
         prompt_template: 'noop',
       },
-      { params: { projectId: project.id } },
+      { params: { workspaceId: project.id } },
     );
 
     // ── ANON → 401 on every mutating route ──────────────────────────────
@@ -297,9 +297,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.ANON)
         .post(
-          '/v1/projects/:projectId/triggers',
+          '/v1/workspaces/:workspaceId/triggers',
           { name: 'x', type: 'cron', cron: '0 0 3 * * *', timezone: 'UTC', prompt_template: 'x' },
-          { params: { projectId: project.id } },
+          { params: { workspaceId: project.id } },
         );
       r.status(401);
     });
@@ -307,24 +307,24 @@ flow(
       const r = await ctx.client
         .as(ctx.P.ANON)
         .patch(
-          '/v1/projects/:projectId/triggers/:slug',
+          '/v1/workspaces/:workspaceId/triggers/:slug',
           { enabled: false },
-          { params: { projectId: project.id, slug: 'target-trigger' } },
+          { params: { workspaceId: project.id, slug: 'target-trigger' } },
         );
       r.status(401);
     });
     await ctx.step('ANON DELETE → 401', async () => {
-      const r = await ctx.client.as(ctx.P.ANON).del('/v1/projects/:projectId/triggers/:slug', {
-        params: { projectId: project.id, slug: 'target-trigger' },
+      const r = await ctx.client.as(ctx.P.ANON).del('/v1/workspaces/:workspaceId/triggers/:slug', {
+        params: { workspaceId: project.id, slug: 'target-trigger' },
       });
       r.status(401);
     });
     await ctx.step('ANON fire → 401', async () => {
       const r = await ctx.client.as(ctx.P.ANON).post(
-        '/v1/projects/:projectId/triggers/:slug/fire',
+        '/v1/workspaces/:workspaceId/triggers/:slug/fire',
         {},
         {
-          params: { projectId: project.id, slug: 'target-trigger' },
+          params: { workspaceId: project.id, slug: 'target-trigger' },
         },
       );
       r.status(401);
@@ -333,47 +333,47 @@ flow(
       const r = await ctx.client
         .as(ctx.P.ANON)
         .patch(
-          '/v1/projects/:projectId/triggers/activation',
+          '/v1/workspaces/:workspaceId/triggers/activation',
           { paused: true },
-          { params: { projectId: project.id } },
+          { params: { workspaceId: project.id } },
         );
       r.status(401);
     });
 
     // ── project member (floor) authz boundary ───────────────────────────
     await ctx.step('member GET /triggers → 200 (holds trigger.read)', async () => {
-      const r = await asMember.get('/v1/projects/:projectId/triggers', {
-        params: { projectId: project.id },
+      const r = await asMember.get('/v1/workspaces/:workspaceId/triggers', {
+        params: { workspaceId: project.id },
       });
       r.status(200);
     });
     await ctx.step('member POST → 403 (no project.write / trigger.create)', async () => {
       const r = await asMember.post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         { name: 'nope', type: 'cron', cron: '0 0 3 * * *', timezone: 'UTC', prompt_template: 'x' },
-        { params: { projectId: project.id } },
+        { params: { workspaceId: project.id } },
       );
       r.status(403);
     });
     await ctx.step('member PATCH → 403 (no trigger.update)', async () => {
       const r = await asMember.patch(
-        '/v1/projects/:projectId/triggers/:slug',
+        '/v1/workspaces/:workspaceId/triggers/:slug',
         { enabled: false },
-        { params: { projectId: project.id, slug: 'target-trigger' } },
+        { params: { workspaceId: project.id, slug: 'target-trigger' } },
       );
       r.status(403);
     });
     await ctx.step('member DELETE → 403 (no trigger.delete)', async () => {
-      const r = await asMember.del('/v1/projects/:projectId/triggers/:slug', {
-        params: { projectId: project.id, slug: 'target-trigger' },
+      const r = await asMember.del('/v1/workspaces/:workspaceId/triggers/:slug', {
+        params: { workspaceId: project.id, slug: 'target-trigger' },
       });
       r.status(403);
     });
     await ctx.step('member activation → 403 (no trigger.update)', async () => {
       const r = await asMember.patch(
-        '/v1/projects/:projectId/triggers/activation',
+        '/v1/workspaces/:workspaceId/triggers/activation',
         { paused: true },
-        { params: { projectId: project.id } },
+        { params: { workspaceId: project.id } },
       );
       r.status(403);
     });
@@ -384,10 +384,10 @@ flow(
     // member is NOT 403'd at the gate.
     await ctx.step('member fire unknown slug → 404 (NOT 403 — holds trigger.fire)', async () => {
       const r = await asMember.post(
-        '/v1/projects/:projectId/triggers/:slug/fire',
+        '/v1/workspaces/:workspaceId/triggers/:slug/fire',
         {},
         {
-          params: { projectId: project.id, slug: 'no-such-trigger' },
+          params: { workspaceId: project.id, slug: 'no-such-trigger' },
         },
       );
       r.status(404);
@@ -412,17 +412,17 @@ flow(
 //   - invalid slug (explicit, doesn't match ^[a-z0-9][a-z0-9_-]{0,127}$) → 400
 flow(
   'TRG-12',
-  { domain: 'triggers', routes: ['POST /v1/projects/:projectId/triggers'] },
+  { domain: 'triggers', routes: ['POST /v1/workspaces/:workspaceId/triggers'] },
   async (ctx) => {
-    const p = await ctx.fixtures.project();
+    const p = await ctx.fixtures.workspace();
     // Every payload below is invalid and cannot create a trigger. Retry only
     // gateway-generated outage responses, not API responses with x-request-id.
     const owner = ctx.client.as(ctx.P.OWNER).withTransientGatewayRetries();
-    const params = { projectId: p.id };
+    const params = { workspaceId: p.id };
 
     await ctx.step('missing name → 400', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         { type: 'cron', cron: '0 0 3 * * *', timezone: 'UTC', prompt_template: 'x' },
         { params },
       );
@@ -430,7 +430,7 @@ flow(
     });
     await ctx.step('missing type → 400', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         { name: 'x', cron: '0 0 3 * * *', timezone: 'UTC', prompt_template: 'x' },
         { params },
       );
@@ -438,7 +438,7 @@ flow(
     });
     await ctx.step('bad type (not cron/webhook) → 400', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         { name: 'x', type: 'event', cron: '0 0 3 * * *', timezone: 'UTC', prompt_template: 'x' },
         { params },
       );
@@ -446,7 +446,7 @@ flow(
     });
     await ctx.step('missing prompt_template → 400', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         { name: 'x', type: 'cron', cron: '0 0 3 * * *', timezone: 'UTC' },
         { params },
       );
@@ -454,7 +454,7 @@ flow(
     });
     await ctx.step('invalid session_mode → 400', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         {
           name: 'x',
           type: 'cron',
@@ -469,7 +469,7 @@ flow(
     });
     await ctx.step('pinned session_mode without session_id → 400', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         {
           name: 'x',
           type: 'cron',
@@ -484,7 +484,7 @@ flow(
     });
     await ctx.step('pinned with session_id from another project → 400', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         {
           name: 'x',
           type: 'cron',
@@ -500,7 +500,7 @@ flow(
     });
     await ctx.step('webhook without secret_env → 400', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         { name: 'x', type: 'webhook', prompt_template: 'x' },
         { params },
       );
@@ -508,7 +508,7 @@ flow(
     });
     await ctx.step('webhook with bad secret_env (lowercase) → 400', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         { name: 'x', type: 'webhook', prompt_template: 'x', secret_env: 'lowercase_name' },
         { params },
       );
@@ -516,7 +516,7 @@ flow(
     });
     await ctx.step('webhook with bad secret_env (starts with digit) → 400', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         { name: 'x', type: 'webhook', prompt_template: 'x', secret_env: '9BAD' },
         { params },
       );
@@ -524,7 +524,7 @@ flow(
     });
     await ctx.step('cron without cron expr AND without run_at → 400', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         { name: 'x', type: 'cron', timezone: 'UTC', prompt_template: 'x' },
         { params },
       );
@@ -532,7 +532,7 @@ flow(
     });
     await ctx.step('cron with bad run_at (not ISO) → 400', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         { name: 'x', type: 'cron', timezone: 'UTC', prompt_template: 'x', run_at: 'not-a-date' },
         { params },
       );
@@ -540,7 +540,7 @@ flow(
     });
     await ctx.step('explicit invalid slug (uppercase) → 400', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         {
           name: 'x',
           slug: 'UPPERCASE',
@@ -555,7 +555,7 @@ flow(
     });
     await ctx.step('explicit invalid slug (starts with dash) → 400', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/triggers',
+        '/v1/workspaces/:workspaceId/triggers',
         {
           name: 'x',
           slug: '-leading-dash',
@@ -585,20 +585,20 @@ flow(
   {
     domain: 'triggers',
     routes: [
-      'PATCH /v1/projects/:projectId/triggers/:slug',
-      'DELETE /v1/projects/:projectId/triggers/:slug',
-      'PATCH /v1/projects/:projectId/triggers/activation',
-      'GET /v1/projects/:projectId/triggers',
+      'PATCH /v1/workspaces/:workspaceId/triggers/:slug',
+      'DELETE /v1/workspaces/:workspaceId/triggers/:slug',
+      'PATCH /v1/workspaces/:workspaceId/triggers/activation',
+      'GET /v1/workspaces/:workspaceId/triggers',
     ],
   },
   async (ctx) => {
-    const p = await ctx.fixtures.project();
+    const p = await ctx.fixtures.workspace();
     const owner = ctx.client.as(ctx.P.OWNER);
-    const params = { projectId: p.id };
+    const params = { workspaceId: p.id };
 
     // Seed a trigger to target.
     await owner.post(
-      '/v1/projects/:projectId/triggers',
+      '/v1/workspaces/:workspaceId/triggers',
       {
         name: 'Edge Target',
         type: 'cron',
@@ -611,7 +611,7 @@ flow(
 
     await ctx.step('PATCH unknown slug → 404', async () => {
       const r = await owner.patch(
-        '/v1/projects/:projectId/triggers/:slug',
+        '/v1/workspaces/:workspaceId/triggers/:slug',
         { enabled: false },
         { params: { ...params, slug: 'no-such-trigger' } },
       );
@@ -619,26 +619,26 @@ flow(
     });
     await ctx.step('PATCH no-op body {} → 200 (no manifest keys, no commit)', async () => {
       const r = await owner.patch(
-        '/v1/projects/:projectId/triggers/:slug',
+        '/v1/workspaces/:workspaceId/triggers/:slug',
         {},
         { params: { ...params, slug: 'edge-target' } },
       );
       r.status(200);
     });
     await ctx.step('DELETE unknown slug → 404', async () => {
-      const r = await owner.del('/v1/projects/:projectId/triggers/:slug', {
+      const r = await owner.del('/v1/workspaces/:workspaceId/triggers/:slug', {
         params: { ...params, slug: 'no-such-trigger' },
       });
       r.status(404);
     });
     await ctx.step('DELETE invalid slug format (uppercase) → 400', async () => {
-      const r = await owner.del('/v1/projects/:projectId/triggers/:slug', {
+      const r = await owner.del('/v1/workspaces/:workspaceId/triggers/:slug', {
         params: { ...params, slug: 'UPPERCASE' },
       });
       r.status(400);
     });
     await ctx.step('DELETE invalid slug format (leading dash) → 400', async () => {
-      const r = await owner.del('/v1/projects/:projectId/triggers/:slug', {
+      const r = await owner.del('/v1/workspaces/:workspaceId/triggers/:slug', {
         params: { ...params, slug: '-leading-dash' },
       });
       r.status(400);
@@ -647,12 +647,12 @@ flow(
     // ── activation kill-switch round-trip ───────────────────────────────
     await ctx.step('activation pause → 200, triggers_paused reflected on readback', async () => {
       const r = await owner.patch(
-        '/v1/projects/:projectId/triggers/activation',
+        '/v1/workspaces/:workspaceId/triggers/activation',
         { paused: true },
         { params },
       );
       r.status(200);
-      const readback = await owner.get('/v1/projects/:projectId/triggers', { params });
+      const readback = await owner.get('/v1/workspaces/:workspaceId/triggers', { params });
       readback.status(200);
       if (readback.json<any>().triggers_paused !== true) {
         throw new Error('triggers_paused not persisted as true after pause');
@@ -660,12 +660,12 @@ flow(
     });
     await ctx.step('activation resume → 200, triggers_paused false on readback', async () => {
       const r = await owner.patch(
-        '/v1/projects/:projectId/triggers/activation',
+        '/v1/workspaces/:workspaceId/triggers/activation',
         { paused: false },
         { params },
       );
       r.status(200);
-      const readback = await owner.get('/v1/projects/:projectId/triggers', { params });
+      const readback = await owner.get('/v1/workspaces/:workspaceId/triggers', { params });
       readback.status(200);
       if (readback.json<any>().triggers_paused !== false) {
         throw new Error('triggers_paused not persisted as false after resume');
@@ -673,14 +673,14 @@ flow(
     });
     await ctx.step('activation non-boolean paused → 400', async () => {
       const r = await owner.patch(
-        '/v1/projects/:projectId/triggers/activation',
+        '/v1/workspaces/:workspaceId/triggers/activation',
         { paused: 'yes' },
         { params },
       );
       r.status(400);
     });
     await ctx.step('activation missing paused → 400', async () => {
-      const r = await owner.patch('/v1/projects/:projectId/triggers/activation', {}, { params });
+      const r = await owner.patch('/v1/workspaces/:workspaceId/triggers/activation', {}, { params });
       r.status(400);
     });
   },

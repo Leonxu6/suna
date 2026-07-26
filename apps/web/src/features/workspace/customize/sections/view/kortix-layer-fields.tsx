@@ -86,8 +86,8 @@ export function KortixLayerFields({
             value={draft.skills}
             onChange={(v: AgentGrantSetV2) => set('skills', v)}
             options={skillsOptions}
-            allLabel="Every project skill."
-            emptyLabel="No skills declared in this project yet."
+            allLabel="Every workspace skill."
+            emptyLabel="No skills declared in this workspace yet."
           />
         </FieldRow>
         <FieldRow label="Connectors">
@@ -95,8 +95,8 @@ export function KortixLayerFields({
             value={draft.connectors}
             onChange={(v: AgentGrantSetV2) => set('connectors', v)}
             options={connectorOptions}
-            allLabel="Every project connector."
-            emptyLabel="No connectors in this project yet."
+            allLabel="Every workspace connector."
+            emptyLabel="No connectors in this workspace yet."
           />
         </FieldRow>
         <FieldRow label="Secrets">
@@ -104,8 +104,8 @@ export function KortixLayerFields({
             value={draft.secrets}
             onChange={(v: AgentGrantSetV2) => set('secrets', v)}
             options={secretOptions}
-            allLabel="Every project secret."
-            emptyLabel="No secrets in this project yet."
+            allLabel="Every workspace secret."
+            emptyLabel="No secrets in this workspace yet."
           />
         </FieldRow>
         <FieldRow label="Kortix CLI">
@@ -120,7 +120,7 @@ export function KortixLayerFields({
               allowUnset
             />
             <p className="text-muted-foreground/60 text-[11px]">
-              {draft.workspace ? WORKSPACE_MODE_HELP[draft.workspace] : 'Inherits the project default.'}
+              {draft.workspace ? WORKSPACE_MODE_HELP[draft.workspace] : 'Inherits the workspace default.'}
             </p>
           </div>
         </FieldRow>

@@ -14,7 +14,7 @@ import { AddMarketplaceModal } from './add-marketplace-modal';
 import { MarketplaceAvatar } from '@/features/marketplace/marketplace-avatar';
 import { displayCompanyLabel } from '@/features/marketplace/marketplace-company-filter';
 import { MarketplacePagedGrid } from '@/features/marketplace/marketplace-paged-grid';
-import { MarketplaceProjectsGrid } from '@/features/marketplace/marketplace-projects-grid';
+import { MarketplaceWorkspacesGrid } from '@/features/marketplace/marketplace-workspaces-grid';
 import { type MarketplaceItem, type MarketplaceSummary } from '@/lib/marketplace-client';
 import { companyIdFromSlug, marketplaceSourceHref } from '@/lib/marketplace-slug';
 import { cn } from '@/lib/utils';
@@ -26,7 +26,7 @@ import {
 import { typeMeta } from './marketplace-meta';
 import { MarketplaceShell, type MarketplaceCrumb } from './marketplace-shell';
 
-// Only skills are browseable alongside Projects today (agents/commands/
+// Only skills are browseable alongside Workspaces today (agents/commands/
 // bundles are hidden from browse — see MARKETPLACE_VISIBLE_TYPES on the API).
 const TYPE_ORDER = ['registry:skill'];
 
@@ -89,7 +89,7 @@ function SourceRow({
 export function MarketplaceExplore({
   items: catalogItems,
   marketplaces,
-  projectItems,
+  workspaceItems,
   embedded = false,
   syncUrl = true,
   publicOnly = true,
@@ -100,15 +100,15 @@ export function MarketplaceExplore({
   items: MarketplaceItem[];
   marketplaces: MarketplaceSummary[];
   /** Every `registry:project` item, server-rendered (not client-fetched) so
-   *  the Projects showcase is fully indexed/static. */
-  projectItems: MarketplaceItem[];
+   *  the Workspaces showcase is fully indexed/static. */
+  workspaceItems: MarketplaceItem[];
   /** Render inside a panel (Customize tab) — drops the marketing page chrome. */
   embedded?: boolean;
   /** Mirror the source filter to the URL (`?source=`). Off when embedded. */
   syncUrl?: boolean;
-  /** Unauthenticated catalog reads (public). Off for the in-project view. */
+  /** Unauthenticated catalog reads (public). Off for the in-workspace view. */
   publicOnly?: boolean;
-  /** Ancestor scroll element to virtualize the grids against (in-project). */
+  /** Ancestor scroll element to virtualize the grids against (in-workspace). */
   scrollContainerRef?: RefObject<HTMLElement | null>;
 }) {
   // Source filter lives in the left rail — one surface, filtered in place. On
@@ -150,17 +150,17 @@ export function MarketplaceExplore({
 
   const searching = debounced.length > 0;
   const isAll = source === ALL_SOURCES;
-  const showProjects = !searching && (isAll || source === 'kortix');
+  const showWorkspaces = !searching && (isAll || source === 'kortix');
   const sourceLabel = isAll
     ? null
     : displayCompanyLabel(source, marketplaces.find((m) => m.id === source)?.label);
 
-  // Hide items that ship inside a project (e.g. the Kortix Starter skills) from
-  // the main grid — the project represents them here. They stay fully browseable
-  // by id and addable individually (project detail, add-to-project), just not as
+  // Hide items that ship inside a workspace (e.g. the Kortix Starter skills) from
+  // the main grid — the workspace represents them here. They stay fully browseable
+  // by id and addable individually (workspace detail, add-to-workspace), just not as
   // their own tiles on the landing grid.
   const componentItems = useMemo(
-    () => catalogItems.filter((it) => it.type !== 'registry:project' && !it.partOfProject),
+    () => catalogItems.filter((it) => it.type !== 'registry:project' && !it.partOfWorkspace),
     [catalogItems],
   );
   const typeCounts = useMemo(() => sumMarketplaceTypeCounts(marketplaces), [marketplaces]);
@@ -212,11 +212,11 @@ export function MarketplaceExplore({
         <>
           <div className="space-y-2">
             <h1 className="text-foreground text-2xl font-semibold tracking-tight text-balance">
-              Install a project, or add a skill
+              Install a workspace, or add a skill
             </h1>
             <p className="text-muted-foreground text-sm leading-relaxed text-pretty">
-              Install a full, working Kortix project in one click — or add skills from every source
-              into a project you already have.
+              Install a full, working Kortix workspace in one click — or add skills from every source
+              into a workspace you already have.
             </p>
           </div>
 
@@ -281,13 +281,13 @@ export function MarketplaceExplore({
       }
     >
       <div className="space-y-16">
-        {showProjects ? (
+        {showWorkspaces ? (
           <section className="scroll-mt-28">
             <SectionHeading
-              title="Install a project"
-              subtitle="A full, working Kortix project — spun up as its own project and set up for you in one session."
+              title="Install a workspace"
+              subtitle="A full, working Kortix workspace — spun up as its own workspace and set up for you in one session."
             />
-            <MarketplaceProjectsGrid items={projectItems} query={debounced} size="featured" />
+            <MarketplaceWorkspacesGrid items={workspaceItems} query={debounced} size="featured" />
           </section>
         ) : null}
 
@@ -296,7 +296,7 @@ export function MarketplaceExplore({
         <div className="space-y-12">
           <SectionHeading
             title={sourceLabel ?? 'Skills'}
-            subtitle="Add these into a project you already have."
+            subtitle="Add these into a workspace you already have."
           />
 
           {searching ? (

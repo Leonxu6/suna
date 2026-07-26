@@ -17,11 +17,11 @@
  * Two run modes in this one file:
  *   One-shot CLI  → streams a single turn to stdout:
  *     KORTIX_API_URL=http://localhost:8008/v1 KORTIX_API_KEY=kortix_pat_... \
- *     KORTIX_PROJECT_ID=... \
+ *     KORTIX_WORKSPACE_ID=... \
  *       bun run examples/09-kaab-backend-wrapper.ts "Summarize my new signups"
  *
  *   Multi-tenant service → POST /run {endUserId, prompt}, re-emitted as SSE:
- *     MODE=serve KORTIX_API_URL=... KORTIX_API_KEY=kortix_pat_... KORTIX_PROJECT_ID=... \
+ *     MODE=serve KORTIX_API_URL=... KORTIX_API_KEY=kortix_pat_... KORTIX_WORKSPACE_ID=... \
  *       bun run examples/09-kaab-backend-wrapper.ts
  *     curl -N localhost:8791/run -H 'content-type: application/json' \
  *       -d '{"endUserId":"alice","prompt":"Summarize my new signups"}'
@@ -45,18 +45,18 @@ import { createScopedKortix } from '../src/node/server';
 // ─── config (env) ────────────────────────────────────────────────────────────
 const backendUrl = process.env.KORTIX_API_URL ?? 'http://localhost:8008/v1';
 const upstreamApiKey = process.env.KORTIX_API_KEY; // the wrapper's own kortix_pat_ → origin 'backend'
-const projectId = process.env.KORTIX_PROJECT_ID;
+const workspaceId = process.env.KORTIX_WORKSPACE_ID;
 const includeOverrides = process.env.KAAB_OVERRIDES !== 'off';
 
 // Which connector/agent/model/secret this wrapper drives — all overridable.
 const CONNECTOR_SLUG = process.env.KAAB_CONNECTOR_SLUG ?? 'user-mcp';
 const CONNECTOR_URL = process.env.KAAB_CONNECTOR_URL ?? 'https://mcp.example.com/mcp';
-const AGENT_NAME = process.env.KAAB_AGENT; // undefined → project default agent
-const MODEL = process.env.KAAB_MODEL; // undefined → project/agent default model
-const SECRET_ID = process.env.KAAB_SECRET; // one project-secret identifier to narrow to
+const AGENT_NAME = process.env.KAAB_AGENT; // undefined → workspace default agent
+const MODEL = process.env.KAAB_MODEL; // undefined → workspace/agent default model
+const SECRET_ID = process.env.KAAB_SECRET; // one workspace-secret identifier to narrow to
 
-if (!upstreamApiKey || !projectId) {
-  console.error('Set KORTIX_API_KEY (a kortix_pat_ from Settings → Tokens) and KORTIX_PROJECT_ID.');
+if (!upstreamApiKey || !workspaceId) {
+  console.error('Set KORTIX_API_KEY (a kortix_pat_ from Settings → Tokens) and KORTIX_WORKSPACE_ID.');
   process.exit(1);
 }
 
@@ -79,17 +79,17 @@ function clientFor(endUserId: string) {
 
 // ─── step 1: mint the connector definition (once per connector) ──────────────
 async function ensureConnector(kortix: ReturnType<typeof clientFor>): Promise<void> {
-  const project = kortix.project(projectId!);
-  const existing = await project.connectors.list().catch(() => ({ connectors: [] as { slug: string }[] }));
+  const workspace = kortix.workspace(workspaceId!);
+  const existing = await workspace.connectors.list().catch(() => ({ connectors: [] as { slug: string }[] }));
   if (existing.connectors?.some((c) => c.slug === CONNECTOR_SLUG)) return;
 
   // A headless connector: an MCP server reached over HTTP with a per-user
   // bearer credential. `provider` mcp/http/openapi/graphql all take a static
   // credential and need no OAuth (pipedream is the browser-only exception).
   // NB: an `mcp` connector uses `url` (openapi/postman use `spec`, http uses
-  // `baseUrl`). The connector must be declared in the project's kortix.yaml for
+  // `baseUrl`). The connector must be declared in the workspace's kortix.yaml for
   // per-user PROFILES to reconcile against it.
-  await project.connectors.create({
+  await workspace.connectors.create({
     slug: CONNECTOR_SLUG,
     provider: 'mcp',
     transport: 'http',
@@ -100,8 +100,8 @@ async function ensureConnector(kortix: ReturnType<typeof clientFor>): Promise<vo
 }
 
 // ─── step 2: mint + credential + activate this user's connection profile ─────
-/** Returns the `profile_id` you bind by reference, or null if the project has
- *  no connector declared (a bare project without kortix.yaml). Idempotent per
+/** Returns the `profile_id` you bind by reference, or null if the workspace has
+ *  no connector declared (a bare workspace without kortix.yaml). Idempotent per
  *  (connector, owner). `owner_type: 'external'` = your app's user, independent
  *  of any Kortix member/agent. */
 async function ensureUserProfile(
@@ -109,9 +109,9 @@ async function ensureUserProfile(
   endUserId: string,
   usersOwnCredential: string,
 ): Promise<string | null> {
-  const project = kortix.project(projectId!);
+  const workspace = kortix.workspace(workspaceId!);
   try {
-    const profile = await project.connectors.profiles.reconcile({
+    const profile = await workspace.connectors.profiles.reconcile({
       connector_alias: CONNECTOR_SLUG,
       owner_type: 'external',
       owner_id: endUserId,
@@ -119,14 +119,14 @@ async function ensureUserProfile(
     });
     // Store THAT user's own credential (never sent again; resolved server-side
     // at connector-call time — it never enters the sandbox env).
-    await project.connectors.profiles.updateCredential(profile.profile_id, {
+    await workspace.connectors.profiles.updateCredential(profile.profile_id, {
       value: usersOwnCredential,
       kind: 'secret',
     });
-    await project.connectors.profiles.activate(profile.profile_id);
+    await workspace.connectors.profiles.activate(profile.profile_id);
     return profile.profile_id;
   } catch (err) {
-    // ONLY the "connector not declared in the project's kortix.yaml" case (404)
+    // ONLY the "connector not declared in the workspace's kortix.yaml" case (404)
     // is a benign skip — run the rest of the flow without a binding. Every other
     // failure (403 auth, invalid credential, network) MUST surface: swallowing
     // it would run the agent FOR this user WITHOUT their credential — a silent
@@ -134,7 +134,7 @@ async function ensureUserProfile(
     const status = (err as { status?: number }).status;
     if (status === 404) {
       console.error(
-        `[connector] "${CONNECTOR_SLUG}" is not declared in the project manifest — ` +
+        `[connector] "${CONNECTOR_SLUG}" is not declared in the workspace manifest — ` +
           `running without a per-user binding. Add it to kortix.yaml to enable.`,
       );
       return null;
@@ -163,7 +163,7 @@ async function startSession(
         }
       : {}),
   };
-  const session = await kortix.project(projectId!).sessions.create(body);
+  const session = await kortix.workspace(workspaceId!).sessions.create(body);
   console.error(
     `[session ${session.session_id}] origin=${session.origin ?? '(n/a)'}` +
       ` origin_ref=${session.origin_ref ?? '(n/a)'} secrets=${JSON.stringify(session.secrets_allowlist ?? null)}`,
@@ -180,7 +180,7 @@ async function runTurn(
   prompt: string,
   onText: (delta: string) => void,
 ): Promise<void> {
-  const session = kortix.session(projectId!, sessionId);
+  const session = kortix.session(workspaceId!, sessionId);
   // ensureReady() blocks — polling the sandbox cold start (up to ~3 min by
   // default; pass { readyTimeoutMs } to wait longer) — until the runtime is up,
   // THEN we stream, so the stream is connected before the prompt goes out and no
@@ -227,7 +227,7 @@ async function runTurn(
 /** Full flow for one end-user + prompt, streaming text to `onText`. */
 async function serveOneUser(endUserId: string, prompt: string, onText: (t: string) => void) {
   const kortix = clientFor(endUserId);
-  // The connector layer is optional: on a bare project (no kortix.yaml / no
+  // The connector layer is optional: on a bare workspace (no kortix.yaml / no
   // connector) it degrades to "no binding" and the session + streaming path
   // still runs. Set KAAB_NO_CONNECTOR=1 to skip it entirely.
   let profileId: string | null = null;

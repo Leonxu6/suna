@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 
 import { searchWorkspaceFiles } from '@/features/files';
+import { getFileIcon } from '@/features/workspace-files';
 import type {
   Agent,
   Command,
@@ -99,7 +100,7 @@ export interface SessionChatInputProps {
   stopDisabled?: boolean;
   /**
    * The send is in flight but hasn't navigated/settled yet — swap the send
-   * button for a spinner (used by the project-home composer while the session
+   * button for a spinner (used by the workspace-home composer while the session
    * create POST round-trips). Distinct from `isBusy`, which means "the agent is
    * running" and shows a stop button instead.
    */
@@ -122,14 +123,14 @@ export interface SessionChatInputProps {
   messages?: MessageWithParts[];
   /** Session ID — used for message queue, todo chip, and mention filtering */
   sessionId?: string;
-  /** Project ID — lets the reasoning-effort control read/write this
-   *  project's per-model generation config (see reasoning-effort-selector.tsx). */
-  projectId?: string;
+  /** Workspace ID — lets the reasoning-effort control read/write this
+   *  workspace's per-model generation config (see reasoning-effort-selector.tsx). */
+  workspaceId?: string;
   /** If true, disables the input (e.g. during session creation redirect) */
   disabled?: boolean;
   /**
    * Clear the composer optimistically on send (default true). Set false when the
-   * send navigates the composer away (project-home → new session): the component
+   * send navigates the composer away (workspace-home → new session): the component
    * is about to unmount, so clearing first only flashes an empty box before the
    * route swaps — and would discard the user's text if the send is gated (e.g. a
    * paywall) instead of navigating. The instant session shell then carries the
@@ -177,7 +178,7 @@ export interface SessionChatInputProps {
   toolbarSlot?: React.ReactNode;
 
   /** Extra classes for the input card — e.g. a radius override for the
-   *  project-home hero composer (`rounded-xl`). The drag overlay follows. */
+   *  workspace-home hero composer (`rounded-xl`). The drag overlay follows. */
   cardClassName?: string;
 
   /** Reply context — shows a banner in the input indicating what's being replied to */
@@ -225,7 +226,7 @@ function SessionChatInputImpl({
   onVariantChange,
   messages,
   sessionId,
-  projectId,
+  workspaceId,
   disabled = false,
   clearOnSend = true,
   modelRequired = false,
@@ -688,10 +689,10 @@ function SessionChatInputImpl({
   //     send button is hard-disabled with only a tooltip explaining it.
   //  2. Nothing USABLE (`!hasSelectableModels`) — entitlement check: NOT
   //     `models.length === 0`, because the gateway bakes its whole catalog
-  //     into every project regardless of plan or connected keys; this accounts
+  //     into every workspace regardless of plan or connected keys; this accounts
   //     for free-tier gating and which providers are actually connected.
   // Both are only consulted after every input settles (`modelsLoading` for the
-  // provider catalog, `entitlementsPending` for account/secrets/project), so
+  // provider catalog, `entitlementsPending` for account/secrets/workspace), so
   // the bar renders exactly once with the final answer instead of flashing in
   // on half-loaded data and vanishing when the account state arrives.
   const { hasSelectableModels, entitlementsPending } = useModelConnectionGate(models);
@@ -762,7 +763,7 @@ function SessionChatInputImpl({
     const mentionsToSend = mentions.length > 0 ? [...mentions] : undefined;
 
     // Optimistically clear input — UNLESS this send navigates the composer away
-    // (project-home → new session, `clearOnSend={false}`). There, clearing first
+    // (workspace-home → new session, `clearOnSend={false}`). There, clearing first
     // only flashes an empty box before the route swaps, discards the text on a
     // gated send, and would revoke the local file URLs the instant shell still
     // needs to preview. The text/files ride across via the start-stash instead.
@@ -1313,7 +1314,7 @@ function SessionChatInputImpl({
             variants={variants}
             selectedVariant={selectedVariant}
             onVariantChange={onVariantChange}
-            projectId={projectId}
+            workspaceId={workspaceId}
             messages={messages}
             onContextClick={onContextClick}
             toolbarSlot={toolbarSlot}

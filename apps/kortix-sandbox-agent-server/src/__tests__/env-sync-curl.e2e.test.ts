@@ -4,7 +4,7 @@ import { describe, expect, it } from 'bun:test'
 
 import type { Config } from '../config'
 import type { Opencode } from '../opencode'
-import { createProjectEnvStore } from '../project-env'
+import { createWorkspaceEnvStore } from '../workspace-env'
 import { buildOpencodeApp } from '../proxy'
 
 const TEST_TOKEN = 'curl-test-kortix-token'
@@ -16,13 +16,13 @@ function baseConfig(): Config {
     opencodeInternalPort: 4096,
     staticPort: 3211,
     workspace: '/workspace',
-    projectTarget: '/workspace',
+    workspaceTarget: '/workspace',
     defaultBranch: 'main',
     branchFetchAttempts: 60,
     branchFetchDelaySec: 0.25,
     defaultOpencodeConfigDir: '/ephemeral/opencode',
     autoClone: false,
-    projectId: 'project-1',
+    workspaceId: 'workspace-1',
     apiUrl: 'http://api.test/v1',
     repoUrl: undefined,
     branchName: undefined,
@@ -65,7 +65,7 @@ async function curlJson(url: string, body: string): Promise<{ status: number; bo
 describe('project env sync curl e2e', () => {
   it('updates running daemon env state through curl without restarting the sandbox', async () => {
     let restarts = 0
-    const store = createProjectEnvStore({
+    const store = createWorkspaceEnvStore({
       KORTIX_PROJECT_SECRET_NAMES: 'API_KEY',
       API_KEY: 'old',
     } as NodeJS.ProcessEnv)

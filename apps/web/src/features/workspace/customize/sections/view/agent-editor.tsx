@@ -7,9 +7,9 @@
  * (skills/connectors/secrets/kortix_cli), and the full OpenCode permission tree.
  *
  * Mounted from agents-view.tsx's detail aside via <AgentConfigEditor/>:
- *   - v2 project (editable) → a compact summary card + "Edit configuration",
+ *   - v2 workspace (editable) → a compact summary card + "Edit configuration",
  *     which opens the full grouped editor in a Modal.
- *   - v1 project (not editable) → renders the caller's `fallback` (the legacy
+ *   - v1 workspace (not editable) → renders the caller's `fallback` (the legacy
  *     model + scope cards) plus an "upgrade to v2" hint. We degrade, never crash.
  *
  * Saves round-trip the whole block to kortix.yaml via the agent-config route,
@@ -41,16 +41,16 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   useAgentConfig,
   useUpdateAgentConfig,
-} from '@/hooks/projects/use-agent-config';
+} from '@/hooks/workspaces/use-agent-config';
 import { errorToast, successToast } from '@/components/ui/toast';
 import {
   type AgentConfigBlock,
   type AgentGrantSetV2,
   listConnectors,
-  listProjectSecrets,
-  listProjectSandboxTemplates,
+  listWorkspaceSecrets,
+  listWorkspaceSandboxTemplates,
   type RuntimeAgentConfig,
-  type ProjectConfigSummary,
+  type WorkspaceConfigSummary,
 } from '@kortix/sdk';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
@@ -75,17 +75,17 @@ export {
 } from './agent-editor-catalog';
 export { Segmented, FieldRow } from './agent-editor-primitives';
 
-type Agent = ProjectConfigSummary['agents'][number];
+type Agent = WorkspaceConfigSummary['agents'][number];
 
 function AgentEditorModal({
-  projectId,
+  workspaceId,
   agentName,
   initial,
   skillsOptions,
   open,
   onOpenChange,
 }: {
-  projectId: string;
+  workspaceId: string;
   agentName: string;
   initial: AgentConfigBlock;
   skillsOptions: { id: string; label: string }[];
@@ -95,21 +95,21 @@ function AgentEditorModal({
   const [draft, setDraft] = useState<AgentConfigBlock>(initial);
   const [baseline] = useState<AgentConfigBlock>(initial);
   const isDirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(baseline), [draft, baseline]);
-  const update = useUpdateAgentConfig(projectId, agentName);
+  const update = useUpdateAgentConfig(workspaceId, agentName);
 
   const secretsQuery = useQuery({
-    queryKey: ['project-secrets', projectId],
-    queryFn: () => listProjectSecrets(projectId),
+    queryKey: ['workspace-secrets', workspaceId],
+    queryFn: () => listWorkspaceSecrets(workspaceId),
     staleTime: 30_000,
   });
   const connectorsQuery = useQuery({
-    queryKey: ['project-connectors', projectId],
-    queryFn: () => listConnectors(projectId),
+    queryKey: ['workspace-connectors', workspaceId],
+    queryFn: () => listConnectors(workspaceId),
     staleTime: 30_000,
   });
   const sandboxesQuery = useQuery({
-    queryKey: ['project-sandbox-templates', projectId],
-    queryFn: () => listProjectSandboxTemplates(projectId),
+    queryKey: ['workspace-sandbox-templates', workspaceId],
+    queryFn: () => listWorkspaceSandboxTemplates(workspaceId),
     staleTime: 30_000,
   });
   const secretOptions = useMemo(
@@ -255,20 +255,20 @@ export function grantSummary(v: AgentGrantSetV2 | undefined): {
 }
 
 export function AgentConfigEditor({
-  projectId,
+  workspaceId,
   agent,
   skillsOptions,
   fallback,
 }: {
-  projectId: string;
+  workspaceId: string;
   agent: Agent;
-  /** The project's declared skills, for the governance picker. */
+  /** The workspace's declared skills, for the governance picker. */
   skillsOptions: { id: string; label: string }[];
-  /** Rendered for a v1 project (the legacy model + scope cards) — we degrade. */
+  /** Rendered for a v1 workspace (the legacy model + scope cards) — we degrade. */
   fallback: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const configQuery = useAgentConfig(projectId, agent.name);
+  const configQuery = useAgentConfig(workspaceId, agent.name);
 
   if (configQuery.isLoading) {
     return (
@@ -284,13 +284,13 @@ export function AgentConfigEditor({
   const data = configQuery.data;
   if (!data) return <>{fallback}</>;
 
-  // v1 project → degrade to the legacy editor + an upgrade hint.
+  // v1 workspace → degrade to the legacy editor + an upgrade hint.
   if (!data.editable) {
     return (
       <div className="space-y-3">
         {fallback}
         <InfoBanner tone="info" title="Upgrade for the full agent editor">
-          This project uses a v1 manifest. Migrate to <span className="font-mono">kortix.yaml</span>{' '}
+          This workspace uses a v1 manifest. Migrate to <span className="font-mono">kortix.yaml</span>{' '}
           (kortix_version 2) to edit the agent's mode, model, temperature, permission tree, and
           per-agent governance here.
         </InfoBanner>
@@ -349,7 +349,7 @@ export function AgentConfigEditor({
             Environment
           </span>
           <Badge variant="outline" size="xs" className="font-mono">
-            {block.sandbox ?? 'Project default'}
+            {block.sandbox ?? 'Workspace default'}
           </Badge>
         </div>
         {summaries.map((s) => {
@@ -373,7 +373,7 @@ export function AgentConfigEditor({
 
       {open ? (
         <AgentEditorModal
-          projectId={projectId}
+          workspaceId={workspaceId}
           agentName={agent.name}
           initial={block}
           skillsOptions={skillsOptions}

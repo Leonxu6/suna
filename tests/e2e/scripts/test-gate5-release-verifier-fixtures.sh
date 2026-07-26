@@ -116,7 +116,7 @@ write_playwright_report() {
       },
       suites: [
         { file: "04-auth-flow.spec.ts" },
-        { file: "08-accounts-project-access.spec.ts" },
+        { file: "08-accounts-workspace-access.spec.ts" },
         { file: "09-admin-ops.spec.ts" },
         { file: "10-production-golden-paths.spec.ts" },
         { file: "11-production-boundaries.spec.ts" }

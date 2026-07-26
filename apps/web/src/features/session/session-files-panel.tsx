@@ -8,7 +8,7 @@ import { useState } from 'react';
 
 import { errorToast, successToast } from '@/components/ui/toast';
 import { useGitStatus } from '@/features/files/hooks/use-git-status';
-import { getProjectSession } from '@kortix/sdk';
+import { getWorkspaceSession } from '@kortix/sdk';
 import { cn } from '@/lib/utils';
 import { useChatSendStore } from '@/stores/chat-send-store';
 import { useFilePreviewStore } from '@/stores/file-preview-store';
@@ -27,7 +27,7 @@ const STATUS_BADGE: Record<string, { letter: string; cls: string; label: string 
 /**
  * Side-panel "Changes" view.
  *
- * Each session runs on its own standalone version of the project (a branch
+ * Each session runs on its own standalone version of the workspace (a branch
  * forked from `base_ref`), so work here never touches the main version until
  * it's explicitly merged. This panel is intentionally NOT a file browser — the
  * full explorer lives in the main Files tab + Customize. Here we only surface:
@@ -50,7 +50,7 @@ export function SessionFilesPanel({
   const tHardcodedUi = useTranslations('hardcodedUi');
   // The git branch == the ROUTE session id; SessionLayout's `sessionId` prop is
   // the OpenCode chat session id (used to message the agent).
-  const { id: projectId, sessionId: gitSessionId } = useParams<{
+  const { id: workspaceId, sessionId: gitSessionId } = useParams<{
     id: string;
     sessionId: string;
   }>();
@@ -63,9 +63,9 @@ export function SessionFilesPanel({
   const isLoadingChanges = !statusQuery.data && (statusQuery.isLoading || statusQuery.isFetching);
 
   const sessionQuery = useQuery({
-    queryKey: ['project', 'session', projectId, gitSessionId],
-    queryFn: () => getProjectSession(projectId!, gitSessionId!),
-    enabled: !!projectId && !!gitSessionId,
+    queryKey: ['workspace', 'session', workspaceId, gitSessionId],
+    queryFn: () => getWorkspaceSession(workspaceId!, gitSessionId!),
+    enabled: !!workspaceId && !!gitSessionId,
     staleTime: 60_000,
   });
   const baseRef = sessionQuery.data?.base_ref ?? 'main';

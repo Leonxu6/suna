@@ -30,7 +30,7 @@ const ROW =
   'group bg-popover hover:bg-muted/40 flex w-full items-center gap-3 rounded-md border px-4 py-2.5 text-left transition-colors active:scale-[0.995]';
 
 export function CatalogTab({
-  projectId,
+  workspaceId,
   connectedIds,
   search,
   subview,
@@ -38,7 +38,7 @@ export function CatalogTab({
   onProviderConnected,
   canWrite = false,
 }: {
-  projectId: string;
+  workspaceId: string;
   connectedIds: Set<string>;
   search: string;
   subview: CatalogSubview;
@@ -90,7 +90,7 @@ export function CatalogTab({
     }
     return (
       <ApiKeyConnectForm
-        projectId={projectId}
+        workspaceId={workspaceId}
         provider={provider}
         onBack={() => setSubview({ kind: 'detail', providerId: provider.id })}
         onConnected={(providerId) => {
@@ -104,7 +104,7 @@ export function CatalogTab({
   if (subview.kind === 'custom') {
     return (
       <CustomProviderForm
-        projectId={projectId}
+        workspaceId={workspaceId}
         onBack={() => setSubview({ kind: 'list' })}
         onDone={() => setSubview({ kind: 'list' })}
       />
@@ -125,12 +125,12 @@ export function CatalogTab({
           <div className="min-w-0 flex-1">
             <div className="text-foreground truncate text-sm font-medium">
               {tHardcodedUi.raw(
-                'componentsProjectsProjectProviderModal.line492JsxTextCustomProvider',
+                'componentsWorkspacesWorkspaceProviderModal.line492JsxTextCustomProvider',
               )}
             </div>
             <p className="text-muted-foreground mt-0.5 truncate text-xs">
               {tHardcodedUi.raw(
-                'componentsProjectsProjectProviderModal.line495JsxTextConnectAnyOpenaiCompatibleEndpointWithYourOwn',
+                'componentsWorkspacesWorkspaceProviderModal.line495JsxTextConnectAnyOpenaiCompatibleEndpointWithYourOwn',
               )}
             </p>
           </div>
@@ -204,7 +204,7 @@ function ProviderDetail({
         onClick={onBack}
       >
         <ChevronLeft className="size-3.5 shrink-0" />
-        {tHardcodedUi.raw('componentsProjectsProjectProviderModal.line576JsxTextBackToProviders')}
+        {tHardcodedUi.raw('componentsWorkspacesWorkspaceProviderModal.line576JsxTextBackToProviders')}
       </Button>
 
       <div className="bg-popover flex items-center gap-3 rounded-md border px-4 py-3">
@@ -249,14 +249,14 @@ function ProviderDetail({
             <span className="text-muted-foreground font-normal"> ({models.length})</span>
           </Label>
           <span className="text-muted-foreground/40 text-xs">
-            {tHardcodedUi.raw('componentsProjectsProjectProviderModal.line618JsxTextNewestFirst')}
+            {tHardcodedUi.raw('componentsWorkspacesWorkspaceProviderModal.line618JsxTextNewestFirst')}
           </span>
         </div>
 
         {models.length === 0 ? (
           <p className="text-muted-foreground px-3 py-6 text-center text-xs">
             {tHardcodedUi.raw(
-              'componentsProjectsProjectProviderModal.line623JsxTextNoModelsDeclared',
+              'componentsWorkspacesWorkspaceProviderModal.line623JsxTextNoModelsDeclared',
             )}
           </p>
         ) : (

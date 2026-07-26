@@ -384,7 +384,7 @@ export const useKortixComputerStore = create<KortixComputerState>()(
       requestQuickView: (view: QuickView, explicitSessionId?: string, target?: QuickViewTarget) => {
         // `_activeSessionId` is only maintained for TAB-system sessions
         // (session-layout gates `setActiveSession` on `isActiveTab`) — on the
-        // standalone /projects/:id/sessions/:id route it stays null, which
+        // standalone /workspaces/:id/sessions/:id route it stays null, which
         // silently dropped the pending view (panel opened, terminal never
         // came). Callers that can resolve the active panel session (via
         // session-browser-store's `getActivePanelSessionId`, which IS

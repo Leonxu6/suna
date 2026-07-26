@@ -6,7 +6,7 @@
 /** GET /file?path=<path> response item */
 export interface FileNode {
   name: string;
-  path: string; // relative to project root
+  path: string; // relative to workspace root
   absolute: string; // absolute filesystem path
   type: 'file' | 'directory';
   ignored: boolean;
@@ -124,8 +124,8 @@ export interface LssSearchResult {
   hits: LssHit[];
 }
 
-/** GET /project/current response */
-export interface RuntimeProjectInfo {
+/** GET /workspace/current response */
+export interface RuntimeWorkspaceInfo {
   id: string;
   worktree: string;
   vcs?: 'git';

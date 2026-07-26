@@ -3,7 +3,7 @@
  *
  * The session handle takes a per-send `{ agent }` override (there is also a
  * sticky `session.setAgent(name)`). Agent names come from
- * `projects.detail().config.agents` — script 05 lists them.
+ * `workspaces.detail().config.agents` — script 05 lists them.
  *
  * Run (from packages/sdk):
  *   KORTIX_MODEL=claude-sonnet-4.6 bun run playground/agents/07-use-agent.ts [agentName]
@@ -12,7 +12,7 @@ import {
   makeKortix,
   modelOverride,
   pickOrCreateSessionId,
-  pickProjectId,
+  pickWorkspaceId,
   reportTurn,
   run,
   sendAndWait,
@@ -20,14 +20,14 @@ import {
 
 run("use-agent", async () => {
   const kortix = makeKortix();
-  const projectId = await pickProjectId(kortix);
+  const workspaceId = await pickWorkspaceId(kortix);
 
-  const detail = await kortix.projects.detail(projectId);
+  const detail = await kortix.workspaces.detail(workspaceId);
   const agents = detail.config.agents.map((a) => a.name);
   const agent =
     process.argv[2] ?? detail.config.open_code_default_agent ?? agents[0];
   if (!agent) {
-    console.error("project has no agents — run 05-list-agents to inspect");
+    console.error("workspace has no agents — run 05-list-agents to inspect");
     process.exit(1);
   }
   if (!agents.includes(agent)) {
@@ -39,10 +39,10 @@ run("use-agent", async () => {
 
   const sessionId = await pickOrCreateSessionId(
     kortix,
-    projectId,
+    workspaceId,
     `sdk agent ${agent}`,
   );
-  const session = kortix.session(projectId, sessionId);
+  const session = kortix.session(workspaceId, sessionId);
 
   const turn = await sendAndWait(
     session,

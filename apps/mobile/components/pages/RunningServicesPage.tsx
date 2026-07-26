@@ -42,7 +42,7 @@ import { useThemeColors } from '@/lib/theme-colors';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type ServiceFilter = 'all' | 'managed' | 'projects' | 'system';
+type ServiceFilter = 'all' | 'managed' | 'workspaces' | 'system';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -68,7 +68,7 @@ function shortenPath(path: string | undefined): string {
 const FILTER_LABELS: Record<ServiceFilter, string> = {
   all: 'All',
   managed: 'Managed',
-  projects: 'Projects',
+  workspaces: 'Workspaces',
   system: 'System',
 };
 
@@ -201,7 +201,7 @@ export function RunningServicesPage({ page, onBack, onOpenDrawer, onOpenRightDra
     return services.filter((s) => {
       if (filter === 'all') return true;
       if (filter === 'managed') return s.managed;
-      if (filter === 'projects') return s.scope === 'project' || s.scope === 'session';
+      if (filter === 'workspaces') return s.scope === 'workspace' || s.scope === 'session';
       if (filter === 'system') return s.scope === 'bootstrap' || s.scope === 'core';
       return true;
     });

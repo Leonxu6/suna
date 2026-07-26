@@ -198,12 +198,12 @@ jq -e '
 curl_json account_invites "$account_invites_file" "$api_url/accounts/$account_id/invites" "$GATE5_API_CURL_USER_TOKEN"
 jq -e 'type == "array"' "$account_invites_file" >/dev/null
 
-curl_json projects "$projects_file" "$api_url/projects?account_id=$account_id" "$GATE5_API_CURL_USER_TOKEN"
+curl_json projects "$projects_file" "$api_url/workspaces?account_id=$account_id" "$GATE5_API_CURL_USER_TOKEN"
 jq -e --arg project_id "$project_id" '
   type == "array" and any(.[]; .project_id == $project_id)
 ' "$projects_file" >/dev/null
 
-curl_json project "$project_file" "$api_url/projects/$project_id" "$GATE5_API_CURL_USER_TOKEN"
+curl_json project "$project_file" "$api_url/workspaces/$project_id" "$GATE5_API_CURL_USER_TOKEN"
 jq -e --arg account_id "$account_id" --arg project_id "$project_id" '
   .project_id == $project_id
   and .account_id == $account_id
@@ -213,7 +213,7 @@ jq -e --arg account_id "$account_id" --arg project_id "$project_id" '
   and .status == "active"
 ' "$project_file" >/dev/null
 
-curl_json project_detail "$project_detail_file" "$api_url/projects/$project_id/detail" "$GATE5_API_CURL_USER_TOKEN"
+curl_json project_detail "$project_detail_file" "$api_url/workspaces/$project_id/detail" "$GATE5_API_CURL_USER_TOKEN"
 jq -e --arg project_id "$project_id" '
   .project.project_id == $project_id
   and (.project.repo_url | type == "string" and length > 0)
@@ -222,27 +222,27 @@ jq -e --arg project_id "$project_id" '
   and (.files | type == "array" and any(.[]; ((.path // "") == "kortix.yaml") or (.path // "") == "kortix.toml" or .name == "kortix.yaml" or .name == "kortix.toml"))
 ' "$project_detail_file" >/dev/null
 
-curl_json project_files "$project_files_file" "$api_url/projects/$project_id/files" "$GATE5_API_CURL_USER_TOKEN"
+curl_json project_files "$project_files_file" "$api_url/workspaces/$project_id/files" "$GATE5_API_CURL_USER_TOKEN"
 jq -e '
   type == "array"
   and any(.[]; .type == "file" and (((.path // "") == "README.md") or .name == "README.md"))
   and any(.[]; .type == "file" and (((.path // "") == ".opencode/opencode.jsonc") or .name == "opencode.jsonc"))
 ' "$project_files_file" >/dev/null
 
-curl_json project_file_content "$project_file_content_file" "$api_url/projects/$project_id/files/content?path=.opencode/opencode.jsonc" "$GATE5_API_CURL_USER_TOKEN"
+curl_json project_file_content "$project_file_content_file" "$api_url/workspaces/$project_id/files/content?path=.opencode/opencode.jsonc" "$GATE5_API_CURL_USER_TOKEN"
 jq -e '
   .path == ".opencode/opencode.jsonc"
   and (.ref | type == "string" and length > 0)
   and (.content | type == "string" and contains("\"default_agent\""))
 ' "$project_file_content_file" >/dev/null
 
-curl_json project_sessions "$sessions_file" "$api_url/projects/$project_id/sessions" "$GATE5_API_CURL_USER_TOKEN"
+curl_json project_sessions "$sessions_file" "$api_url/workspaces/$project_id/sessions" "$GATE5_API_CURL_USER_TOKEN"
 jq -e --arg session_id "$session_id" '
   type == "array"
   and any(.[]; .session_id == $session_id and .branch_name == $session_id and .sandbox_provider == "daytona")
 ' "$sessions_file" >/dev/null
 
-curl_json project_session "$session_file" "$api_url/projects/$project_id/sessions/$session_id" "$GATE5_API_CURL_USER_TOKEN"
+curl_json project_session "$session_file" "$api_url/workspaces/$project_id/sessions/$session_id" "$GATE5_API_CURL_USER_TOKEN"
 jq -e --arg account_id "$account_id" --arg project_id "$project_id" --arg session_id "$session_id" '
   .session_id == $session_id
   and .account_id == $account_id
@@ -252,7 +252,7 @@ jq -e --arg account_id "$account_id" --arg project_id "$project_id" --arg sessio
   and .sandbox_provider == "daytona"
 ' "$session_file" >/dev/null
 
-curl_json session_sandbox "$sandbox_file" "$api_url/projects/$project_id/sessions/$session_id/sandbox" "$GATE5_API_CURL_USER_TOKEN"
+curl_json session_sandbox "$sandbox_file" "$api_url/workspaces/$project_id/sessions/$session_id/sandbox" "$GATE5_API_CURL_USER_TOKEN"
 jq -e \
   --arg project_id "$project_id" \
   --arg session_id "$session_id" \
@@ -332,14 +332,14 @@ jq -n \
       { name: "account", method: "GET", path: "/accounts/<account_id>", status: 200, artifact: "api-curl-account.json" },
       { name: "account_members", method: "GET", path: "/accounts/<account_id>/members", status: 200, artifact: "api-curl-account-members.json" },
       { name: "account_invites", method: "GET", path: "/accounts/<account_id>/invites", status: 200, artifact: "api-curl-account-invites.json" },
-      { name: "projects", method: "GET", path: "/projects?account_id=<account_id>", status: 200, artifact: "api-curl-projects.json" },
-      { name: "project", method: "GET", path: "/projects/<project_id>", status: 200, artifact: "api-curl-project.json" },
-      { name: "project_detail", method: "GET", path: "/projects/<project_id>/detail", status: 200, artifact: "api-curl-project-detail.json" },
-      { name: "project_files", method: "GET", path: "/projects/<project_id>/files", status: 200, artifact: "api-curl-project-files.json" },
-      { name: "project_file_content", method: "GET", path: "/projects/<project_id>/files/content?path=.opencode/opencode.jsonc", status: 200, artifact: "api-curl-project-file-content.json" },
-      { name: "project_sessions", method: "GET", path: "/projects/<project_id>/sessions", status: 200, artifact: "api-curl-project-sessions.json" },
-      { name: "project_session", method: "GET", path: "/projects/<project_id>/sessions/<session_id>", status: 200, artifact: "api-curl-project-session.json" },
-      { name: "session_sandbox", method: "GET", path: "/projects/<project_id>/sessions/<session_id>/sandbox", status: 200, artifact: "api-curl-session-sandbox.json" },
+      { name: "projects", method: "GET", path: "/workspaces?account_id=<account_id>", status: 200, artifact: "api-curl-projects.json" },
+      { name: "project", method: "GET", path: "/workspaces/<project_id>", status: 200, artifact: "api-curl-project.json" },
+      { name: "project_detail", method: "GET", path: "/workspaces/<project_id>/detail", status: 200, artifact: "api-curl-project-detail.json" },
+      { name: "project_files", method: "GET", path: "/workspaces/<project_id>/files", status: 200, artifact: "api-curl-project-files.json" },
+      { name: "project_file_content", method: "GET", path: "/workspaces/<project_id>/files/content?path=.opencode/opencode.jsonc", status: 200, artifact: "api-curl-project-file-content.json" },
+      { name: "project_sessions", method: "GET", path: "/workspaces/<project_id>/sessions", status: 200, artifact: "api-curl-project-sessions.json" },
+      { name: "project_session", method: "GET", path: "/workspaces/<project_id>/sessions/<session_id>", status: 200, artifact: "api-curl-project-session.json" },
+      { name: "session_sandbox", method: "GET", path: "/workspaces/<project_id>/sessions/<session_id>/sandbox", status: 200, artifact: "api-curl-session-sandbox.json" },
       { name: "proxy_health", method: "GET", path: "/p/<external_id>/8000/kortix/health", status: 200, artifact: "api-curl-proxy-health.json" },
       { name: "proxy_app", method: "GET", path: "/p/<external_id>/8000/app", status: 200, artifact: "api-curl-proxy-app.html", headers_artifact: "api-curl-proxy-app.headers" },
       { name: "proxy_opencode", method: "GET", path: "/p/<external_id>/8000/file?path=.opencode", status: 200, artifact: "api-curl-proxy-opencode.json" },

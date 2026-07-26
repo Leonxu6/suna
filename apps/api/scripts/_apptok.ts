@@ -1,4 +1,4 @@
-import { createInstallationToken } from '../src/projects/github';
+import { createInstallationToken } from '../src/workspaces/github';
 import { execSync } from 'node:child_process';
 
 const installId = process.env.MANAGED_GIT_GITHUB_INSTALL_ID!;

@@ -1,7 +1,7 @@
 # `@kortix/sdk` examples
 
 Runnable, framework-free examples for the Kortix SDK — from a one-line
-`projects.list()` to a full **Kortix-as-a-Backend** wrapper that serves many of
+`workspaces.list()` to a full **Kortix-as-a-Backend** wrapper that serves many of
 your own end-users through one shared agent.
 
 Each `.ts` file runs on [Bun](https://bun.sh) and imports the SDK from source
@@ -14,7 +14,7 @@ imports are `@kortix/sdk`, `@kortix/sdk/server`, `@kortix/sdk/turns`, etc.
 ```bash
 export KORTIX_API_URL=https://api.kortix.com/v1   # your API base, incl. /v1
 export KORTIX_API_KEY=kortix_pat_...              # Settings → Tokens → Create API key
-export KORTIX_PROJECT_ID=...                      # the project your agent lives in
+export KORTIX_WORKSPACE_ID=...                      # the workspace your agent lives in
 ```
 
 - The API key is a `kortix_pat_…` token. Every session it starts is recorded
@@ -28,12 +28,12 @@ export KORTIX_PROJECT_ID=...                      # the project your agent lives
 
 | # | File | What it shows | Run |
 |---|------|---------------|-----|
-| 01 | [`01-list-projects.ts`](01-list-projects.ts) | Minimum viable client — `createKortix` + a static bearer token, list projects. | `bun run examples/01-list-projects.ts` |
+| 01 | [`01-list-workspaces.ts`](01-list-workspaces.ts) | Minimum viable client — `createKortix` + a static bearer token, list workspaces. | `bun run examples/01-list-workspaces.ts` |
 | 02 | [`02-send-and-stream.ts`](02-send-and-stream.ts) | Provision a session, send a prompt, stream the text deltas — no framework. | `KORTIX_SESSION_ID=… bun run examples/02-send-and-stream.ts "hi"` |
 | 03 | [`03-server-wrapper.ts`](03-server-wrapper.ts) | The multi-tenant seam: `createScopedKortix` from `@kortix/sdk/server` (per-request token, no global bleed). | `MODE=serve bun run examples/03-server-wrapper.ts` |
 | 04 | [`04-render-transcript.ts`](04-render-transcript.ts) | Render a session transcript as plain text with `classifyTurn` (`@kortix/sdk/turns`). | `KORTIX_SESSION_ID=… bun run examples/04-render-transcript.ts` |
 | 05 | [`05-cost-passthrough.ts`](05-cost-passthrough.ts) | A marked-up usage table — the shape a backend uses to re-bill its own users. | `KORTIX_SESSION_ID=… bun run examples/05-cost-passthrough.ts` |
-| 06 | [`06-files-and-secrets.ts`](06-files-and-secrets.ts) | Session-scoped workspace files + project secrets. | `KORTIX_SESSION_ID=… bun run examples/06-files-and-secrets.ts` |
+| 06 | [`06-files-and-secrets.ts`](06-files-and-secrets.ts) | Session-scoped workspace files + workspace secrets. | `KORTIX_SESSION_ID=… bun run examples/06-files-and-secrets.ts` |
 | 07 | [`07-vanilla.ts`](07-vanilla.ts) | The whole flow in one framework-free file: list → send → stream. | `bun run examples/07-vanilla.ts "hi"` |
 | 08 | [`08-cdn.html`](08-cdn.html) | The SDK in a browser with **no build step** (ESM via CDN). | open in a browser |
 | 09 | [`09-kaab-backend-wrapper.ts`](09-kaab-backend-wrapper.ts) | **Kortix as a Backend, end to end**: mint a connector → per-user profile → backend-origin session (`origin_ref` + `secrets` + `connector_bindings`) → **stream**. One-shot CLI **and** a multi-tenant SSE service. | `bun run examples/09-kaab-backend-wrapper.ts "Summarize my signups"` |
@@ -54,7 +54,7 @@ alongside:
 |-----|--------|
 | `MODE=serve` | Run as a `POST /run {endUserId, prompt}` → SSE service instead of one-shot. |
 | `KAAB_OVERRIDES=off` | Drop the backend-only fields (`origin_ref`, `secrets`) so the connector + session + streaming path still runs against a deployment that doesn't have them yet. |
-| `KAAB_NO_CONNECTOR=1` | Skip the connector layer (a bare project with no `kortix.yaml`). |
+| `KAAB_NO_CONNECTOR=1` | Skip the connector layer (a bare workspace with no `kortix.yaml`). |
 | `KAAB_CONNECTOR_URL` / `KAAB_AGENT` / `KAAB_MODEL` / `KAAB_SECRET` | Point the demo at your own connector URL / agent / model / secret identifier. |
 
 > **Streaming needs the sandbox to reach your API.** A hosted deployment works

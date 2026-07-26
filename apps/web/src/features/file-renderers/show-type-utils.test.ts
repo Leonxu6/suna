@@ -48,7 +48,7 @@ describe('resolveShowType', () => {
 describe('shouldRenderFromSandboxFile', () => {
   it('reads from disk whenever there is a path and no inline content', () => {
     expect(shouldRenderFromSandboxFile('/workspace/kortix.yaml', '')).toBe(true);
-    expect(shouldRenderFromSandboxFile('/workspace/asana-projects.md', '')).toBe(true);
+    expect(shouldRenderFromSandboxFile('/workspace/asana-workspaces.md', '')).toBe(true);
     expect(shouldRenderFromSandboxFile('/workspace/main.py', '')).toBe(true);
   });
 

@@ -4,7 +4,7 @@
  * Same six commands (view / create / str_replace / insert / delete /
  * rename), the same return strings the model is trained to read, and the
  * same security model as the official `BetaLocalFilesystemMemoryTool`
- * reference backend — but rooted at the project's real `.kortix/memory/`
+ * reference backend — but rooted at the workspace's real `.kortix/memory/`
  * folder instead of a virtual `/memories` mount.
  *
  * Because every write is an ordinary file change under `.kortix/memory/`,
@@ -374,7 +374,7 @@ async function rename(oldPath: string, newPath: string, dir: string): Promise<st
 
 export default tool({
   description:
-    "Persistent project memory — read, write, and curate the project brain in `.kortix/memory/`. " +
+    "Persistent workspace memory — read, write, and curate the workspace memory in `.kortix/memory/`. " +
     "This is the canonical way to work with memory; use it instead of the generic read/edit/write tools for anything under `.kortix/memory/`. " +
     "Memory persists across sessions and is shared with the whole team via the repo, so write durable facts here. " +
     "ALWAYS `view` `.kortix/memory` before starting a task to recover prior context, and record durable progress as you go — your context window may reset at any time.\n\n" +

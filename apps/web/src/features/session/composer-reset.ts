@@ -4,7 +4,7 @@ import type { AttachedFile } from './session-chat-input';
  * On send, decide whether the composer resets in place and which local object
  * URLs to revoke.
  *
- * When `clearOnSend` is false the send navigates the composer away (project home
+ * When `clearOnSend` is false the send navigates the composer away (workspace home
  * → new session): the composer must NOT clear its text or revoke the local file
  * URLs. The message and its attachments are handed to the freshly created
  * session (via the start-stash + pending-files store) and would otherwise be

@@ -8,7 +8,7 @@ voice of a Kortix agent inside a live meeting. STT → LLM → TTS pipeline
 
 This process is a standalone worker. It is not part of `apps/api` and does
 not import anything from it — everything it needs to know about a call
-(which project, which session, how to reach the Kortix API) comes in over
+(which workspace, which session, how to reach the Kortix API) comes in over
 LiveKit, not a shared process.
 
 ## Run it locally
@@ -58,10 +58,10 @@ why call-specific values come from room metadata, not env vars):
 ## Why room metadata, not env vars, for call identity
 
 A single worker **process** can run many jobs (rooms) concurrently — one
-process, many simultaneous calls, each for a different project/session. An
+process, many simultaneous calls, each for a different workspace/session. An
 env var is process-wide, so anything that differs per call **must** come from
 the room instead, above all the Kortix API credential: a shared static token
-would let any live call impersonate any other project's session.
+would let any live call impersonate any other workspace's session.
 
 `apps/api`, when it creates the LiveKit room for a call (before dispatching
 this agent into it), is expected to set the room's metadata to JSON shaped
@@ -69,7 +69,7 @@ like:
 
 ```json
 {
-  "project_id": "...",
+  "workspace_id": "...",
   "session_id": "...",
   "call_id": "...",
   "kortix_api_url": "https://api.kortix.com",
@@ -92,7 +92,7 @@ IS the session id"), so the two are normally the same value.
 Defined in `src/tools.ts`, described to the model in `src/instructions.ts`:
 
 - **`send_prompt`** — fire-and-forget hand-off to the Kortix agent session,
-  for anything needing real project knowledge, files, connectors, or
+  for anything needing real workspace knowledge, files, connectors, or
   actions. Mirrors the old in-process `ask_kortix` → `continueSession()`
   path, but now over HTTP (`POST /voice/prompt`, see below) since this
   process is no longer inside `apps/api`. Returns the instant the request is
@@ -128,7 +128,7 @@ fire-and-forget — mirroring the old in-process `appendTurn()` write to
 
 This app is scoped to the LiveKit worker only — it does not touch
 `apps/api`. It expects three endpoints under
-`/v1/projects/:projectId/sessions/:sessionId/voice/`, each authenticated with
+`/v1/workspaces/:workspaceId/sessions/:sessionId/voice/`, each authenticated with
 `Authorization: Bearer <kortix_api_token>` (the per-call token from room
 metadata), none of which exist yet:
 
@@ -139,8 +139,11 @@ metadata), none of which exist yet:
 | `POST .../voice/turns` | `{ call_id, role, text, speaker? }` | Persists one transcript line to `voice_call_turns`, same shape as the old `appendTurn()`. |
 
 Plus the reply channel above (`RoomServiceClient.sendData` on the `kortix`
-topic) and setting `kortix_api_token`/`project_id`/`session_id` in room
+topic) and setting `kortix_api_token`/`workspace_id`/`session_id` in room
 metadata at room-creation time.
+
+The worker also accepts deprecated `project_id` room metadata. When both fields
+exist, `workspace_id` wins.
 
 `src/kortix-client.ts` implements the client side of all three calls now —
 real `fetch()` requests, correctly shaped, with client-side timeouts and

@@ -43,78 +43,78 @@ describe('wrapper-mode policy matrix', () => {
     return { email, token, kortix: createTestKortix(app, token) };
   }
 
-  test('projects.list returns only projects provisioned by the caller', async () => {
+  test('workspaces.list returns only workspaces provisioned by the caller', async () => {
     const { kortix } = await freshUser('list-filter');
-    const other = mock.seedProject({ name: "Someone Else's Project" });
-    const mine = await kortix.projects.provision({ name: 'My Project' });
+    const other = mock.seedWorkspace({ name: "Someone Else's Workspace" });
+    const mine = await kortix.workspaces.provision({ name: 'My Workspace' });
 
-    const ids = (await kortix.projects.list()).map((project) => project.project_id);
+    const ids = (await kortix.workspaces.list()).map((workspace) => workspace.workspace_id);
 
-    expect(ids).toContain(mine.project_id);
-    expect(ids).not.toContain(other.project_id);
+    expect(ids).toContain(mine.workspace_id);
+    expect(ids).not.toContain(other.workspace_id);
   });
 
-  test('projects.create is denied because wrapper users must use projects.provision', async () => {
+  test('workspaces.create is denied because wrapper users must use workspaces.provision', async () => {
     const { kortix } = await freshUser('bare-post-denied');
 
     await expect(
-      kortix.projects.create({
+      kortix.workspaces.create({
         name: 'Should be blocked',
         repo_url: 'https://git.example.test/blocked.git',
       }),
     ).rejects.toMatchObject({ status: 403 });
   });
 
-  test('projects.provision records ownership', async () => {
+  test('workspaces.provision records ownership', async () => {
     const { kortix } = await freshUser('provision-records');
-    const project = await kortix.projects.provision({ name: 'Provisioned Project' });
+    const workspace = await kortix.workspaces.provision({ name: 'Provisioned Workspace' });
 
-    expect((await kortix.projects.list()).map((item) => item.project_id)).toEqual([
-      project.project_id,
+    expect((await kortix.workspaces.list()).map((item) => item.workspace_id)).toEqual([
+      workspace.workspace_id,
     ]);
   });
 
-  test('projects.get forwards an owned project', async () => {
+  test('workspaces.get forwards an owned workspace', async () => {
     const { kortix } = await freshUser('owned-forward');
-    const project = await kortix.projects.provision({ name: 'Owned' });
+    const workspace = await kortix.workspaces.provision({ name: 'Owned' });
 
     mock.reset();
-    const detail = await kortix.projects.get(project.project_id);
+    const detail = await kortix.workspaces.get(workspace.workspace_id);
 
-    expect(detail.project_id).toBe(project.project_id);
+    expect(detail.workspace_id).toBe(workspace.workspace_id);
     expect(mock.requests).toHaveLength(1);
   });
 
-  test('projects.get rejects an unowned project before the upstream request', async () => {
+  test('workspaces.get rejects an unowned workspace before the upstream request', async () => {
     const { kortix } = await freshUser('unowned-denied');
-    const other = mock.seedProject({ name: 'Not Yours' });
+    const other = mock.seedWorkspace({ name: 'Not Yours' });
 
     mock.reset();
-    await expect(kortix.projects.get(other.project_id)).rejects.toMatchObject({
+    await expect(kortix.workspaces.get(other.workspace_id)).rejects.toMatchObject({
       status: 403,
     });
     expect(mock.requests).toHaveLength(0);
   });
 
-  test('project.connectors.list forwards an owned project', async () => {
+  test('workspace.connectors.list forwards an owned workspace', async () => {
     const { kortix } = await freshUser('executor-owned');
-    const project = await kortix.projects.provision({ name: 'Executor Owned' });
+    const workspace = await kortix.workspaces.provision({ name: 'Executor Owned' });
 
     mock.reset();
-    await kortix.project(project.project_id).connectors.list();
+    await kortix.workspace(workspace.workspace_id).connectors.list();
 
     expect(mock.requests).toHaveLength(1);
     expect(mock.requests[0]!.path).toBe(
-      `/v1/executor/projects/${project.project_id}/connectors`,
+      `/v1/executor/workspaces/${workspace.workspace_id}/connectors`,
     );
   });
 
-  test('project.connectors.list rejects an unowned project', async () => {
+  test('workspace.connectors.list rejects an unowned workspace', async () => {
     const { kortix } = await freshUser('executor-unowned');
-    const other = mock.seedProject({ name: 'Executor Not Yours' });
+    const other = mock.seedWorkspace({ name: 'Executor Not Yours' });
 
     await expect(
-      kortix.project(other.project_id).connectors.list(),
+      kortix.workspace(other.workspace_id).connectors.list(),
     ).rejects.toMatchObject({ status: 403 });
   });
 
@@ -152,9 +152,9 @@ describe('wrapper-mode policy matrix', () => {
 
   test('session.start records runtime ownership and rejects another user', async () => {
     const owner = await freshUser('runtime-owner');
-    const project = await owner.kortix.projects.provision({ name: 'Runtime Owner' });
+    const workspace = await owner.kortix.workspaces.provision({ name: 'Runtime Owner' });
     const sessionId = 'runtime-policy-session';
-    const ownerSession = owner.kortix.session(project.project_id, sessionId);
+    const ownerSession = owner.kortix.session(workspace.workspace_id, sessionId);
 
     const started = await ownerSession.start();
     expect(started?.stage).toBe('ready');
@@ -162,36 +162,36 @@ describe('wrapper-mode policy matrix', () => {
 
     const other = await freshUser('runtime-other');
     await expect(
-      other.kortix.session(project.project_id, sessionId).start(),
+      other.kortix.session(workspace.workspace_id, sessionId).start(),
     ).rejects.toMatchObject({ status: 403 });
   });
 
   test('near-concurrent SDK provisions both persist without lost writes', async () => {
     const { kortix, email } = await freshUser('concurrent-provision');
     const [a, b] = await Promise.all([
-      kortix.projects.provision({ name: 'Concurrent A' }),
-      kortix.projects.provision({ name: 'Concurrent B' }),
+      kortix.workspaces.provision({ name: 'Concurrent A' }),
+      kortix.workspaces.provision({ name: 'Concurrent B' }),
     ]);
 
-    expect(a.project_id).not.toBe(b.project_id);
-    const ids = (await kortix.projects.list()).map((project) => project.project_id);
-    expect(ids.sort()).toEqual([a.project_id, b.project_id].sort());
+    expect(a.workspace_id).not.toBe(b.workspace_id);
+    const ids = (await kortix.workspaces.list()).map((workspace) => workspace.workspace_id);
+    expect(ids.sort()).toEqual([a.workspace_id, b.workspace_id].sort());
 
     const store = JSON.parse(readFileSync(join(TEST_DATA_DIR, 'users.json'), 'utf8'));
-    expect(store[email].sort()).toEqual([a.project_id, b.project_id].sort());
+    expect(store[email].sort()).toEqual([a.workspace_id, b.workspace_id].sort());
   });
 
   test('ownership persists across separate SDK clients', async () => {
     const { token, email, kortix } = await freshUser('persistence');
-    const project = await kortix.projects.provision({ name: 'Persisted' });
+    const workspace = await kortix.workspaces.provision({ name: 'Persisted' });
 
     expect(existsSync(join(TEST_DATA_DIR, 'users.json'))).toBe(true);
     const laterClient = createTestKortix(app, token);
-    expect((await laterClient.projects.get(project.project_id)).project_id).toBe(
-      project.project_id,
+    expect((await laterClient.workspaces.get(workspace.workspace_id)).workspace_id).toBe(
+      workspace.workspace_id,
     );
 
     const store = JSON.parse(readFileSync(join(TEST_DATA_DIR, 'users.json'), 'utf8'));
-    expect(store[email]).toContain(project.project_id);
+    expect(store[email]).toContain(workspace.workspace_id);
   });
 });

@@ -11,7 +11,7 @@ import { ActionPanel, shouldDiscardPendingPrimaryOpen } from './index';
 
 // `EasyPanel` calls `useSessionAudit` (react-query) unconditionally for its
 // Terminal/Audit footer row's pending-count pill — `enabled: false` when no
-// projectId/projectSessionId is passed (as none of these tests pass one), but
+// workspaceId/workspaceSessionId is passed (as none of these tests pass one), but
 // the hook still needs a `QueryClientProvider` ancestor even though no query
 // actually fires under a static render (same requirement as
 // `show-tool.test.tsx`'s `useFileContent`).
@@ -125,8 +125,8 @@ describe('EasyPanel home has no Terminal/Audit footer row', () => {
           sessionId="s1"
           messages={[]}
           isSessionBusy={false}
-          projectId="p1"
-          projectSessionId="ps1"
+          workspaceId="p1"
+          workspaceSessionId="ps1"
         />,
       ),
     );

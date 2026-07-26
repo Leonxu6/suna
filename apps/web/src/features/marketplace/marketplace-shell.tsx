@@ -129,7 +129,7 @@ function EmbeddedShell({
 
 /**
  * The one layout every marketplace surface shares — the public landing/source
- * page, the item detail page, AND the in-project Customize overlay. A
+ * page, the item detail page, AND the in-workspace Customize overlay. A
  * breadcrumb trail pinned in a left rail, plus a wide main column.
  *
  * - **Page** (default): window-scrolled, the rail is `sticky` to the viewport.

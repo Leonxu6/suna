@@ -4,7 +4,7 @@ import { detectManifestVersion } from './manifest-version';
 
 describe('detectManifestVersion', () => {
   test('TOML v1 manifest ("kortix_version = 1")', () => {
-    expect(detectManifestVersion('kortix_version = 1\n\n[project]\nname = "x"\n')).toBe(1);
+    expect(detectManifestVersion('kortix_version = 1\n\n[workspace]\nname = "x"\n')).toBe(1);
   });
 
   test('YAML v2 manifest ("kortix_version: 2")', () => {
@@ -26,7 +26,7 @@ describe('detectManifestVersion', () => {
   });
 
   test('manifest text with no kortix_version line defaults to v1', () => {
-    expect(detectManifestVersion('[project]\nname = "x"\n')).toBe(1);
+    expect(detectManifestVersion('[workspace]\nname = "x"\n')).toBe(1);
   });
 
   test('a version beyond 2 still reads as v2 (never-v1) for UI purposes', () => {

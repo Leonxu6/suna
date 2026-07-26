@@ -124,7 +124,7 @@ export function SecurityTab() {
       setEnrolling(null);
       setCode('');
       // Verifying the first factor elevates this session to aal2. Refetch every
-      // active query so data that 403'd while aal1 (projects, API keys, members)
+      // active query so data that 403'd while aal1 (workspaces, API keys, members)
       // repopulates on its own — no manual page reload, and the MFA error banners
       // on those screens clear.
       queryClient.invalidateQueries();

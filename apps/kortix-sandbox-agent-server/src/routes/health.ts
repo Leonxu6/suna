@@ -33,7 +33,11 @@ function wantedSessionBranch(): string {
 function sessionWantsRepo(cfgAutoClone: boolean): boolean {
   if (cfgAutoClone) return true
   try {
-    return /^KORTIX_PROJECT_AUTO_CLONE=1/m.test(readFileSync('/etc/pt-env', 'utf8'))
+    const envFile = readFileSync('/etc/pt-env', 'utf8')
+    const canonical = envFile.match(/^KORTIX_WORKSPACE_AUTO_CLONE=(\S+)/m)?.[1]
+    const legacy = envFile.match(/^KORTIX_PROJECT_AUTO_CLONE=(\S+)/m)?.[1]
+    const value = canonical ?? legacy ?? ''
+    return /^(1|true|yes|on)$/i.test(value)
   } catch {
     return false
   }
@@ -83,7 +87,7 @@ export function createHealthRouter(
   const router = new Hono()
 
   router.get('/', async (c) => {
-    const repoInfo = await readRepoInfo(cfg.projectTarget).catch(() => null)
+    const repoInfo = await readRepoInfo(cfg.workspaceTarget).catch(() => null)
     const opencodeState = opencode.getState()
     const repoRequired = sessionWantsRepo(cfg.autoClone)
     // A repo on disk isn't ready until it's on the SESSION branch: the clone

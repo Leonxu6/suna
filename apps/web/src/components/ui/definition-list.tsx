@@ -4,7 +4,7 @@
  * Kortix <DefinitionList> — key:value pair list.
  *
  * Used for:
- *   • Project About → Details panel
+ *   • Workspace About → Details panel
  *   • Issue detail sidebar → Properties
  *   • Trigger / Channel / Tunnel details
  *   • Anywhere you'd otherwise reach for a <table> with two columns

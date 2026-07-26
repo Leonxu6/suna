@@ -255,12 +255,12 @@ export function getPublicShareByToken<T = Record<string, unknown>>(
 }
 
 export function startSessionWithToken(
-  projectId: string,
+  workspaceId: string,
   sessionId: string,
   options: HostRequestOptions,
 ): Promise<unknown> {
   return requestJson(
-    `/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}/start`,
+    `/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/start`,
     options,
     { method: 'POST', body: {} },
   );

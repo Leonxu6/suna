@@ -72,7 +72,7 @@ function GrantModeField({
   );
 }
 
-/** All · Pick · None, with a checklist of the project's declared items when
+/** All · Pick · None, with a checklist of the workspace's declared items when
  *  in Pick mode. The one governance control reused for skills/connectors/secrets. */
 export function GrantSetField({
   value,
@@ -174,7 +174,7 @@ export function KortixCliField({
                           : 'bg-muted/40 text-muted-foreground hover:bg-muted',
                       )}
                     >
-                      {action.replace(/^project\./, '')}
+                      {action.replace(/^workspace\./, '')}
                     </button>
                   );
                 })}

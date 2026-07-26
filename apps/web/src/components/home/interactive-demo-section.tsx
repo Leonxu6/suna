@@ -42,9 +42,9 @@ import { DraggableCliPanel } from './interactive-demo/cli/draggable-cli-panel';
 import { useDemoDirector } from './interactive-demo/cli/use-demo-director';
 import { VISIBLE_DEMO_PAGES } from './interactive-demo/page-flags';
 import { ChatPage } from './interactive-demo/pages/chat-page';
-import { ProjectsPage } from './interactive-demo/pages/projects-page';
+import { WorkspacesPage } from './interactive-demo/pages/workspaces-page';
 import { SkillsPage } from './interactive-demo/pages/skills-page';
-import type { ActiveModel, Nav, PageId, ProjectCard } from './interactive-demo/types';
+import type { ActiveModel, Nav, PageId, WorkspaceCard } from './interactive-demo/types';
 
 const favicon = (d: string) => `https://www.google.com/s2/favicons?domain=${d}&sz=128`;
 
@@ -220,7 +220,7 @@ function HomePage({ nav, convo }: { nav: Nav; convo: DemoConversation }) {
     ['Integrations', 'Connect the tools your agents use', Blocks, '1', 'integrations'],
     ['Scheduled tasks', 'Run work on a schedule, 24/7', Clock, '2', 'scheduling'],
     ['Skills', 'Reusable workflows every agent shares', HiMiniSparkles, '71', 'skills'],
-    ['Channels', 'Run this project from Slack', MessageSquare, undefined, 'channels'],
+    ['Channels', 'Run this workspace from Slack', MessageSquare, undefined, 'channels'],
     ['Your team', 'Invite people to run and review', FaUsers, '2', 'security'],
     ['Agents', 'Shape how your agent thinks and acts', Bot, '3', 'agents'],
   ];
@@ -894,8 +894,8 @@ function ChannelsPage({
               </p>
               <p className="text-muted-foreground mt-0.5 text-xs">
                 {connected
-                  ? 'Tokens are encrypted in this project’s secrets. Invite the bot to any channel and @mention it to spawn a session.'
-                  : 'One click — approve scopes in Slack and we’ll wire this project to the workspace you choose. Tokens stay encrypted in this project’s secrets.'}
+                  ? 'Tokens are encrypted in this workspace’s secrets. Invite the bot to any channel and @mention it to spawn a session.'
+                  : 'One click — approve scopes in Slack and we’ll wire this workspace to the workspace you choose. Tokens stay encrypted in this workspace’s secrets.'}
               </p>
             </div>
           </div>
@@ -943,7 +943,7 @@ function ChannelsPage({
             {tI18nHardcoded.raw(
               'autoComponentsHomeInteractiveDemoSectionJsxTextPasteASlackac1c89fb',
             )}
-            <span className="text-foreground font-mono">project_secrets</span>.
+            <span className="text-foreground font-mono">workspace_secrets</span>.
           </div>
         )}
       </div>
@@ -1219,7 +1219,7 @@ function SecurityPage({
 type DemoExtras = {
   focusedSkill: string | null;
   onSkillClick: (name: string) => void;
-  projects: ProjectCard[];
+  workspaces: WorkspaceCard[];
   activeModel: ActiveModel;
   connectedProviders: string[];
   connectors: string[];
@@ -1242,10 +1242,10 @@ const PAGES: Record<
     icon: <GoHomeFill className="size-4" />,
     render: (nav, convo) => <HomePage nav={nav} convo={convo} />,
   },
-  projects: {
-    label: 'Projects',
+  workspaces: {
+    label: 'Workspaces',
     icon: <RiFolder3Fill className="size-4" />,
-    render: (_nav, _convo, extras) => <ProjectsPage projects={extras.projects} />,
+    render: (_nav, _convo, extras) => <WorkspacesPage workspaces={extras.workspaces} />,
   },
   chat: {
     label: 'Chat',
@@ -1512,7 +1512,7 @@ export function InteractiveDemoSection({
               className={cn(
                 'bg-background dark:bg-primary/7 w-full overflow-hidden rounded-b-xl sm:rounded-b-[calc(var(--radius-xl)-4px)]',
                 embedded && 'flex min-h-0 flex-1 flex-col',
-                active === 'projects'
+                active === 'workspaces'
                   ? 'rounded-tr-xl sm:rounded-tr-[calc(var(--radius-xl)-4px)]'
                   : 'rounded-t-xl sm:rounded-t-[calc(var(--radius-xl)-4px)]',
               )}
@@ -1541,7 +1541,7 @@ export function InteractiveDemoSection({
                     {page.render(director.navigate, pageConvo, {
                       focusedSkill,
                       onSkillClick: handleSkillClick,
-                      projects: director.projects,
+                      workspaces: director.workspaces,
                       activeModel: director.activeModel,
                       connectedProviders: director.connectedProviders,
                       connectors: director.connectors,

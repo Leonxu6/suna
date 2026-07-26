@@ -178,7 +178,7 @@ PROJECT_ID="$(psql_one "
 [[ -z "$PROJECT_ID" ]] && fail "failed to insert project"
 dim "project" "$PROJECT_ID"
 
-BASE="$API/v1/projects/$PROJECT_ID"
+BASE="$API/v1/workspaces/$PROJECT_ID"
 
 req() {
   local method="$1" path="$2" body="${3:-}"

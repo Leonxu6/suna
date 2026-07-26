@@ -1,6 +1,6 @@
 'use client';
 
-import { ScheduleView } from '@/components/projects/schedule-view';
+import { ScheduleView } from '@/components/workspaces/schedule-view';
 import { Button } from '@/components/ui/button';
 import { FadedScrollArea } from '@/components/ui/faded-scroll-area';
 import { Label } from '@/components/ui/label';
@@ -22,12 +22,12 @@ import { SkillsView } from '@/features/workspace/customize/sections/view/skills-
 import { useIsMobile } from '@/hooks/utils';
 import { type CustomizeSection, DEFAULT_CUSTOMIZE_SECTION } from '@/lib/customize-sections';
 import { isLlmGatewayAvailable, isLlmGatewayEnabled } from '@/lib/llm-gateway';
-import { CUSTOMIZE_SECTION_GATE_ACTIONS, isCustomizeSectionVisible } from '@/lib/project-actions';
-import { useProjectCans } from '@/lib/use-project-can';
+import { CUSTOMIZE_SECTION_GATE_ACTIONS, isCustomizeSectionVisible } from '@/lib/workspace-actions';
+import { useWorkspaceCans } from '@/lib/use-workspace-can';
 import { cn } from '@/lib/utils';
 import { hasOpenFloatingLayer, hasOpenNestedDialog } from '@/lib/z-stack';
 import { useCustomizeStore } from '@/stores/customize-store';
-import { getProjectDetail } from '@kortix/sdk';
+import { getWorkspaceDetail } from '@kortix/sdk';
 import { ArrowLeft, ChatMessages, Sparkles } from '@mynaui/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -52,7 +52,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { detectManifestVersion } from './migrate-to-v2/manifest-version';
 import { UpgradesView } from './migrate-to-v2/upgrade-view';
 import { isRailItemActive } from './rail';
-import { RelatedProjectsSwitcher } from './related-projects-switcher';
+import { RelatedWorkspacesSwitcher } from './related-workspaces-switcher';
 import { LlmManagementView } from './sections/gateway-view';
 import { ReviewView } from './sections/view/review-view';
 import type { RailGroup, RailItem } from './type';
@@ -68,7 +68,7 @@ const REVIEW_ITEM: RailItem = { section: 'review', label: 'Review', icon: Inbox 
 // The Upgrades section is always reachable (it hosts the one-off prompt runner)
 // and lives pinned at the very bottom of the rail — out of the scrolling nav (see
 // the desktop footer / mobile tail below). When a registry upgrade is actually
-// applicable (e.g. the project is still on a v1 manifest) it carries a small
+// applicable (e.g. the workspace is still on a v1 manifest) it carries a small
 // attention dot instead of claiming a more prominent slot.
 const UPGRADE_ITEM: RailItem = { section: 'upgrade', label: 'Upgrades', icon: ArrowUpCircle };
 
@@ -136,7 +136,7 @@ function railGroups(
   });
 }
 
-export function CustomizPanel({ projectId }: { projectId: string }) {
+export function CustomizPanel({ workspaceId }: { workspaceId: string }) {
   const open = useCustomizeStore((s) => s.open);
   const section = useCustomizeStore((s) => s.section);
   const setSection = useCustomizeStore((s) => s.setSection);
@@ -144,22 +144,22 @@ export function CustomizPanel({ projectId }: { projectId: string }) {
   const isMobile = useIsMobile();
 
   const detail = useQuery({
-    queryKey: ['project-detail', projectId],
-    queryFn: () => getProjectDetail(projectId),
-    enabled: open && !!projectId,
+    queryKey: ['workspace-detail', workspaceId],
+    queryFn: () => getWorkspaceDetail(workspaceId),
+    enabled: open && !!workspaceId,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
-  const projectName = detail.data?.project?.name ?? '';
+  const workspaceName = detail.data?.workspace?.name ?? '';
 
   // IAM visibility gating. One batched probe over every section's read leaf — a
-  // custom role that OMITS a leaf (e.g. project.gitops.read) makes that section
+  // custom role that OMITS a leaf (e.g. workspace.gitops.read) makes that section
   // disappear from the rail and blocks its content. NOT a security boundary (the
   // API re-checks every mutation); this only decides what to show. Feed the
-  // accountId we ALREADY hold from the project-detail query so the probe runs on
-  // first render rather than being disabled while a separate getProject resolves.
-  const caps = useProjectCans(open ? projectId : undefined, CUSTOMIZE_SECTION_GATE_ACTIONS, {
-    accountId: detail.data?.project?.account_id,
+  // accountId we ALREADY hold from the workspace-detail query so the probe runs on
+  // first render rather than being disabled while a separate getWorkspace resolves.
+  const caps = useWorkspaceCans(open ? workspaceId : undefined, CUSTOMIZE_SECTION_GATE_ACTIONS, {
+    accountId: detail.data?.workspace?.account_id,
   });
   // Treat BOTH "loading" and "errored" as not-yet-resolved — this is a VISIBILITY
   // layer, not a security boundary, so we fail OPEN (render the full rail) rather
@@ -175,7 +175,7 @@ export function CustomizPanel({ projectId }: { projectId: string }) {
   // that can read a section SEES it (read-only unless it also holds the write
   // leaf; edit controls inside each view gate on can_manage separately). A role
   // that omits a read leaf hides just that section. (Files lives on its own
-  // /projects/[id]/files page, not in here.) Until the probe resolves (or if it
+  // /workspaces/[id]/files page, not in here.) Until the probe resolves (or if it
   // errored) we permit everything (optimistic) — visibility, not security.
   const isSectionAllowed = useCallback(
     (s: CustomizeSection) => {
@@ -185,14 +185,14 @@ export function CustomizPanel({ projectId }: { projectId: string }) {
     [caps, capsResolved],
   );
 
-  const tunnelEnabled = detail.data?.project?.experimental?.agent_tunnel ?? false;
-  const marketplaceEnabled = detail.data?.project?.experimental?.marketplace ?? false;
-  const llmGatewayEnabled = isLlmGatewayEnabled(detail.data?.project);
-  const llmGatewayAvailable = isLlmGatewayAvailable(detail.data?.project);
-  const voiceEnabled = detail.data?.project?.experimental?.voice ?? false;
-  const reviewEnabled = detail.data?.project?.experimental?.review_center ?? false;
+  const tunnelEnabled = detail.data?.workspace?.experimental?.agent_tunnel ?? false;
+  const marketplaceEnabled = detail.data?.workspace?.experimental?.marketplace ?? false;
+  const llmGatewayEnabled = isLlmGatewayEnabled(detail.data?.workspace);
+  const llmGatewayAvailable = isLlmGatewayAvailable(detail.data?.workspace);
+  const voiceEnabled = detail.data?.workspace?.experimental?.voice ?? false;
+  const reviewEnabled = detail.data?.workspace?.experimental?.review_center ?? false;
   // Pin Upgrades to the top only once the manifest read resolved to v1 —
-  // while the detail query is in flight (or on v2 projects) the item sits in
+  // while the detail query is in flight (or on v2 workspaces) the item sits in
   // its calm Manage slot instead. Same detection the section rows use.
   const upgradeAttention = detail.data
     ? detectManifestVersion(detail.data.config.manifest_raw) === 1
@@ -201,7 +201,7 @@ export function CustomizPanel({ projectId }: { projectId: string }) {
   // "Needs you" count for the Review rail badge — the SAME shared inbox summary the
   // sidebar "Review" pill and the per-session row dots read (one query key, one
   // derivation), so the badge, the pill, and the dots can never drift apart.
-  const reviewNeedsYou = useReviewSessionSummary(projectId, {
+  const reviewNeedsYou = useReviewSessionSummary(workspaceId, {
     enabled: open && reviewEnabled,
   }).totalNeedsYou;
 
@@ -267,7 +267,7 @@ export function CustomizPanel({ projectId }: { projectId: string }) {
           'inset-0 top-0 left-0 h-dvh min-h-dvh w-screen max-w-none translate-x-0 translate-y-0 space-y-0 rounded-none border-0 shadow-none sm:max-w-none sm:rounded-none md:rounded-none lg:top-0 lg:left-0 lg:h-dvh lg:min-h-dvh lg:max-w-none lg:translate-x-0 lg:translate-y-0 lg:rounded-none',
         )}
       >
-        <ModalTitle className="sr-only">Customize {projectName || 'project'}</ModalTitle>
+        <ModalTitle className="sr-only">Customize {workspaceName || 'workspace'}</ModalTitle>
 
         <div
           className={cn(
@@ -328,8 +328,8 @@ export function CustomizPanel({ projectId }: { projectId: string }) {
                 </ModalClose>
               </div>
 
-              {detail.data?.project ? (
-                <RelatedProjectsSwitcher project={detail.data.project} />
+              {detail.data?.workspace ? (
+                <RelatedWorkspacesSwitcher workspace={detail.data.workspace} />
               ) : null}
 
               <nav
@@ -380,7 +380,7 @@ export function CustomizPanel({ projectId }: { projectId: string }) {
               <div className="flex min-h-0 flex-1 flex-col">
                 <SectionContent
                   section={section}
-                  projectId={projectId}
+                  workspaceId={workspaceId}
                   llmGatewayEnabled={llmGatewayEnabled}
                 />
               </div>
@@ -451,11 +451,11 @@ function RailButton({
 
 function SectionContent({
   section,
-  projectId,
+  workspaceId,
   llmGatewayEnabled,
 }: {
   section: CustomizeSection;
-  projectId: string;
+  workspaceId: string;
   llmGatewayEnabled: boolean;
 }) {
   if (section.startsWith('llm-') && !llmGatewayEnabled) {
@@ -463,42 +463,42 @@ function SectionContent({
   }
 
   if (section.startsWith('llm-')) {
-    return <LlmManagementView projectId={projectId} />;
+    return <LlmManagementView workspaceId={workspaceId} />;
   }
 
   switch (section) {
     case 'agents':
-      return <AgentsView projectId={projectId} />;
+      return <AgentsView workspaceId={workspaceId} />;
     case 'skills':
-      return <SkillsView projectId={projectId} />;
+      return <SkillsView workspaceId={workspaceId} />;
     case 'marketplace':
-      return <MarketplaceView projectId={projectId} />;
+      return <MarketplaceView workspaceId={workspaceId} />;
     case 'connectors':
-      return <ConnectorsView projectId={projectId} />;
+      return <ConnectorsView workspaceId={workspaceId} />;
     case 'secrets':
-      return <SecretsView projectId={projectId} />;
+      return <SecretsView workspaceId={workspaceId} />;
     case 'channels':
-      return <ChannelsView projectId={projectId} />;
+      return <ChannelsView workspaceId={workspaceId} />;
     case 'voice':
-      return <VoiceView projectId={projectId} />;
+      return <VoiceView workspaceId={workspaceId} />;
     case 'computers':
-      return <ComputersView projectId={projectId} />;
+      return <ComputersView workspaceId={workspaceId} />;
     case 'schedules':
-      return <ScheduleView projectId={projectId} type="cron" />;
+      return <ScheduleView workspaceId={workspaceId} type="cron" />;
     case 'webhooks':
-      return <ScheduleView projectId={projectId} type="webhook" />;
+      return <ScheduleView workspaceId={workspaceId} type="webhook" />;
     case 'git':
-      return <GitView projectId={projectId} />;
+      return <GitView workspaceId={workspaceId} />;
     case 'review':
-      return <ReviewView projectId={projectId} />;
+      return <ReviewView workspaceId={workspaceId} />;
     case 'sandbox':
-      return <SandboxView projectId={projectId} />;
+      return <SandboxView workspaceId={workspaceId} />;
     case 'members':
-      return <MembersView projectId={projectId} />;
+      return <MembersView workspaceId={workspaceId} />;
     case 'settings':
-      return <SettingsView projectId={projectId} />;
+      return <SettingsView workspaceId={workspaceId} />;
     case 'upgrade':
-      return <UpgradesView projectId={projectId} />;
+      return <UpgradesView workspaceId={workspaceId} />;
     default:
       return null;
   }

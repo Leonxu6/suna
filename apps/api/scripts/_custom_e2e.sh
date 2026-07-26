@@ -16,13 +16,13 @@ MINT_EMAIL='vukasinkubet@gmail.com' bun run scripts/_mint_jwt.ts >/dev/null 2>&1
 JWT=$(cat /tmp/userjwt 2>/dev/null); [ -z "$JWT" ] && { echo "FATAL: no JWT"; exit 1; }; echo "  jwt ok (${#JWT} chars)"
 
 echo "=== 1. register custom template slug=$SLUG (FROM python:3.12-slim + kortix runtime) ==="
-reg=$(curl -s -m20 "$COMP/v1/projects/$PID/sandbox-templates" -H "Authorization: Bearer $JWT" -H 'Content-Type: application/json' -d "{\"slug\":\"$SLUG\",\"name\":\"e2e custom\",\"image\":\"python:3.12-slim\",\"cpu\":2,\"memory_gb\":4,\"disk_gb\":10}")
+reg=$(curl -s -m20 "$COMP/v1/workspaces/$PID/sandbox-templates" -H "Authorization: Bearer $JWT" -H 'Content-Type: application/json' -d "{\"slug\":\"$SLUG\",\"name\":\"e2e custom\",\"image\":\"python:3.12-slim\",\"cpu\":2,\"memory_gb\":4,\"disk_gb\":10}")
 echo "  -> $(echo "$reg"|head -c 240)"
 TID=$(echo "$reg"|python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('template_id') or d.get('templateId') or d.get('id') or '')" 2>/dev/null)
 echo "  template_id=$TID"
 
 echo "=== 2. create session on $SLUG, provider=platinum (triggers build+spawn ON PLATINUM) ==="
-ses=$(curl -s -m30 "$COMP/v1/projects/$PID/sessions" -H "Authorization: Bearer $JWT" -H 'Content-Type: application/json' -d "{\"sandbox_slug\":\"$SLUG\",\"provider\":\"platinum\",\"branch_already_created\":false}")
+ses=$(curl -s -m30 "$COMP/v1/workspaces/$PID/sessions" -H "Authorization: Bearer $JWT" -H 'Content-Type: application/json' -d "{\"sandbox_slug\":\"$SLUG\",\"provider\":\"platinum\",\"branch_already_created\":false}")
 echo "  -> $(echo "$ses"|head -c 240)"
 SID=$(echo "$ses"|python3 -c "import sys,json;print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null)
 echo "  session_id=$SID"
@@ -57,7 +57,7 @@ fi
 
 psql "delete from kortix.session_sandboxes where session_id='$SID';" >/dev/null 2>&1
 echo "=== 8. cleanup template (comp + platinum) ==="
-[ -n "$TID" ] && curl -s -m15 -o /dev/null -w "  comp del template %{http_code}\n" -X DELETE "$COMP/v1/projects/$PID/sandbox-templates/$TID" -H "Authorization: Bearer $JWT"
+[ -n "$TID" ] && curl -s -m15 -o /dev/null -w "  comp del template %{http_code}\n" -X DELETE "$COMP/v1/workspaces/$PID/sandbox-templates/$TID" -H "Authorization: Bearer $JWT"
 ptpl=$(curl -s -m12 "$PURL/v1/templates" -H "Authorization: Bearer $PK"|python3 -c "import sys,json;d=json.load(sys.stdin);t=d if isinstance(d,list) else d.get('templates',[]);print(next((x.get('id') for x in t if '$SLUG' in str(x.get('name',''))),''))" 2>/dev/null)
 [ -n "$ptpl" ] && curl -s -m20 -o /dev/null -w "  platinum del template %{http_code}\n" -X DELETE "$PURL/v1/templates/$ptpl" -H "Authorization: Bearer $PK"
 echo DONE

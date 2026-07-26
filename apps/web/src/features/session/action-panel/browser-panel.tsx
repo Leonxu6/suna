@@ -50,8 +50,8 @@ import { TbExternalLink } from 'react-icons/tb';
 
 interface PreviewTabContentProps {
   tabId: string;
-  projectId?: string;
-  projectSessionId?: string;
+  workspaceId?: string;
+  workspaceSessionId?: string;
 }
 
 const APP_PREVIEW_TITLE = 'App preview';
@@ -83,7 +83,7 @@ function splitUrlForDisplay(url: string): { prefix: string; host: string; rest: 
  * any localhost:PORT address to navigate within the sandbox. Visited URLs are
  * recorded and offered back as "Recents" on the empty landing state.
  */
-export function BrowserPanel({ tabId, projectId, projectSessionId }: PreviewTabContentProps) {
+export function BrowserPanel({ tabId, workspaceId, workspaceSessionId }: PreviewTabContentProps) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const tab = useTabStore((s) => s.tabs[tabId]);
   const updateTabMetadata = useTabStore((s) => s.openTab);
@@ -468,10 +468,10 @@ export function BrowserPanel({ tabId, projectId, projectSessionId }: PreviewTabC
   // as PublicShareLinkButton: create the share, copy the URL, toast the result.
   const shareLink = useMutation({
     mutationFn: async () => {
-      if (!projectId || !projectSessionId || !shareInput) {
+      if (!workspaceId || !workspaceSessionId || !shareInput) {
         throw new Error('Nothing is selected to share');
       }
-      const result = await createSessionPublicShare(projectId, projectSessionId, shareInput);
+      const result = await createSessionPublicShare(workspaceId, workspaceSessionId, shareInput);
       if (!result.share.public_path) {
         throw new Error('Share link was not returned');
       }
@@ -486,7 +486,7 @@ export function BrowserPanel({ tabId, projectId, projectSessionId }: PreviewTabC
       errorToast(error instanceof Error ? error.message : 'Could not create public link');
     },
   });
-  const canShare = hasPreview && !!projectId && !!projectSessionId && !!shareInput;
+  const canShare = hasPreview && !!workspaceId && !!workspaceSessionId && !!shareInput;
 
   return (
     <div className="bg-background flex h-full flex-col">

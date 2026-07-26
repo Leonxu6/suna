@@ -14,7 +14,7 @@
  *
  * Streaming: the response body passes straight through
  * (`new Response(upstreamRes.body, …)`) for everything except the two routes
- * that need a tiny JSON rewrite (`filterProjectsList`, `recordProvisionOwner`)
+ * that need a tiny JSON rewrite (`filterWorkspacesList`, `recordProvisionOwner`)
  * — those bodies are small one-shot JSON responses. Buffering them is safe.
  * Nothing else is buffered. Long-lived session streams remain active.
  */
@@ -22,8 +22,8 @@
 import { getRequestSession } from '@/server/auth';
 import { evaluatePolicy } from '@/server/policy';
 import { consumeRateLimit } from '@/server/rate-limit';
-import { recordRuntimeProject, resolveRuntimeProject } from '@/server/runtime-access';
-import { addOwnedProject, isOwner, listOwnedProjects } from '@/server/users';
+import { recordRuntimeWorkspace, resolveRuntimeWorkspace } from '@/server/runtime-access';
+import { addOwnedWorkspace, isOwner, listOwnedWorkspaces } from '@/server/users';
 import { forwardKortixRequest } from '@kortix/sdk/server';
 import type { NextRequest } from 'next/server';
 
@@ -57,9 +57,9 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path?: string[]
   const { path = [] } = await ctx.params;
   const upstreamPath = path.join('/');
 
-  const policy = evaluatePolicy(req.method, upstreamPath, (projectId) =>
-    isOwner(session.userId, projectId),
-    resolveRuntimeProject,
+  const policy = evaluatePolicy(req.method, upstreamPath, (workspaceId) =>
+    isOwner(session.userId, workspaceId),
+    resolveRuntimeWorkspace,
   );
   if (!policy.allow) return jsonError(policy.status, policy.reason);
 
@@ -74,9 +74,9 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path?: string[]
 
   // Buffer only responses that update or filter wrapper ownership state.
   if (
-    policy.filterProjectsList ||
+    policy.filterWorkspacesList ||
     policy.recordProvisionOwner ||
-    policy.recordRuntimeProjectId
+    policy.recordRuntimeWorkspaceId
   ) {
     const text = await upstreamRes.text();
     let body: unknown;
@@ -97,19 +97,19 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path?: string[]
     }
 
     if (policy.recordProvisionOwner && upstreamRes.ok) {
-      const projectId = (body as { project_id?: string } | null)?.project_id;
-      if (projectId) addOwnedProject(session.userId, projectId);
+      const workspaceId = (body as { workspace_id?: string } | null)?.workspace_id;
+      if (workspaceId) addOwnedWorkspace(session.userId, workspaceId);
     }
 
-    if (policy.recordRuntimeProjectId && upstreamRes.ok) {
+    if (policy.recordRuntimeWorkspaceId && upstreamRes.ok) {
       const runtimeId = (body as { sandbox?: { external_id?: string } } | null)?.sandbox
         ?.external_id;
-      if (runtimeId) recordRuntimeProject(runtimeId, policy.recordRuntimeProjectId);
+      if (runtimeId) recordRuntimeWorkspace(runtimeId, policy.recordRuntimeWorkspaceId);
     }
 
-    if (policy.filterProjectsList && Array.isArray(body)) {
-      const owned = new Set(listOwnedProjects(session.userId));
-      body = body.filter((item) => owned.has((item as { project_id?: string })?.project_id ?? ''));
+    if (policy.filterWorkspacesList && Array.isArray(body)) {
+      const owned = new Set(listOwnedWorkspaces(session.userId));
+      body = body.filter((item) => owned.has((item as { workspace_id?: string })?.workspace_id ?? ''));
     }
 
     return Response.json(body, { status: upstreamRes.status });

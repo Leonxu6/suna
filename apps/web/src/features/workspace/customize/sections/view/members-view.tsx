@@ -13,7 +13,7 @@ import {
   isInheritedFromGroupOnly,
 } from '@/components/iam/iam-display-helpers';
 import { PermissionsHelpPopover } from '@/components/iam/permissions-help-popover';
-import { ProjectRoleSelectItem } from '@/components/iam/role-select-item';
+import { WorkspaceRoleSelectItem } from '@/components/iam/role-select-item';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -64,30 +64,30 @@ import {
   type PrincipalType,
 } from '@/lib/iam-client';
 import {
-  approveProjectAccessRequest,
-  attachGroupToProject,
-  detachGroupFromProject,
-  getProject,
-  inviteProjectMember,
+  approveWorkspaceAccessRequest,
+  attachGroupToWorkspace,
+  detachGroupFromWorkspace,
+  getWorkspace,
+  inviteWorkspaceMember,
   isInviteSent,
-  listPendingProjectInvites,
-  listProjectAccess,
-  listProjectAccessRequests,
-  listProjectGroupGrants,
-  listProjectResourceGrants,
-  createProjectResourceGrant,
-  deleteProjectResourceGrant,
-  rejectProjectAccessRequest,
-  resendPendingProjectInvite,
-  revokePendingProjectInvite,
-  revokeProjectAccess,
-  updateProjectAccess,
-  updateProjectGroupGrant,
-  type InviteProjectMemberResult,
-  type ProjectAccessMember,
-  type ProjectGroupGrant,
-  type ProjectResourceGrant,
-  type ProjectRole,
+  listPendingWorkspaceInvites,
+  listWorkspaceAccess,
+  listWorkspaceAccessRequests,
+  listWorkspaceGroupGrants,
+  listWorkspaceResourceGrants,
+  createWorkspaceResourceGrant,
+  deleteWorkspaceResourceGrant,
+  rejectWorkspaceAccessRequest,
+  resendPendingWorkspaceInvite,
+  revokePendingWorkspaceInvite,
+  revokeWorkspaceAccess,
+  updateWorkspaceAccess,
+  updateWorkspaceGroupGrant,
+  type InviteWorkspaceMemberResult,
+  type WorkspaceAccessMember,
+  type WorkspaceGroupGrant,
+  type WorkspaceResourceGrant,
+  type WorkspaceRole,
   type ResourceGrantType,
 } from '@kortix/sdk';
 import { useCustomizeStore } from '@/stores/customize-store';
@@ -97,7 +97,7 @@ import { sortByRoleThenLabel } from '../member-sort';
 
 const MEMBER_ROW = 'bg-popover flex items-center gap-3 rounded-md border px-4 py-2.5';
 
-function userLabel(member: Pick<ProjectAccessMember, 'email' | 'user_id'>) {
+function userLabel(member: Pick<WorkspaceAccessMember, 'email' | 'user_id'>) {
   return member.email || member.user_id;
 }
 
@@ -108,7 +108,7 @@ function formatDate(input: string | null | undefined) {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export function MembersView({ projectId }: { projectId: string }) {
+export function MembersView({ workspaceId }: { workspaceId: string }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   // Deep-link target tab (e.g. the palette's "Invite members" opens here). Plain
   // in-view tab clicks stay local; this only follows an external openCustomize.
@@ -119,31 +119,31 @@ export function MembersView({ projectId }: { projectId: string }) {
     setTab(requestedTab);
   }, [requestedTab]);
 
-  const projectQuery = useQuery({
-    queryKey: ['project', projectId],
-    queryFn: () => getProject(projectId),
+  const workspaceQuery = useQuery({
+    queryKey: ['workspace', workspaceId],
+    queryFn: () => getWorkspace(workspaceId),
     staleTime: 20_000,
   });
 
   const accessQuery = useQuery({
-    queryKey: ['project-access', projectId],
-    queryFn: () => listProjectAccess(projectId),
+    queryKey: ['workspace-access', workspaceId],
+    queryFn: () => listWorkspaceAccess(workspaceId),
     staleTime: 20_000,
   });
 
-  const project = projectQuery.data;
-  const canManage = project?.effective_project_role === 'manager' || accessQuery.data?.can_manage;
+  const workspace = workspaceQuery.data;
+  const canManage = workspace?.effective_workspace_role === 'manager' || accessQuery.data?.can_manage;
 
   const pendingInvitesQuery = useQuery({
-    queryKey: ['project-pending-invites', projectId],
-    queryFn: () => listPendingProjectInvites(projectId),
+    queryKey: ['workspace-pending-invites', workspaceId],
+    queryFn: () => listPendingWorkspaceInvites(workspaceId),
     staleTime: 5_000,
     enabled: !!canManage,
   });
 
   const accessRequestsQuery = useQuery({
-    queryKey: ['project-access-requests', projectId],
-    queryFn: () => listProjectAccessRequests(projectId),
+    queryKey: ['workspace-access-requests', workspaceId],
+    queryFn: () => listWorkspaceAccessRequests(workspaceId),
     staleTime: 10_000,
     enabled: !!canManage,
   });
@@ -154,9 +154,9 @@ export function MembersView({ projectId }: { projectId: string }) {
 
   const peopleContent = (
     <div className="space-y-6">
-      <ProjectAccessCard
-        projectId={projectId}
-        accountId={project?.account_id ?? null}
+      <WorkspaceAccessCard
+        workspaceId={workspaceId}
+        accountId={workspace?.account_id ?? null}
         canManage={!!canManage}
         members={accessQuery.data?.members ?? []}
         isLoading={accessQuery.isLoading}
@@ -166,10 +166,10 @@ export function MembersView({ projectId }: { projectId: string }) {
         setTab={setTab}
       />
 
-      {project?.account_id && (
-        <ProjectGroupGrantsCard
-          projectId={projectId}
-          accountId={project.account_id}
+      {workspace?.account_id && (
+        <WorkspaceGroupGrantsCard
+          workspaceId={workspaceId}
+          accountId={workspace.account_id}
           canManage={!!canManage}
         />
       )}
@@ -179,19 +179,19 @@ export function MembersView({ projectId }: { projectId: string }) {
           non-managers), so the cards hide entirely for viewers who can't
           read them — an inert husk with an error or empty body is worse
           than absence. Group access above stays: its list is member-readable. */}
-      {project?.account_id && canManage && (
+      {workspace?.account_id && canManage && (
         <ResourceAccessCard
-          projectId={projectId}
-          accountId={project.account_id}
+          workspaceId={workspaceId}
+          accountId={workspace.account_id}
           canManage={!!canManage}
           members={accessQuery.data?.members ?? []}
         />
       )}
 
-      {project?.account_id && canManage && (
-        <ProjectRoleAssignmentsCard
-          projectId={projectId}
-          accountId={project.account_id}
+      {workspace?.account_id && canManage && (
+        <WorkspaceRoleAssignmentsCard
+          workspaceId={workspaceId}
+          accountId={workspace.account_id}
           canManage={!!canManage}
           members={accessQuery.data?.members ?? []}
         />
@@ -201,14 +201,14 @@ export function MembersView({ projectId }: { projectId: string }) {
 
   return (
     <CustomizeSectionWrapper
-      title={tHardcodedUi.raw('appProjectsIdCustomizeMembersPage.line92JsxTextProjectMembers')}
+      title={tHardcodedUi.raw('appWorkspacesIdCustomizeMembersPage.line92JsxTextWorkspaceMembers')}
       description={tHardcodedUi.raw(
-        'appProjectsIdCustomizeMembersPage.line94JsxTextControlWhoCanAccessThisProjectAccountOwners',
+        'appWorkspacesIdCustomizeMembersPage.line94JsxTextControlWhoCanAccessThisWorkspaceAccountOwners',
       )}
       action={
         <PermissionsHelpPopover
           triggerLabel={tHardcodedUi.raw(
-            'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrTriggerLabelRole9a6a4fdc',
+            'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrTriggerLabelRole9a6a4fdc',
           )}
           align="end"
         />
@@ -239,9 +239,9 @@ export function MembersView({ projectId }: { projectId: string }) {
           </TabsContent>
 
           <TabsContent value="invite" className="space-y-6">
-            <InviteMemberCard projectId={projectId} />
-            <PendingAccessRequestsCard projectId={projectId} />
-            <PendingInvitesCard projectId={projectId} />
+            <InviteMemberCard workspaceId={workspaceId} />
+            <PendingAccessRequestsCard workspaceId={workspaceId} />
+            <PendingInvitesCard workspaceId={workspaceId} />
           </TabsContent>
         </Tabs>
       ) : (
@@ -251,7 +251,7 @@ export function MembersView({ projectId }: { projectId: string }) {
   );
 }
 
-function InviteMemberCard({ projectId }: { projectId: string }) {
+function InviteMemberCard({ workspaceId }: { workspaceId: string }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const { copy } = useCopy({
     successMessage: 'Invite link copied',
@@ -260,7 +260,7 @@ function InviteMemberCard({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
   const [emails, setEmails] = useState<string[]>([]);
   const [inputValue, setInputValue] = useState('');
-  const [role, setRole] = useState<ProjectRole>('member');
+  const [role, setRole] = useState<WorkspaceRole>('member');
   // Optional ISO time-bound: the granted role auto-revokes at this instant once
   // the invitee joins. Empty = permanent. `datetime-local` yields a local
   // wall-clock string; converted to ISO at submit.
@@ -274,8 +274,8 @@ function InviteMemberCard({ projectId }: { projectId: string }) {
       Promise.all(
         list.map(async (addr) => {
           try {
-            const res = await inviteProjectMember(
-              projectId,
+            const res = await inviteWorkspaceMember(
+              workspaceId,
               addr,
               role,
               expiresAt ? new Date(expiresAt).toISOString() : null,
@@ -291,7 +291,7 @@ function InviteMemberCard({ projectId }: { projectId: string }) {
         }),
       ),
     onSuccess: (results) => {
-      type Ok = { email: string; ok: true; res: InviteProjectMemberResult };
+      type Ok = { email: string; ok: true; res: InviteWorkspaceMemberResult };
       type Failed = { email: string; ok: false; message: string };
       const succeeded = results.filter((r): r is Ok => r.ok);
       const failed = results.filter((r): r is Failed => !r.ok);
@@ -304,7 +304,7 @@ function InviteMemberCard({ projectId }: { projectId: string }) {
         if (isInviteSent(r.res)) {
           if (r.res.email_sent) {
             successToast(
-              `Invitation sent to ${r.res.email}. They'll land on this project as ${r.res.project_role} when they sign up.`,
+              `Invitation sent to ${r.res.email}. They'll land on this workspace as ${r.res.workspace_role} when they sign up.`,
             );
           } else {
             const inviteUrl = r.res.invite_url;
@@ -341,12 +341,12 @@ function InviteMemberCard({ projectId }: { projectId: string }) {
       }
 
       if (invited.length > 0) {
-        queryClient.invalidateQueries({ queryKey: ['project-pending-invites', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['workspace-pending-invites', workspaceId] });
       }
       if (added.length > 0) {
-        queryClient.invalidateQueries({ queryKey: ['project-access', projectId] });
-        queryClient.invalidateQueries({ queryKey: ['projects'] });
-        queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['workspace-access', workspaceId] });
+        queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+        queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] });
       }
 
       setEmails(failed.map((f) => f.email));
@@ -441,7 +441,7 @@ function InviteMemberCard({ projectId }: { projectId: string }) {
   return (
     <section className="space-y-4">
       <h3 className="text-sm font-medium">
-        {tHardcodedUi.raw('appProjectsIdCustomizeMembersPage.line140JsxAttrTitleInviteByEmail')}
+        {tHardcodedUi.raw('appWorkspacesIdCustomizeMembersPage.line140JsxAttrTitleInviteByEmail')}
       </h3>
 
       <form onSubmit={handleSubmit}>
@@ -491,7 +491,7 @@ function InviteMemberCard({ projectId }: { projectId: string }) {
                   placeholder={
                     emails.length === 0
                       ? tHardcodedUi.raw(
-                          'appProjectsIdCustomizeMembersPage.line151JsxAttrPlaceholderTeammateExampleCom',
+                          'appWorkspacesIdCustomizeMembersPage.line151JsxAttrPlaceholderTeammateExampleCom',
                         )
                       : 'Add another…'
                   }
@@ -508,16 +508,16 @@ function InviteMemberCard({ projectId }: { projectId: string }) {
               <FieldLabel htmlFor="invite-role">Role</FieldLabel>
               <Select
                 value={role}
-                onValueChange={(next) => setRole(next as ProjectRole)}
+                onValueChange={(next) => setRole(next as WorkspaceRole)}
                 disabled={inviteMutation.isPending}
               >
                 <SelectTrigger id="invite-role" variant="popover">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <ProjectRoleSelectItem role="member" />
-                  <ProjectRoleSelectItem role="editor" />
-                  <ProjectRoleSelectItem role="manager" />
+                  <WorkspaceRoleSelectItem role="member" />
+                  <WorkspaceRoleSelectItem role="editor" />
+                  <WorkspaceRoleSelectItem role="manager" />
                 </SelectContent>
               </Select>
             </Field>
@@ -551,7 +551,7 @@ function InviteMemberCard({ projectId }: { projectId: string }) {
           ) : (
             <FieldDescription className="text-xs">
               {tHardcodedUi.raw(
-                'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextAddSeveralb131056b',
+                'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextAddSeveralb131056b',
               )}
             </FieldDescription>
           )}
@@ -561,8 +561,8 @@ function InviteMemberCard({ projectId }: { projectId: string }) {
   );
 }
 
-function ProjectAccessCard({
-  projectId,
+function WorkspaceAccessCard({
+  workspaceId,
   accountId,
   canManage,
   members,
@@ -572,10 +572,10 @@ function ProjectAccessCard({
   onRetry,
   setTab,
 }: {
-  projectId: string;
+  workspaceId: string;
   accountId: string | null;
   canManage: boolean;
-  members: ProjectAccessMember[];
+  members: WorkspaceAccessMember[];
   isLoading: boolean;
   isError: boolean;
   error: Error | null;
@@ -592,18 +592,18 @@ function ProjectAccessCard({
       next.delete(userId);
       return next;
     });
-  const [revokeTarget, setRevokeTarget] = useState<ProjectAccessMember | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<WorkspaceAccessMember | null>(null);
 
-  type GroupSource = NonNullable<ProjectAccessMember['group_sources']>[number];
+  type GroupSource = NonNullable<WorkspaceAccessMember['group_sources']>[number];
   type GroupAction = {
     type: 'detach' | 'removeFromGroup';
-    member: ProjectAccessMember;
+    member: WorkspaceAccessMember;
     group: GroupSource;
   };
   const [groupAction, setGroupAction] = useState<GroupAction | null>(null);
 
   const accessMembers = useMemo(
-    () => members.filter((m) => m.has_implicit_access || m.effective_project_role != null),
+    () => members.filter((m) => m.has_implicit_access || m.effective_workspace_role != null),
     [members],
   );
   const sortedMembers = useMemo(
@@ -612,14 +612,14 @@ function ProjectAccessCard({
   );
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['project-access', projectId] });
-    queryClient.invalidateQueries({ queryKey: ['projects'] });
-    queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+    queryClient.invalidateQueries({ queryKey: ['workspace-access', workspaceId] });
+    queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+    queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] });
   };
 
   const updateMutation = useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: ProjectRole }) =>
-      updateProjectAccess(projectId, userId, role),
+    mutationFn: ({ userId, role }: { userId: string; role: WorkspaceRole }) =>
+      updateWorkspaceAccess(workspaceId, userId, role),
     onMutate: ({ userId }) => markPending(userId),
     onSettled: (_data, _error, vars) => clearPending(vars.userId),
     onSuccess: () => {
@@ -630,7 +630,7 @@ function ProjectAccessCard({
   });
 
   const revokeMutation = useMutation({
-    mutationFn: (userId: string) => revokeProjectAccess(projectId, userId),
+    mutationFn: (userId: string) => revokeWorkspaceAccess(workspaceId, userId),
     onMutate: (userId) => markPending(userId),
     onSettled: (_data, _error, userId) => clearPending(userId),
     onSuccess: () => {
@@ -641,9 +641,9 @@ function ProjectAccessCard({
   });
 
   const detachMutation = useMutation({
-    mutationFn: (groupId: string) => detachGroupFromProject(projectId, groupId),
+    mutationFn: (groupId: string) => detachGroupFromWorkspace(workspaceId, groupId),
     onSuccess: () => {
-      successToast('Group detached from project');
+      successToast('Group detached from workspace');
       invalidate();
     },
     onError: (err: Error) => errorToast(err.message || 'Failed to detach group'),
@@ -659,13 +659,13 @@ function ProjectAccessCard({
     onError: (err: Error) => errorToast(err.message || 'Failed to remove from group'),
   });
 
-  function setRole(member: ProjectAccessMember, value: string) {
+  function setRole(member: WorkspaceAccessMember, value: string) {
     if (member.has_implicit_access || !canManage) return;
     if (value === 'none') {
       setRevokeTarget(member);
       return;
     }
-    updateMutation.mutate({ userId: member.user_id, role: value as ProjectRole });
+    updateMutation.mutate({ userId: member.user_id, role: value as WorkspaceRole });
   }
 
   return (
@@ -675,7 +675,7 @@ function ProjectAccessCard({
           <div>
             <h3 className="text-sm font-medium">
               {tHardcodedUi.raw(
-                'appProjectsIdCustomizeMembersPage.line260JsxAttrTitleProjectAccess',
+                'appWorkspacesIdCustomizeMembersPage.line260JsxAttrTitleWorkspaceAccess',
               )}
               {accessMembers.length > 0 ? (
                 <span className="text-muted-foreground ml-1.5 font-normal">
@@ -685,7 +685,7 @@ function ProjectAccessCard({
             </h3>
             <p className="text-muted-foreground mt-1 text-xs">
               {tHardcodedUi.raw(
-                'appProjectsIdCustomizeMembersPage.line261JsxAttrDescriptionAccountOwnersAndAdminsAlwaysHaveManagerAccess',
+                'appWorkspacesIdCustomizeMembersPage.line261JsxAttrDescriptionAccountOwnersAndAdminsAlwaysHaveManagerAccess',
               )}
             </p>
           </div>
@@ -719,7 +719,7 @@ function ProjectAccessCard({
             {sortedMembers.map((member) => {
               const busy = pendingUserIds.has(member.user_id);
               const value =
-                member.project_role ?? (member.has_implicit_access ? 'manager' : 'none');
+                member.workspace_role ?? (member.has_implicit_access ? 'manager' : 'none');
               const inheritedFromGroup = isInheritedFromGroupOnly(member);
               const inheritedSummary = inheritedFromGroupSummary(member);
 
@@ -762,9 +762,9 @@ function ProjectAccessCard({
                             ? 'Implicit account access'
                             : inheritedSummary
                               ? inheritedSummary
-                              : member.project_role
+                              : member.workspace_role
                                 ? `Granted ${formatDate(member.granted_at)}`
-                                : 'No project access'}
+                                : 'No workspace access'}
                         </span>
                         {member.expires_at ? (
                           <span className="text-kortix-yellow">
@@ -785,14 +785,14 @@ function ProjectAccessCard({
                     <div className="flex shrink-0 items-center gap-2">
                       <Badge variant="outline" size="sm" className="capitalize">
                         <Shield className="mr-1 size-3.5" />
-                        {member.effective_project_role}
+                        {member.effective_workspace_role}
                       </Badge>
                       {canManage && (member.group_sources ?? []).length > 0 && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm" className="gap-1.5">
                               {tHardcodedUi.raw(
-                                'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextManageAccess8bb5d74d',
+                                'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextManageAccess8bb5d74d',
                               )}
                             </Button>
                           </DropdownMenuTrigger>
@@ -808,16 +808,16 @@ function ProjectAccessCard({
                                 >
                                   <span>
                                     {tHardcodedUi.raw(
-                                      'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextDetachab249756',
+                                      'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextDetachab249756',
                                     )}
                                     {g.group_name}
                                     {tHardcodedUi.raw(
-                                      'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextFromThisaff4c2b1',
+                                      'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextFromThisaff4c2b1',
                                     )}
                                   </span>
                                   <span className="text-muted-foreground text-xs">
                                     {tHardcodedUi.raw(
-                                      'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextRemovesAccess971d3e55',
+                                      'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextRemovesAccess971d3e55',
                                     )}
                                   </span>
                                 </DropdownMenuItem>,
@@ -837,16 +837,16 @@ function ProjectAccessCard({
                                   >
                                     <span>
                                       {tHardcodedUi.raw(
-                                        'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextRemoveFrom9323f47c',
+                                        'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextRemoveFrom9323f47c',
                                       )}
                                       {g.group_name}
                                       {tHardcodedUi.raw(
-                                        'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextGroupdb1c1d43',
+                                        'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextGroupdb1c1d43',
                                       )}
                                     </span>
                                     <span className="text-muted-foreground text-xs">
                                       {tHardcodedUi.raw(
-                                        'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextAffectsEvery735d8dbc',
+                                        'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextAffectsEvery735d8dbc',
                                       )}
                                     </span>
                                   </DropdownMenuItem>,
@@ -869,9 +869,9 @@ function ProjectAccessCard({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <ProjectRoleSelectItem role="member" />
-                          <ProjectRoleSelectItem role="editor" />
-                          <ProjectRoleSelectItem role="manager" />
+                          <WorkspaceRoleSelectItem role="member" />
+                          <WorkspaceRoleSelectItem role="editor" />
+                          <WorkspaceRoleSelectItem role="manager" />
                         </SelectContent>
                       </Select>
                       {canManage && (
@@ -881,7 +881,7 @@ function ProjectAccessCard({
                           variant="ghost"
                           onClick={() => setRevokeTarget(member)}
                           title={tHardcodedUi.raw(
-                            'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrTitleRemovec6407d5f',
+                            'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrTitleRemovec6407d5f',
                           )}
                           className="gap-1.5"
                         >
@@ -904,20 +904,20 @@ function ProjectAccessCard({
           if (!open) setRevokeTarget(null);
         }}
         title={tHardcodedUi.raw(
-          'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrTitleRevoke0cd09fad',
+          'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrTitleRevoke0cd09fad',
         )}
         description={
           revokeTarget ? (
             <span>
               <strong>{userLabel(revokeTarget)}</strong>{' '}
               {tHardcodedUi.raw(
-                'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextWillLoseb378c86b',
+                'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextWillLoseb378c86b',
               )}
             </span>
           ) : null
         }
         confirmLabel={tHardcodedUi.raw(
-          'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrConfirmLabelRevokef1b3384e',
+          'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrConfirmLabelRevokef1b3384e',
         )}
         confirmVariant="destructive"
         isPending={revokeMutation.isPending}
@@ -934,37 +934,37 @@ function ProjectAccessCard({
         onOpenChange={(open) => {
           if (!open) setGroupAction(null);
         }}
-        title={groupAction?.type === 'detach' ? 'Detach group from project?' : 'Remove from group?'}
+        title={groupAction?.type === 'detach' ? 'Detach group from workspace?' : 'Remove from group?'}
         description={
           groupAction ? (
             groupAction.type === 'detach' ? (
               <span>
                 <strong>{groupAction.group.group_name}</strong>{' '}
                 {tHardcodedUi.raw(
-                  'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextWillBeddf66ee4',
+                  'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextWillBeddf66ee4',
                 )}
                 <strong>{userLabel(groupAction.member)}</strong>{' '}
                 {tHardcodedUi.raw(
-                  'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextLosesIte94d42a4',
+                  'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextLosesIte94d42a4',
                 )}
               </span>
             ) : (
               <span>
                 <strong>{userLabel(groupAction.member)}</strong>{' '}
                 {tHardcodedUi.raw(
-                  'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextWillBe60764226',
+                  'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextWillBe60764226',
                 )}
                 <strong>{groupAction.group.group_name}</strong>{' '}
                 {tHardcodedUi.raw(
-                  'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextGroupAcrossc2ff897e',
+                  'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextGroupAcrossc2ff897e',
                 )}{' '}
                 <strong>
                   {tHardcodedUi.raw(
-                    'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextEveryProjecta802077b',
+                    'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextEveryWorkspacea802077b',
                   )}
                 </strong>{' '}
                 {tHardcodedUi.raw(
-                  'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextThatGroup4e384269',
+                  'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextThatGroup4e384269',
                 )}
               </span>
             )
@@ -991,10 +991,10 @@ function ProjectAccessCard({
   );
 }
 
-function PendingAccessRequestsCard({ projectId }: { projectId: string }) {
+function PendingAccessRequestsCard({ workspaceId }: { workspaceId: string }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
-  const queryKey = ['project-access-requests', projectId];
+  const queryKey = ['workspace-access-requests', workspaceId];
   const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set());
   const markBusy = (id: string) => setBusyIds((prev) => new Set(prev).add(id));
   const clearBusy = (id: string) =>
@@ -1006,24 +1006,24 @@ function PendingAccessRequestsCard({ projectId }: { projectId: string }) {
 
   const requestsQuery = useQuery({
     queryKey,
-    queryFn: () => listProjectAccessRequests(projectId),
+    queryFn: () => listWorkspaceAccessRequests(workspaceId),
     staleTime: 10_000,
   });
 
   const approveMutation = useMutation({
-    mutationFn: (requestId: string) => approveProjectAccessRequest(projectId, requestId, 'member'),
+    mutationFn: (requestId: string) => approveWorkspaceAccessRequest(workspaceId, requestId, 'member'),
     onMutate: (requestId) => markBusy(requestId),
     onSettled: (_data, _error, requestId) => clearBusy(requestId),
     onSuccess: (result) => {
-      successToast(`${result.member.email ?? 'Requester'} can now view this project`);
+      successToast(`${result.member.email ?? 'Requester'} can now view this workspace`);
       queryClient.invalidateQueries({ queryKey });
-      queryClient.invalidateQueries({ queryKey: ['project-access', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['workspace-access', workspaceId] });
     },
     onError: (err: Error) => errorToast(err.message || 'Failed to approve request'),
   });
 
   const rejectMutation = useMutation({
-    mutationFn: (requestId: string) => rejectProjectAccessRequest(projectId, requestId),
+    mutationFn: (requestId: string) => rejectWorkspaceAccessRequest(workspaceId, requestId),
     onMutate: (requestId) => markBusy(requestId),
     onSettled: (_data, _error, requestId) => clearBusy(requestId),
     onSuccess: () => {
@@ -1042,7 +1042,7 @@ function PendingAccessRequestsCard({ projectId }: { projectId: string }) {
       <div>
         <h3 className="text-sm font-medium">
           {tHardcodedUi.raw(
-            'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrTitleAccess7a756f48',
+            'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrTitleAccess7a756f48',
           )}
           {requests.length > 0 ? (
             <span className="text-muted-foreground ml-1.5 font-normal">({requests.length})</span>
@@ -1050,7 +1050,7 @@ function PendingAccessRequestsCard({ projectId }: { projectId: string }) {
         </h3>
         <p className="text-muted-foreground mt-1 text-xs">
           {tHardcodedUi.raw(
-            'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrDescriptionPeopleea85927a',
+            'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrDescriptionPeopleea85927a',
           )}
         </p>
       </div>
@@ -1118,14 +1118,14 @@ function PendingAccessRequestsCard({ projectId }: { projectId: string }) {
   );
 }
 
-function PendingInvitesCard({ projectId }: { projectId: string }) {
+function PendingInvitesCard({ workspaceId }: { workspaceId: string }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const { copy } = useCopy({
     successMessage: 'Invite link copied',
     errorMessage: 'Could not copy link',
   });
   const queryClient = useQueryClient();
-  const queryKey = ['project-pending-invites', projectId];
+  const queryKey = ['workspace-pending-invites', workspaceId];
   const [pendingInviteIds, setPendingInviteIds] = useState<Set<string>>(() => new Set());
   const markPending = (id: string) => setPendingInviteIds((prev) => new Set(prev).add(id));
   const clearPending = (id: string) =>
@@ -1140,19 +1140,19 @@ function PendingInvitesCard({ projectId }: { projectId: string }) {
 
   const invitesQuery = useQuery({
     queryKey,
-    queryFn: () => listPendingProjectInvites(projectId),
+    queryFn: () => listPendingWorkspaceInvites(workspaceId),
     staleTime: 5_000,
   });
 
   const revokeMutation = useMutation({
-    mutationFn: (inviteId: string) => revokePendingProjectInvite(projectId, inviteId),
+    mutationFn: (inviteId: string) => revokePendingWorkspaceInvite(workspaceId, inviteId),
     onMutate: (inviteId) => markPending(inviteId),
     onSettled: (_data, _error, inviteId) => clearPending(inviteId),
     onSuccess: (result) => {
       successToast(
         result.invitation_cancelled
           ? 'Invitation cancelled.'
-          : 'Project access removed from invitation.',
+          : 'Workspace access removed from invitation.',
       );
       queryClient.invalidateQueries({ queryKey });
     },
@@ -1160,7 +1160,7 @@ function PendingInvitesCard({ projectId }: { projectId: string }) {
   });
 
   const resendMutation = useMutation({
-    mutationFn: (inviteId: string) => resendPendingProjectInvite(projectId, inviteId),
+    mutationFn: (inviteId: string) => resendPendingWorkspaceInvite(workspaceId, inviteId),
     onMutate: (inviteId) => markPending(inviteId),
     onSettled: (_data, _error, inviteId) => clearPending(inviteId),
     onSuccess: (result) => {
@@ -1191,7 +1191,7 @@ function PendingInvitesCard({ projectId }: { projectId: string }) {
         <div>
           <h3 className="text-sm font-medium">
             {tHardcodedUi.raw(
-              'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrTitlePendingbfbe9f8b',
+              'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrTitlePendingbfbe9f8b',
             )}
             {pending.length > 0 ? (
               <span className="text-muted-foreground ml-1.5 font-normal">({pending.length})</span>
@@ -1199,7 +1199,7 @@ function PendingInvitesCard({ projectId }: { projectId: string }) {
           </h3>
           <p className="text-muted-foreground mt-1 text-xs">
             {tHardcodedUi.raw(
-              'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrDescriptionPeople552a0c43',
+              'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrDescriptionPeople552a0c43',
             )}
           </p>
         </div>
@@ -1227,7 +1227,7 @@ function PendingInvitesCard({ projectId }: { projectId: string }) {
                         {invite.email}
                       </span>
                       <Badge variant="outline" size="sm" className="capitalize">
-                        {invite.project_role}
+                        {invite.workspace_role}
                       </Badge>
                     </div>
                     <span className="text-muted-foreground text-xs">
@@ -1237,14 +1237,14 @@ function PendingInvitesCard({ projectId }: { projectId: string }) {
                         {invite.invite_expired ? (
                           <span className="text-kortix-orange">
                             {tHardcodedUi.raw(
-                              'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextInviteLinkef92ef7c',
+                              'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextInviteLinkef92ef7c',
                             )}
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1">
                             <Clock className="size-3" />
                             {tHardcodedUi.raw(
-                              'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextLinkExpires4566b25e',
+                              'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextLinkExpires4566b25e',
                             )}
                             {formatDate(invite.invite_expires_at)}
                           </span>
@@ -1262,7 +1262,7 @@ function PendingInvitesCard({ projectId }: { projectId: string }) {
                         variant="ghost"
                         onClick={() => resendMutation.mutate(invite.invite_id)}
                         title={tHardcodedUi.raw(
-                          'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrTitleResendc80cacee',
+                          'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrTitleResendc80cacee',
                         )}
                         className="gap-1.5"
                       >
@@ -1277,7 +1277,7 @@ function PendingInvitesCard({ projectId }: { projectId: string }) {
                           setRevokeTarget({ inviteId: invite.invite_id, email: invite.email })
                         }
                         title={tHardcodedUi.raw(
-                          'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrTitleCancel670de1c6',
+                          'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrTitleCancel670de1c6',
                         )}
                         className="gap-1.5"
                       >
@@ -1299,23 +1299,23 @@ function PendingInvitesCard({ projectId }: { projectId: string }) {
           if (!open) setRevokeTarget(null);
         }}
         title={tHardcodedUi.raw(
-          'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrTitleRevoke99f32c76',
+          'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrTitleRevoke99f32c76',
         )}
         description={
           revokeTarget ? (
             <span>
               {tHardcodedUi.raw(
-                'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextTheInvitation06f8c62e',
+                'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextTheInvitation06f8c62e',
               )}
               <strong>{revokeTarget.email}</strong>{' '}
               {tHardcodedUi.raw(
-                'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextWillBe5ec1d9e8',
+                'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextWillBe5ec1d9e8',
               )}
             </span>
           ) : null
         }
         confirmLabel={tHardcodedUi.raw(
-          'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrConfirmLabelRevoke3c3ea8b9',
+          'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrConfirmLabelRevoke3c3ea8b9',
         )}
         confirmVariant="destructive"
         isPending={revokeMutation.isPending}
@@ -1330,22 +1330,22 @@ function PendingInvitesCard({ projectId }: { projectId: string }) {
   );
 }
 
-function ProjectGroupGrantsCard({
-  projectId,
+function WorkspaceGroupGrantsCard({
+  workspaceId,
   accountId,
   canManage,
 }: {
-  projectId: string;
+  workspaceId: string;
   accountId: string;
   canManage: boolean;
 }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
-  const grantsKey = ['project-group-grants', projectId];
+  const grantsKey = ['workspace-group-grants', workspaceId];
 
   const grantsQuery = useQuery({
     queryKey: grantsKey,
-    queryFn: () => listProjectGroupGrants(projectId),
+    queryFn: () => listWorkspaceGroupGrants(workspaceId),
     staleTime: 20_000,
   });
   const groupsQuery = useQuery({
@@ -1354,13 +1354,13 @@ function ProjectGroupGrantsCard({
     enabled: canManage,
     staleTime: 60_000,
   });
-  // Custom-role policies bound to a GROUP on this project. A group that has BOTH
+  // Custom-role policies bound to a GROUP on this workspace. A group that has BOTH
   // a built-in grant (this list) AND a custom-role policy hits the union trap:
   // allow-only/highest-wins means the built-in role WINS and silently overrides
   // the custom role's restrictions. We flag those rows so it isn't a silent gotcha.
   const policiesQuery = useQuery({
-    queryKey: ['project-policies', projectId],
-    queryFn: () => listPolicies(accountId, { scopeId: projectId }),
+    queryKey: ['workspace-policies', workspaceId],
+    queryFn: () => listPolicies(accountId, { scopeId: workspaceId }),
     enabled: canManage,
     staleTime: 20_000,
   });
@@ -1370,11 +1370,11 @@ function ProjectGroupGrantsCard({
         (policiesQuery.data ?? [])
           .filter(
             (p) =>
-              p.principal_type === 'group' && p.scope_type === 'project' && p.scope_id === projectId,
+              p.principal_type === 'group' && p.scope_type === 'workspace' && p.scope_id === workspaceId,
           )
           .map((p) => p.principal_id),
       ),
-    [policiesQuery.data, projectId],
+    [policiesQuery.data, workspaceId],
   );
 
   const grants = useMemo(() => {
@@ -1392,7 +1392,7 @@ function ProjectGroupGrantsCard({
   );
 
   const [pickerGroupId, setPickerGroupId] = useState<string>('');
-  const [pickerRole, setPickerRole] = useState<ProjectRole>('member');
+  const [pickerRole, setPickerRole] = useState<WorkspaceRole>('member');
   const [pendingGroupIds, setPendingGroupIds] = useState<Set<string>>(() => new Set());
   const markPending = (id: string) => setPendingGroupIds((prev) => new Set(prev).add(id));
   const clearPending = (id: string) =>
@@ -1401,16 +1401,16 @@ function ProjectGroupGrantsCard({
       next.delete(id);
       return next;
     });
-  const [detachTarget, setDetachTarget] = useState<ProjectGroupGrant | null>(null);
+  const [detachTarget, setDetachTarget] = useState<WorkspaceGroupGrant | null>(null);
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: grantsKey });
-    queryClient.invalidateQueries({ queryKey: ['project-access', projectId] });
-    queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+    queryClient.invalidateQueries({ queryKey: ['workspace-access', workspaceId] });
+    queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] });
   }
 
   const attachMutation = useMutation({
-    mutationFn: () => attachGroupToProject(projectId, pickerGroupId, pickerRole),
+    mutationFn: () => attachGroupToWorkspace(workspaceId, pickerGroupId, pickerRole),
     onMutate: () => {
       markPending(pickerGroupId);
       return { groupId: pickerGroupId };
@@ -1426,8 +1426,8 @@ function ProjectGroupGrantsCard({
   });
 
   const updateMutation = useMutation({
-    mutationFn: (input: { groupId: string; role: ProjectRole }) =>
-      updateProjectGroupGrant(projectId, input.groupId, input.role),
+    mutationFn: (input: { groupId: string; role: WorkspaceRole }) =>
+      updateWorkspaceGroupGrant(workspaceId, input.groupId, input.role),
     onMutate: (input) => markPending(input.groupId),
     onSettled: (_data, _error, input) => clearPending(input.groupId),
     onSuccess: () => {
@@ -1438,7 +1438,7 @@ function ProjectGroupGrantsCard({
   });
 
   const detachMutation = useMutation({
-    mutationFn: (groupId: string) => detachGroupFromProject(projectId, groupId),
+    mutationFn: (groupId: string) => detachGroupFromWorkspace(workspaceId, groupId),
     onMutate: (groupId) => markPending(groupId),
     onSettled: (_data, _error, groupId) => clearPending(groupId),
     onSuccess: () => {
@@ -1455,7 +1455,7 @@ function ProjectGroupGrantsCard({
           <div>
             <h3 className="text-sm font-medium">
               {tHardcodedUi.raw(
-                'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrTitleGroupfbf9c01c',
+                'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrTitleGroupfbf9c01c',
               )}
               {grants.length > 0 ? (
                 <span className="text-muted-foreground ml-1.5 font-normal">({grants.length})</span>
@@ -1463,7 +1463,7 @@ function ProjectGroupGrantsCard({
             </h3>
             <p className="text-muted-foreground mt-1 text-xs">
               {tHardcodedUi.raw(
-                'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrDescriptionAttach372d6d3a',
+                'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrDescriptionAttach372d6d3a',
               )}
             </p>
           </div>
@@ -1485,7 +1485,7 @@ function ProjectGroupGrantsCard({
                 <SelectTrigger className="h-8 w-44 text-xs">
                   <SelectValue
                     placeholder={tHardcodedUi.raw(
-                      'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrPlaceholderPickf0432525',
+                      'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrPlaceholderPickf0432525',
                     )}
                   />
                 </SelectTrigger>
@@ -1499,16 +1499,16 @@ function ProjectGroupGrantsCard({
               </Select>
               <Select
                 value={pickerRole}
-                onValueChange={(v) => setPickerRole(v as ProjectRole)}
+                onValueChange={(v) => setPickerRole(v as WorkspaceRole)}
                 disabled={attachMutation.isPending}
               >
                 <SelectTrigger className="h-8 w-28 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <ProjectRoleSelectItem role="member" />
-                  <ProjectRoleSelectItem role="editor" />
-                  <ProjectRoleSelectItem role="manager" />
+                  <WorkspaceRoleSelectItem role="member" />
+                  <WorkspaceRoleSelectItem role="editor" />
+                  <WorkspaceRoleSelectItem role="manager" />
                 </SelectContent>
               </Select>
               <Button
@@ -1539,22 +1539,22 @@ function ProjectGroupGrantsCard({
               canManage && groups.length === 0 ? (
                 <>
                   {tHardcodedUi.raw(
-                    'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextCreateOne549d8748',
+                    'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextCreateOne549d8748',
                   )}{' '}
                   <a href={`/accounts/${accountId}`} className="hover:text-foreground underline">
                     {tHardcodedUi.raw(
-                      'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextAccountPage432b8a72',
+                      'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextAccountPage432b8a72',
                     )}
                   </a>
                   .
                 </>
               ) : canManage && available.length === 0 && groups.length > 0 ? (
                 tHardcodedUi.raw(
-                  'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextAllYour31c4dcb5',
+                  'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextAllYour31c4dcb5',
                 )
               ) : (
                 tHardcodedUi.raw(
-                  'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextNoGroups09e82ebd',
+                  'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextNoGroups09e82ebd',
                 )
               )
             }
@@ -1563,7 +1563,7 @@ function ProjectGroupGrantsCard({
 
         {!grantsQuery.isLoading && grants.length > 0 && (
           <ul className="space-y-2">
-            {grants.map((g: ProjectGroupGrant) => {
+            {grants.map((g: WorkspaceGroupGrant) => {
               const busy = pendingGroupIds.has(g.group_id);
               return (
                 <li key={g.group_id} className={MEMBER_ROW}>
@@ -1584,19 +1584,19 @@ function ProjectGroupGrantsCard({
                           <span
                             className="text-kortix-orange"
                             title={tHardcodedUi.raw(
-                              'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrTitleAccount2914778b',
+                              'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrTitleAccount2914778b',
                             )}
                           >
                             {g.override_count} of {g.member_count}{' '}
                             {tHardcodedUi.raw(
-                              'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextGetManagera88e6fc4',
+                              'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextGetManagera88e6fc4',
                             )}
                           </span>
                         )}
                         {groupsWithCustomRole.has(g.group_id) && (
                           <span
                             className="text-kortix-orange font-medium"
-                            title="This group also has a custom role assigned on this project. Built-in role grants WIN over custom roles (allow-only / highest-wins), so this grant overrides the custom role's limits. Detach it to let the custom role apply."
+                            title="This group also has a custom role assigned on this workspace. Built-in role grants WIN over custom roles (allow-only / highest-wins), so this grant overrides the custom role's limits. Detach it to let the custom role apply."
                           >
                             ⚠ overrides an assigned custom role
                           </span>
@@ -1611,16 +1611,16 @@ function ProjectGroupGrantsCard({
                       <Select
                         value={g.role}
                         onValueChange={(v) =>
-                          updateMutation.mutate({ groupId: g.group_id, role: v as ProjectRole })
+                          updateMutation.mutate({ groupId: g.group_id, role: v as WorkspaceRole })
                         }
                       >
                         <SelectTrigger className="h-8 w-28 text-xs">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <ProjectRoleSelectItem role="member" />
-                          <ProjectRoleSelectItem role="editor" />
-                          <ProjectRoleSelectItem role="manager" />
+                          <WorkspaceRoleSelectItem role="member" />
+                          <WorkspaceRoleSelectItem role="editor" />
+                          <WorkspaceRoleSelectItem role="manager" />
                         </SelectContent>
                       </Select>
                       <Button
@@ -1650,24 +1650,24 @@ function ProjectGroupGrantsCard({
           if (!open) setDetachTarget(null);
         }}
         title={tHardcodedUi.raw(
-          'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrTitleDetach8e4cbc87',
+          'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrTitleDetach8e4cbc87',
         )}
         description={
           detachTarget ? (
             <span>
               <strong>{detachTarget.group_name}</strong>{' '}
               {tHardcodedUi.raw(
-                'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextWillNob7c4fd05',
+                'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextWillNob7c4fd05',
               )}
               <strong>{detachTarget.role}</strong>{' '}
               {tHardcodedUi.raw(
-                'autoComponentsProjectsCustomizeSectionsMembersViewJsxTextAccessUnless520e90ca',
+                'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxTextAccessUnless520e90ca',
               )}
             </span>
           ) : null
         }
         confirmLabel={tHardcodedUi.raw(
-          'autoComponentsProjectsCustomizeSectionsMembersViewJsxAttrConfirmLabelDetache64492d2',
+          'autoComponentsWorkspacesCustomizeSectionsMembersViewJsxAttrConfirmLabelDetache64492d2',
         )}
         confirmVariant="destructive"
         isPending={detachMutation.isPending}
@@ -1786,22 +1786,22 @@ function BlastRadiusPreview({
 }
 
 function ResourceAccessCard({
-  projectId,
+  workspaceId,
   accountId,
   canManage,
   members,
 }: {
-  projectId: string;
+  workspaceId: string;
   accountId: string;
   canManage: boolean;
-  members: ProjectAccessMember[];
+  members: WorkspaceAccessMember[];
 }) {
   const queryClient = useQueryClient();
-  const grantsKey = ['project-resource-grants', projectId];
+  const grantsKey = ['workspace-resource-grants', workspaceId];
 
   const grantsQuery = useQuery({
     queryKey: grantsKey,
-    queryFn: () => listProjectResourceGrants(projectId),
+    queryFn: () => listWorkspaceResourceGrants(workspaceId),
     // Manager-only endpoint (403s otherwise) — don't fire it for non-managers.
     enabled: canManage,
     staleTime: 20_000,
@@ -1873,9 +1873,9 @@ function ResourceAccessCard({
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: grantsKey });
     // The agent/skill lists the rest of the UI renders are now filtered, so the
-    // project detail must refetch to reflect what this user can see.
-    queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-    queryClient.invalidateQueries({ queryKey: ['project-detail', projectId] });
+    // workspace detail must refetch to reflect what this user can see.
+    queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] });
+    queryClient.invalidateQueries({ queryKey: ['workspace-detail', workspaceId] });
   }
 
   function splitOnce(v: string): [string, string] {
@@ -1886,7 +1886,7 @@ function ResourceAccessCard({
   const createMutation = useMutation({
     mutationFn: () => {
       const [principalType, principalId] = splitOnce(principalValue);
-      return createProjectResourceGrant(projectId, {
+      return createWorkspaceResourceGrant(workspaceId, {
         resourceType: pickerType as ResourceGrantType,
         resourceId: pickerResourceId,
         principalType: principalType as 'member' | 'group',
@@ -1909,7 +1909,7 @@ function ResourceAccessCard({
   }
 
   const removeMutation = useMutation({
-    mutationFn: (grantId: string) => deleteProjectResourceGrant(projectId, grantId),
+    mutationFn: (grantId: string) => deleteWorkspaceResourceGrant(workspaceId, grantId),
     onMutate: (grantId) => markPending(grantId),
     onSettled: (_d, _e, grantId) => clearPending(grantId),
     onSuccess: () => {
@@ -1955,7 +1955,7 @@ function ResourceAccessCard({
             </h3>
             <p className="text-muted-foreground mt-1 text-xs">
               Assign agents to a member or group to control who can USE them. An agent with no
-              assignment is open to everyone with project access; assigning one restricts it to
+              assignment is open to everyone with workspace access; assigning one restricts it to
               the people or groups you choose — they inherit that agent's declared skills,
               connectors, and secrets to use in its sessions. This only ever grants USE, never
               edit: changing the agent, a skill, a connector, or a secret still requires the
@@ -1986,8 +1986,8 @@ function ResourceAccessCard({
         {!grantsQuery.isLoading && grants.length === 0 && (
           <p className="text-muted-foreground text-xs">
             {hasResources
-              ? 'Nothing is scoped yet — every agent is open to everyone with project access to use. Grant one above to restrict who can use it. Skills, connectors, and secrets aren’t assigned directly here — they’re governed by the editor role (to edit) and inherited through the agents you assign (to use).'
-              : 'This project has no agents to scope yet. Add one first, then come back here to limit who can use it.'}
+              ? 'Nothing is scoped yet — every agent is open to everyone with workspace access to use. Grant one above to restrict who can use it. Skills, connectors, and secrets aren’t assigned directly here — they’re governed by the editor role (to edit) and inherited through the agents you assign (to use).'
+              : 'This workspace has no agents to scope yet. Add one first, then come back here to limit who can use it.'}
           </p>
         )}
 
@@ -1997,7 +1997,7 @@ function ResourceAccessCard({
               <FilterChips value={resourceFilter} onChange={setResourceFilter} options={grantFilterOptions} />
             )}
             <ul className="space-y-2">
-              {visibleGrants.map((g: ProjectResourceGrant) => {
+              {visibleGrants.map((g: WorkspaceResourceGrant) => {
                 const busy = pendingIds.has(g.grant_id);
                 const displayName = resourceName.get(`${g.resource_type}:${g.resource_id}`) ?? g.resource_id;
                 const ResourceIcon = g.resource_type === 'agent' ? Bot : g.resource_type === 'secret' ? KeyRound : Sparkles;
@@ -2066,7 +2066,7 @@ function ResourceAccessCard({
               Assign an agent to a member or group — they inherit everything that agent
               uses (its secrets, connectors, and skills) to USE, not edit. Resources reach
               people through agents, not by a direct grant; agents you don't assign stay open
-              to everyone with project access. Editing the agent or any resource it uses still
+              to everyone with workspace access. Editing the agent or any resource it uses still
               requires the editor role.
             </ModalDescription>
           </ModalHeader>
@@ -2149,24 +2149,24 @@ function ResourceAccessCard({
 }
 
 /**
- * Custom-role assignments for THIS project — the project-level view of the
+ * Custom-role assignments for THIS workspace — the workspace-level view of the
  * account Roles page's bindings. Custom roles are DEFINED on the account Roles
  * page; here a manager grants one (to a member / group / agent) scoped to
- * this project, so a project's full access picture lives in one place.
+ * this workspace, so a workspace's full access picture lives in one place.
  */
-function ProjectRoleAssignmentsCard({
-  projectId,
+function WorkspaceRoleAssignmentsCard({
+  workspaceId,
   accountId,
   canManage,
   members,
 }: {
-  projectId: string;
+  workspaceId: string;
   accountId: string;
   canManage: boolean;
-  members: ProjectAccessMember[];
+  members: WorkspaceAccessMember[];
 }) {
   const queryClient = useQueryClient();
-  const policiesKey = ['project-policies', projectId];
+  const policiesKey = ['workspace-policies', workspaceId];
 
   const policiesQuery = useQuery({
     queryKey: policiesKey,
@@ -2174,7 +2174,7 @@ function ProjectRoleAssignmentsCard({
     // policy.read, which a non-manager doesn't hold — firing it anyway just
     // 403s for data this card can never show them.
     enabled: canManage,
-    queryFn: () => listPolicies(accountId, { scopeId: projectId }),
+    queryFn: () => listPolicies(accountId, { scopeId: workspaceId }),
     staleTime: 20_000,
   });
   const rolesQuery = useQuery({
@@ -2196,17 +2196,17 @@ function ProjectRoleAssignmentsCard({
     staleTime: 60_000,
   });
 
-  // Only project-scoped bindings for THIS project (account-wide custom roles
-  // apply too, but they're managed on the account page, not per-project).
+  // Only workspace-scoped bindings for THIS workspace (account-wide custom roles
+  // apply too, but they're managed on the account page, not per-workspace).
   const policies = useMemo(
-    () => (policiesQuery.data ?? []).filter((p) => p.scope_type === 'project' && p.scope_id === projectId),
-    [policiesQuery.data, projectId],
+    () => (policiesQuery.data ?? []).filter((p) => p.scope_type === 'workspace' && p.scope_id === workspaceId),
+    [policiesQuery.data, workspaceId],
   );
   const customRoles = useMemo(() => (rolesQuery.data ?? []).filter((r) => !r.is_system), [rolesQuery.data]);
   const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data]);
-  const projectAgents = useMemo(
-    () => (agentsQuery.data ?? []).filter((a) => a.project_id === projectId),
-    [agentsQuery.data, projectId],
+  const workspaceAgents = useMemo(
+    () => (agentsQuery.data ?? []).filter((a) => a.workspace_id === workspaceId),
+    [agentsQuery.data, workspaceId],
   );
 
   const roleNameById = useMemo(
@@ -2253,7 +2253,7 @@ function ProjectRoleAssignmentsCard({
   }
 
   // Step 1 of the assign flow: pick the SUBJECT type. Only offer types that
-  // have someone to assign (no empty "Agent" list when the project has none).
+  // have someone to assign (no empty "Agent" list when the workspace has none).
   const subjectOptions = useMemo(
     () =>
       (
@@ -2264,11 +2264,11 @@ function ProjectRoleAssignmentsCard({
             type: 'token',
             label: 'Agent',
             Icon: Bot,
-            items: projectAgents.map((a) => ({ id: a.service_account_id, name: a.agent_name ?? a.name })),
+            items: workspaceAgents.map((a) => ({ id: a.service_account_id, name: a.agent_name ?? a.name })),
           },
         ] as const
       ).filter((o) => o.items.length > 0),
-    [members, groups, projectAgents],
+    [members, groups, workspaceAgents],
   );
   // Step 2 options: only the subjects of the chosen type.
   const activeSubjects = subjectOptions.find((o) => o.type === subjectType)?.items ?? [];
@@ -2288,8 +2288,8 @@ function ProjectRoleAssignmentsCard({
       createPolicy(accountId, {
         principalType: subjectType as PrincipalType,
         principalId: subjectId,
-        scopeType: 'project',
-        scopeId: projectId,
+        scopeType: 'workspace',
+        scopeId: workspaceId,
         roleId,
       }),
     onSuccess: () => {
@@ -2355,8 +2355,8 @@ function ProjectRoleAssignmentsCard({
               ) : null}
             </h3>
             <p className="text-muted-foreground mt-1 text-xs">
-              Grant a custom role to a member, group, or agent on this project. Custom roles are
-              defined on the account Roles page; here you bind them for this project only.
+              Grant a custom role to a member, group, or agent on this workspace. Custom roles are
+              defined on the account Roles page; here you bind them for this workspace only.
             </p>
           </div>
 
@@ -2388,10 +2388,10 @@ function ProjectRoleAssignmentsCard({
                 <a href={`/accounts/${accountId}?tab=roles`} className="underline">
                   account Roles page
                 </a>
-                , then bind it here for this project.
+                , then bind it here for this workspace.
               </>
             ) : (
-              'No custom-role assignments on this project yet. Bind one above to grant a member, group, or agent a custom role here.'
+              'No custom-role assignments on this workspace yet. Bind one above to grant a member, group, or agent a custom role here.'
             )}
           </p>
         )}
@@ -2462,7 +2462,7 @@ function ProjectRoleAssignmentsCard({
           <ModalHeader>
             <ModalTitle>Assign a custom role</ModalTitle>
             <ModalDescription>
-              Bind a custom role to a member, group, or agent on this project only.
+              Bind a custom role to a member, group, or agent on this workspace only.
             </ModalDescription>
           </ModalHeader>
 

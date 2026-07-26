@@ -1,10 +1,10 @@
 /**
  * Account groups (IAM) data layer — list/create/delete/rename + group detail
- * (members, project grants). Web parity: lib/iam-client.ts group fns.
+ * (members, workspace grants). Web parity: lib/iam-client.ts group fns.
  */
 
-import { apiFetch } from '@/lib/projects/projects-client';
-import type { AccountGroup } from '@/lib/projects/projects-client';
+import { apiFetch } from '@/lib/workspaces/workspaces-client';
+import type { AccountGroup } from '@/lib/workspaces/workspaces-client';
 
 export type { AccountGroup };
 
@@ -14,9 +14,9 @@ export interface GroupMember {
   added_by: string | null;
 }
 
-export interface GroupProjectGrant {
-  project_id: string;
-  project_name: string;
+export interface GroupWorkspaceGrant {
+  workspace_id: string;
+  workspace_name: string;
   role: 'manager' | 'editor' | 'member';
   granted_by: string | null;
   created_at: string;
@@ -46,7 +46,7 @@ export async function listGroupMembers(accountId: string, groupId: string) {
   const res = await apiFetch<{ members: GroupMember[] }>(`${groups(accountId)}/${encodeURIComponent(groupId)}/members`);
   return res.members;
 }
-export async function listGroupProjectGrants(accountId: string, groupId: string) {
-  const res = await apiFetch<{ grants: GroupProjectGrant[] }>(`${groups(accountId)}/${encodeURIComponent(groupId)}/project-grants`);
+export async function listGroupWorkspaceGrants(accountId: string, groupId: string) {
+  const res = await apiFetch<{ grants: GroupWorkspaceGrant[] }>(`${groups(accountId)}/${encodeURIComponent(groupId)}/workspace-grants`);
   return res.grants;
 }

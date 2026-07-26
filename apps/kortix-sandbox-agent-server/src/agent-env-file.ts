@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { dirname, join } from 'node:path'
 
 import { logger } from './logger'
-import type { ProjectEnvStore } from './project-env'
+import type { WorkspaceEnvStore } from './workspace-env'
 
 // tmpfs (RAM-backed) so plaintext secrets never land on the persisted container
 // disk — Daytona hibernate/archive keeps the disk, /dev/shm is never captured.
@@ -27,7 +27,7 @@ const DANGEROUS_NAMES = new Set([
 ])
 
 // Per-session credentials the AGENT's shells need (CLI auth, `git push`, CR-merge,
-// project context). Normally these reach the agent via opencode's PROCESS env —
+// workspace context). Normally these reach the agent via opencode's PROCESS env —
 // but the no-restart warm-fork hot-swap REUSES the seed opencode without respawn,
 // so its env stays the tokenless PARK env and the agent's shells inherit EMPTY
 // values. We can't mutate a live process's env, so deliver them through the same
@@ -41,6 +41,7 @@ const SHELL_SESSION_CREDS = [
   'KORTIX_CLI_TOKEN',
   'KORTIX_SANDBOX_TOKEN',
   'KORTIX_EXECUTOR_TOKEN',
+  'KORTIX_WORKSPACE_ID',
   'KORTIX_PROJECT_ID',
   'KORTIX_API_URL',
   'KORTIX_FRONTEND_URL',
@@ -79,7 +80,11 @@ function atomicWrite(file: string, contents: string): boolean {
 }
 
 function bootSecretNames(bootEnv: NodeJS.ProcessEnv): string[] {
-  return (bootEnv.KORTIX_PROJECT_SECRET_NAMES ?? '')
+  return (
+    bootEnv.KORTIX_WORKSPACE_SECRET_NAMES ??
+    bootEnv.KORTIX_PROJECT_SECRET_NAMES ??
+    ''
+  )
     .split(',')
     .map((name) => name.trim())
     .filter(Boolean)
@@ -140,7 +145,7 @@ function renderShellEnv(
 }
 
 export function writeAgentEnvFile(
-  store: ProjectEnvStore,
+  store: WorkspaceEnvStore,
   opts: { sh?: string; bootEnv?: NodeJS.ProcessEnv } = {},
 ): boolean {
   const snapshot = store.snapshot()

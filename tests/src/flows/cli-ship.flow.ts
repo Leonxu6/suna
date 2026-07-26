@@ -175,8 +175,8 @@ flow(
     requires: ['managedGitPush'],
     routes: [
       'GET /v1/accounts/me',
-      'POST /v1/projects/provision',
-      'POST /v1/projects/:projectId/git-token',
+      'POST /v1/workspaces/provision',
+      'POST /v1/workspaces/:workspaceId/git-token',
     ],
   },
   async (ctx) => {
@@ -203,12 +203,12 @@ flow(
           );
           const link = JSON.parse(sb.readFile('.kortix/link.json'));
           check(
-            'link.json carries project_id',
-            typeof link.project_id === 'string' && link.project_id.length > 0,
+            'link.json carries workspace_id',
+            typeof link.workspace_id === 'string' && link.workspace_id.length > 0,
             true,
-            link.project_id,
+            link.workspace_id,
           );
-          if (link.project_id) ctx.track('project', link.project_id);
+          if (link.workspace_id) ctx.track('workspace', link.workspace_id);
           const remote = Bun.spawnSync(['git', '-C', sb.cwd, 'remote', 'get-url', 'origin']);
           check(
             'origin remote set to managed repo',
@@ -230,7 +230,7 @@ flow(
   'SHIP-2',
   {
     domain: 'cli',
-    routes: ['GET /v1/accounts/me', 'POST /v1/projects'],
+    routes: ['GET /v1/accounts/me', 'POST /v1/workspaces'],
   },
   async (ctx) => {
     const pat = await ctx.fixtures.pat({
@@ -289,7 +289,7 @@ flow(
   'SHIP-3',
   {
     domain: 'cli',
-    routes: ['GET /v1/accounts/me', 'POST /v1/projects'],
+    routes: ['GET /v1/accounts/me', 'POST /v1/workspaces'],
   },
   async (ctx) => {
     const pat = await ctx.fixtures.pat({
@@ -343,8 +343,8 @@ flow(
     requires: ['managedGitPush'],
     routes: [
       'GET /v1/accounts/me',
-      'POST /v1/projects/provision',
-      'POST /v1/projects/:projectId/git-token',
+      'POST /v1/workspaces/provision',
+      'POST /v1/workspaces/:workspaceId/git-token',
     ],
   },
   async (ctx) => {
@@ -385,7 +385,7 @@ flow(
           );
           if (sb.exists('.kortix/link.json')) {
             const link = JSON.parse(sb.readFile('.kortix/link.json'));
-            if (link.project_id) ctx.track('project', link.project_id);
+            if (link.workspace_id) ctx.track('workspace', link.workspace_id);
           }
           const remote = Bun.spawnSync(['git', '-C', sb.cwd, 'remote', 'get-url', 'origin']);
           check(
@@ -452,9 +452,9 @@ flow(
     requires: ['managedGitPush'],
     routes: [
       'GET /v1/accounts/me',
-      'POST /v1/projects/provision',
-      'GET /v1/projects/:projectId',
-      'POST /v1/projects/:projectId/git-token',
+      'POST /v1/workspaces/provision',
+      'GET /v1/workspaces/:workspaceId',
+      'POST /v1/workspaces/:workspaceId/git-token',
     ],
   },
   async (ctx) => {
@@ -479,7 +479,7 @@ flow(
       );
       if (sb.exists('.kortix/link.json')) {
         const link = JSON.parse(sb.readFile('.kortix/link.json'));
-        if (link.project_id) ctx.track('project', link.project_id);
+        if (link.workspace_id) ctx.track('workspace', link.workspace_id);
       }
 
       await ctx.step(
@@ -514,9 +514,9 @@ flow(
     requires: ['managedGitPush'],
     routes: [
       'GET /v1/accounts/me',
-      'POST /v1/projects/provision',
-      'GET /v1/projects/:projectId',
-      'POST /v1/projects/:projectId/git-token',
+      'POST /v1/workspaces/provision',
+      'GET /v1/workspaces/:workspaceId',
+      'POST /v1/workspaces/:workspaceId/git-token',
     ],
   },
   async (ctx) => {
@@ -535,7 +535,7 @@ flow(
       checkExit('first ship exit 0', first, 0);
       if (sb.exists('.kortix/link.json')) {
         const link = JSON.parse(sb.readFile('.kortix/link.json'));
-        if (link.project_id) ctx.track('project', link.project_id);
+        if (link.workspace_id) ctx.track('workspace', link.workspace_id);
       }
 
       await ctx.step('--no-commit with a dirty tree → error (exit 1)', async () => {
@@ -589,26 +589,26 @@ flow(
     timeoutMs: 1_200_000,
     routes: [
       'GET /v1/accounts/me',
-      'POST /v1/projects/provision',
-      'POST /v1/projects/:projectId/sessions',
-      'POST /v1/projects/:projectId/sessions/:sessionId/start',
-      'POST /v1/projects/:projectId/sessions/:sessionId/commit-push',
-      'POST /v1/projects/:projectId/change-requests',
-      'GET /v1/projects/:projectId/change-requests',
-      'GET /v1/projects/:projectId/change-requests/:crId',
-      'GET /v1/projects/:projectId/change-requests/:crId/merge-preview',
-      'POST /v1/projects/:projectId/change-requests/:crId/merge',
-      'POST /v1/projects/:projectId/change-requests/:crId/close',
-      'POST /v1/projects/:projectId/change-requests/:crId/reopen',
+      'POST /v1/workspaces/provision',
+      'POST /v1/workspaces/:workspaceId/sessions',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/start',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/commit-push',
+      'POST /v1/workspaces/:workspaceId/change-requests',
+      'GET /v1/workspaces/:workspaceId/change-requests',
+      'GET /v1/workspaces/:workspaceId/change-requests/:crId',
+      'GET /v1/workspaces/:workspaceId/change-requests/:crId/merge-preview',
+      'POST /v1/workspaces/:workspaceId/change-requests/:crId/merge',
+      'POST /v1/workspaces/:workspaceId/change-requests/:crId/close',
+      'POST /v1/workspaces/:workspaceId/change-requests/:crId/reopen',
     ],
   },
   async (ctx) => {
     // A CR needs a real project with a pushed base + a head branch (a session
     // branch). We provision the project via the API fixture (managed git), then
-    // drive the CLI cr subcommands against it with KORTIX_PROJECT_ID + a
-    // project-scoped token in the env (the in-sandbox contract the CLI reads).
+    // drive the CLI cr subcommands against it with KORTIX_WORKSPACE_ID + a
+    // workspace-scoped token in the env (the in-sandbox contract the CLI reads).
     const pat = await ctx.fixtures.pat({ name: ctx.fixtures.name('cli-cr9') });
-    const project = await ctx.fixtures.project({
+    const project = await ctx.fixtures.workspace({
       name: ctx.fixtures.name('cli-cr9-proj'),
       seed: true,
     });
@@ -620,10 +620,10 @@ flow(
     const started = await waitFor(
       async () => {
         const r = await ctx.client.as(ctx.P.OWNER).post(
-          '/v1/projects/:projectId/sessions/:sessionId/start',
+          '/v1/workspaces/:workspaceId/sessions/:sessionId/start',
           {},
           {
-            params: { projectId: project.id, sessionId: session.id },
+            params: { workspaceId: project.id, sessionId: session.id },
             query: { wait_ms: '8000' },
             timeoutMs: 25_000,
           },
@@ -661,19 +661,19 @@ flow(
     const committed = await ctx.client
       .as(ctx.P.OWNER)
       .post(
-        '/v1/projects/:projectId/sessions/:sessionId/commit-push',
+        '/v1/workspaces/:workspaceId/sessions/:sessionId/commit-push',
         { message: 'Add change request fixture' },
-        { params: { projectId: project.id, sessionId: session.id } },
+        { params: { workspaceId: project.id, sessionId: session.id } },
       );
     committed.status(200).body().has('$.committed', true).has('$.pushed', true);
 
     const sb = new CliSandbox('cr9');
     ctx.track('cli-sandbox', sb.cwd);
     // The CLI resolves project + auth from the env inside a sandbox:
-    //   KORTIX_CLI_TOKEN (project-scoped PAT) + KORTIX_PROJECT_ID.
+    //   KORTIX_CLI_TOKEN (workspace-scoped PAT) + KORTIX_WORKSPACE_ID.
     const crEnv = {
       KORTIX_CLI_TOKEN: pat,
-      KORTIX_PROJECT_ID: project.id,
+      KORTIX_WORKSPACE_ID: project.id,
       KORTIX_API_URL: ctx.env.apiUrl,
     };
     try {

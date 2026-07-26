@@ -30,7 +30,7 @@ export function AppHeader({
   breadcrumb,
   actions,
   variant = 'default',
-  logoHref = '/projects',
+  logoHref = '/workspaces',
 }: {
   user: User;
   leading?: React.ReactNode;

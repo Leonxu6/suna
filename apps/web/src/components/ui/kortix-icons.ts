@@ -69,7 +69,7 @@ export {
   Pause as IconPause,
   Play as IconPlay,
   // ── Files & folders ─────────────────────────────────────────
-  FolderGit2 as IconProject,
+  FolderGit2 as IconWorkspace,
   RotateCw as IconRefresh,
   Minus as IconRemove,
   Search as IconSearch,

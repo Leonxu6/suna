@@ -30,7 +30,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       # Baked into the app so the shell points at dev by default.
-      DESKTOP_URL: https://dev.kortix.com/projects
+      DESKTOP_URL: https://dev.kortix.com/workspaces
       # Distinct bundle id so a dev install can sit beside a prod install.
       DESKTOP_APP_ID: com.kortix.desktop.dev
     strategy:
@@ -216,6 +216,6 @@ jobs:
           generate_release_notes: false
           body: |
             Mutable DEV desktop build for `${{ github.sha }}`.
-            Defaults to `https://dev.kortix.com/projects`.
+            Defaults to `https://dev.kortix.com/workspaces`.
           files: |
             release/*

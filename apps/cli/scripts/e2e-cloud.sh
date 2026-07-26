@@ -2,15 +2,15 @@
 #
 # End-to-end test for the cloud-aware `kortix` CLI.
 #
-# Drives every project-scoped command against a live API + DB:
+# Drives every workspace-scoped command against a live API + DB:
 #
 #   1. mint a PAT via direct DB insert (no dashboard needed)
-#   2. login --token, whoami, projects ls/info/link/unlink/open
+#   2. login --token, whoami, workspaces ls/info/link/unlink/open
 #   3. secrets ls/set/unset (multi + stdin)
 #   4. env pull / env push
 #   5. sessions ls / info
 #   6. triggers ls (and info if any exist)
-#   7. error paths (not-logged-in, no-project, bad token, unknown sub)
+#   7. error paths (not-logged-in, no-workspace, bad token, unknown sub)
 #   8. logout + verify auth file gone
 #
 # Cleans every secret it creates and removes the test PAT at exit.
@@ -35,7 +35,7 @@ AUTH_FILE=/tmp/kortix-e2e-auth-$$.json
 WORK_DIR=/tmp/kortix-e2e-work-$$
 PUSH_FILE=/tmp/kortix-e2e-push-$$.env
 
-unset KORTIX_TOKEN KORTIX_CLI_TOKEN KORTIX_PROJECT_ID
+unset KORTIX_TOKEN KORTIX_CLI_TOKEN KORTIX_WORKSPACE_ID
 export KORTIX_API_URL
 export KORTIX_AUTH_FILE="$AUTH_FILE"
 
@@ -147,27 +147,27 @@ assert_contains "whoami shows account row" "account" "$out"
 # Capture the user_id for later assertions.
 USER_ID=$(printf '%s' "$out" | grep "user_id" | head -1 | awk '{print $2}')
 
-# ─── projects ──────────────────────────────────────────────────────────────
+# ─── workspaces ──────────────────────────────────────────────────────────────
 
-section "Projects"
+section "Workspaces"
 
-out=$($CLI projects ls 2>&1)
+out=$($CLI workspaces ls 2>&1)
 rc=$?
-assert_exit "projects ls returns 0" 0 "$rc"
-assert_contains "projects ls prints header" "NAME" "$out"
+assert_exit "workspaces ls returns 0" 0 "$rc"
+assert_contains "workspaces ls prints header" "NAME" "$out"
 
-# Pick a project — prefer one with sessions so the populated session/trigger
-# code paths get exercised. Falls back to the first project otherwise.
-PROJECT_ID=$(python3 <<PY
+# Pick a workspace — prefer one with sessions so the populated session/trigger
+# code paths get exercised. Falls back to the first workspace otherwise.
+WORKSPACE_ID=$(python3 <<PY
 import json, urllib.request
 req = urllib.request.Request(
-    "$KORTIX_API_URL/v1/projects",
+    "$KORTIX_API_URL/v1/workspaces",
     headers={"Authorization": "Bearer $PAT"},
 )
-projects = json.loads(urllib.request.urlopen(req).read())
-for p in projects:
+workspaces = json.loads(urllib.request.urlopen(req).read())
+for p in workspaces:
     sreq = urllib.request.Request(
-        f"$KORTIX_API_URL/v1/projects/{p['project_id']}/sessions",
+        f"$KORTIX_API_URL/v1/workspaces/{p['workspace_id']}/sessions",
         headers={"Authorization": "Bearer $PAT"},
     )
     try:
@@ -175,54 +175,54 @@ for p in projects:
     except Exception:
         sessions = []
     if sessions:
-        print(p['project_id'])
+        print(p['workspace_id'])
         break
 else:
-    if projects:
-        print(projects[0]['project_id'])
+    if workspaces:
+        print(workspaces[0]['workspace_id'])
 PY
 )
-if [ -z "$PROJECT_ID" ]; then
-  note "No projects on this account — skipping project-scoped tests."
+if [ -z "$WORKSPACE_ID" ]; then
+  note "No workspaces on this account — skipping workspace-scoped tests."
   exit 0
 fi
-ok "Picked test project: $PROJECT_ID"
+ok "Picked test workspace: $WORKSPACE_ID"
 
-out=$($CLI projects info "$PROJECT_ID" 2>&1)
+out=$($CLI workspaces info "$WORKSPACE_ID" 2>&1)
 rc=$?
-assert_exit "projects info <id> returns 0" 0 "$rc"
-assert_contains "projects info shows project_id" "$PROJECT_ID" "$out"
+assert_exit "workspaces info <id> returns 0" 0 "$rc"
+assert_contains "workspaces info shows workspace_id" "$WORKSPACE_ID" "$out"
 
 cd "$WORK_DIR"
 
-# projects link now refuses to scatter `.kortix/` into a random dir. The
-# work dir is not a Kortix project, so link should fail cleanly first…
-out=$($CLI projects link "$PROJECT_ID" 2>&1)
+# workspaces link now refuses to scatter `.kortix/` into a random dir. The
+# work dir is not a Kortix workspace, so link should fail cleanly first…
+out=$($CLI workspaces link "$WORKSPACE_ID" 2>&1)
 rc=$?
-assert_exit "projects link in non-Kortix dir exits 1" 1 "$rc"
-assert_contains "projects link refuses with hint" "Not a Kortix project" "$out"
+assert_exit "workspaces link in non-Kortix dir exits 1" 1 "$rc"
+assert_contains "workspaces link refuses with hint" "Not a Kortix workspace" "$out"
 
-# …then scaffold a Kortix project so link CAN succeed.
+# …then scaffold a Kortix workspace so link CAN succeed.
 $CLI init --name "$(basename "$WORK_DIR")" --primary codex --yes >/dev/null
 [ -f kortix.yaml ] && ok "init scaffold wrote kortix.yaml" || bad "kortix.yaml missing after init"
 
-out=$($CLI projects link "$PROJECT_ID" 2>&1)
+out=$($CLI workspaces link "$WORKSPACE_ID" 2>&1)
 rc=$?
-assert_exit "projects link <id> returns 0" 0 "$rc"
-assert_contains "projects link writes link.json" "Linked" "$out"
+assert_exit "workspaces link <id> returns 0" 0 "$rc"
+assert_contains "workspaces link writes link.json" "Linked" "$out"
 [ -f .kortix/link.json ] && ok ".kortix/link.json exists" || bad ".kortix/link.json missing after link"
 
-# Now projects info (no arg) should use the linked project.
-out=$($CLI projects info 2>&1)
+# Now workspaces info (no arg) should use the linked workspace.
+out=$($CLI workspaces info 2>&1)
 rc=$?
-assert_exit "projects info (no arg) returns 0" 0 "$rc"
-assert_contains "projects info (no arg) uses linked id" "$PROJECT_ID" "$out"
+assert_exit "workspaces info (no arg) returns 0" 0 "$rc"
+assert_contains "workspaces info (no arg) uses linked id" "$WORKSPACE_ID" "$out"
 
-# projects open just prints the URL — don't actually open anything.
-out=$($CLI projects open 2>&1)
+# workspaces open just prints the URL — don't actually open anything.
+out=$($CLI workspaces open 2>&1)
 rc=$?
-assert_exit "projects open returns 0" 0 "$rc"
-assert_contains "projects open prints URL" "/projects/$PROJECT_ID" "$out"
+assert_exit "workspaces open returns 0" 0 "$rc"
+assert_contains "workspaces open prints URL" "/workspaces/$WORKSPACE_ID" "$out"
 
 # ─── secrets ───────────────────────────────────────────────────────────────
 
@@ -305,7 +305,7 @@ rc=$?
 assert_exit "sessions ls returns 0" 0 "$rc"
 
 # Pick a session id if any exist for info test.
-SESSION_ID=$(curl -fsS -H "Authorization: Bearer $PAT" "$KORTIX_API_URL/v1/projects/$PROJECT_ID/sessions" | \
+SESSION_ID=$(curl -fsS -H "Authorization: Bearer $PAT" "$KORTIX_API_URL/v1/workspaces/$WORKSPACE_ID/sessions" | \
   python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0]['session_id'] if d else '')")
 if [ -n "$SESSION_ID" ]; then
   out=$($CLI sessions info "$SESSION_ID" 2>&1)
@@ -315,7 +315,7 @@ if [ -n "$SESSION_ID" ]; then
   assert_contains "sessions info shows status row" "status" "$out"
   assert_contains "sessions info shows branch row" "branch" "$out"
 else
-  note "No sessions on the project — skipping sessions info."
+  note "No sessions on the workspace — skipping sessions info."
 fi
 
 # Missing arg → exit 2.
@@ -333,7 +333,7 @@ rc=$?
 assert_exit "triggers ls returns 0" 0 "$rc"
 
 # If any trigger exists, run an info on it.
-TRIGGER_SLUG=$(curl -fsS -H "Authorization: Bearer $PAT" "$KORTIX_API_URL/v1/projects/$PROJECT_ID/triggers" | \
+TRIGGER_SLUG=$(curl -fsS -H "Authorization: Bearer $PAT" "$KORTIX_API_URL/v1/workspaces/$WORKSPACE_ID/triggers" | \
   python3 -c "import json,sys; d=json.load(sys.stdin).get('triggers', []); print(d[0]['slug'] if d else '')" 2>/dev/null)
 if [ -n "$TRIGGER_SLUG" ]; then
   out=$($CLI triggers info "$TRIGGER_SLUG" 2>&1)
@@ -341,7 +341,7 @@ if [ -n "$TRIGGER_SLUG" ]; then
   assert_exit "triggers info <slug> returns 0" 0 "$rc"
   assert_contains "triggers info shows type row" "type" "$out"
 else
-  note "No triggers on the project — info/fire/enable assertions skipped."
+  note "No triggers on the workspace — info/fire/enable assertions skipped."
 fi
 
 # Missing arg → exit 2.
@@ -349,29 +349,29 @@ out=$($CLI triggers fire 2>&1)
 rc=$?
 assert_exit "triggers fire (no arg) exits 2" 2 "$rc"
 
-# ─── --project flag override ───────────────────────────────────────────────
+# ─── --workspace flag override ───────────────────────────────────────────────
 
-section "--project flag override"
+section "--workspace flag override"
 
-# Unlink so the flag is the only way to resolve the project.
-$CLI projects unlink >/dev/null
+# Unlink so the flag is the only way to resolve the workspace.
+$CLI workspaces unlink >/dev/null
 [ ! -f .kortix/link.json ] && ok "unlink removed link.json" || bad "unlink left link.json behind"
 
 # secrets ls without flag → should error.
 out=$($CLI secrets ls 2>&1)
 rc=$?
 assert_exit "secrets ls without link or flag exits 1" 1 "$rc"
-assert_contains "secrets ls without link suggests --project" "--project" "$out"
+assert_contains "secrets ls without link suggests --workspace" "--workspace" "$out"
 
 # With flag → succeeds.
-out=$($CLI secrets ls --project "$PROJECT_ID" 2>&1)
+out=$($CLI secrets ls --workspace "$WORKSPACE_ID" 2>&1)
 rc=$?
-assert_exit "secrets ls --project <id> returns 0" 0 "$rc"
+assert_exit "secrets ls --workspace <id> returns 0" 0 "$rc"
 
-# KORTIX_PROJECT_ID env → succeeds.
-out=$(KORTIX_PROJECT_ID="$PROJECT_ID" $CLI secrets ls 2>&1)
+# KORTIX_WORKSPACE_ID env → succeeds.
+out=$(KORTIX_WORKSPACE_ID="$WORKSPACE_ID" $CLI secrets ls 2>&1)
 rc=$?
-assert_exit "secrets ls with KORTIX_PROJECT_ID env returns 0" 0 "$rc"
+assert_exit "secrets ls with KORTIX_WORKSPACE_ID env returns 0" 0 "$rc"
 
 # ─── error paths ───────────────────────────────────────────────────────────
 

@@ -18,7 +18,7 @@ import { beforeEach, describe, expect, it } from 'bun:test'
 import { loadConfig, type Config } from '../config'
 import type { Opencode } from '../opencode'
 import { buildOpencodeApp } from '../proxy'
-import { createProjectEnvStore, mergeProjectEnv } from '../project-env'
+import { createWorkspaceEnvStore, mergeWorkspaceEnv } from '../workspace-env'
 import { KORTIX_USER_CONTEXT_HEADER } from '../kortix-user-context'
 import { buildGitAuthArgs, configureGlobalGitIdentity, materializeRepo, __clearCloneTokenCacheForTests, __clearRepoIdentityMemoForTests } from '../git'
 
@@ -30,13 +30,13 @@ function baseConfig(over: Partial<Config> = {}): Config {
     opencodeInternalPort: 4096,
     staticPort: 3211,
     workspace: '/workspace',
-    projectTarget: '/workspace',
+    workspaceTarget: '/workspace',
     defaultBranch: 'main',
     branchFetchAttempts: 60,
     branchFetchDelaySec: 0.25,
     defaultOpencodeConfigDir: '/ephemeral/opencode',
     autoClone: false,
-    projectId: undefined,
+    workspaceId: undefined,
     apiUrl: undefined,
     repoUrl: undefined,
     branchName: undefined,
@@ -199,9 +199,9 @@ describe('daemon proxy auth gate', () => {
 
       await materializeRepo(baseConfig({
         autoClone: true,
-        projectId: 'project-123',
+        workspaceId: 'workspace-123',
         apiUrl: 'http://api.local/v1/router',
-        projectTarget: target,
+        workspaceTarget: target,
         repoUrl: remote,
         defaultBranch: 'main',
       }))
@@ -211,7 +211,9 @@ describe('daemon proxy auth gate', () => {
       // tests in the same process) are unrelated noise.
       const credRequests = requests.filter((r) => r.url.includes('/git/clone-credential'))
       expect(credRequests).toHaveLength(1)
-      expect(credRequests[0]!.url).toBe('http://api.local/v1/projects/project-123/git/clone-credential')
+      expect(credRequests[0]!.url).toBe(
+        'http://api.local/v1/workspaces/workspace-123/git/clone-credential',
+      )
       // Assert auth on the credential request itself — not requests[0], which
       // can be unrelated background-fetch noise (health probes from a daemon
       // supervisor booted by another test in the same process).
@@ -249,7 +251,7 @@ describe('daemon proxy auth gate', () => {
       chmodSync(root, 0o555)
       await materializeRepo(baseConfig({
         autoClone: true,
-        projectTarget: target,
+        workspaceTarget: target,
         repoUrl: remote,
         defaultBranch: 'main',
       }))
@@ -279,7 +281,7 @@ describe('daemon proxy auth gate', () => {
 
       await materializeRepo(baseConfig({
         autoClone: true,
-        projectTarget: target,
+        workspaceTarget: target,
         repoUrl: remote,
         defaultBranch: 'main',
         branchName: 'session-abc',
@@ -331,9 +333,9 @@ describe('daemon proxy auth gate', () => {
 
       await materializeRepo(baseConfig({
         autoClone: true,
-        projectId: 'project-123',
+        workspaceId: 'workspace-123',
         apiUrl: 'http://api.local/v1/router',
-        projectTarget: target,
+        workspaceTarget: target,
         repoUrl: remote,
         defaultBranch: 'main',
         branchName: 'session-branch',
@@ -390,7 +392,7 @@ describe('daemon proxy auth gate', () => {
       const target = join(root, 'workspace')
       mkdirSync(target)
       const app = buildOpencodeApp(
-        baseConfig({ autoClone: true, projectTarget: target }),
+        baseConfig({ autoClone: true, workspaceTarget: target }),
         fakeOpencode('ok'),
         Date.now(),
         { repoMaterializationError: 'git clone failed: authentication required', timeline: [] },
@@ -461,7 +463,7 @@ describe('daemon proxy auth gate', () => {
     const root = mkdtempSync(join(tmpdir(), 'kortix-empty-workspace-'))
     try {
       const app = buildOpencodeApp(
-        baseConfig({ autoClone: true, projectTarget: root }),
+        baseConfig({ autoClone: true, workspaceTarget: root }),
         fakeOpencode('ok'),
         Date.now(),
       )
@@ -673,7 +675,7 @@ describe('daemon proxy auth gate', () => {
       let restartCalls = 0
       const app = buildOpencodeApp(
         baseConfig({
-          projectTarget: worktree,
+          workspaceTarget: worktree,
           repoUrl: remote,
           defaultBranch: 'main',
           branchName: 'main',
@@ -804,7 +806,7 @@ describe('daemon proxy auth gate', () => {
 
   it('syncs project env through /kortix/env without restarting opencode', async () => {
     let restartCalls = 0
-    const store = createProjectEnvStore({
+    const store = createWorkspaceEnvStore({
       KORTIX_PROJECT_SECRET_NAMES: 'OLD_SECRET,REMOVED_SECRET',
       OLD_SECRET: 'old',
       REMOVED_SECRET: 'gone',
@@ -838,7 +840,7 @@ describe('daemon proxy auth gate', () => {
       names: ['NEW_SECRET', 'OLD_SECRET', 'REMOVED_SECRET'],
     })
     expect(restartCalls).toBe(0)
-    expect(mergeProjectEnv({
+    expect(mergeWorkspaceEnv({
       OLD_SECRET: 'old-process',
       REMOVED_SECRET: 'gone-process',
       KEEP: 'yes',
@@ -872,7 +874,7 @@ describe('daemon proxy auth gate', () => {
     delete process.env.KORTIX_LLM_API_KEY
     delete process.env.KORTIX_LLM_BASE_URL
 
-    const store = createProjectEnvStore({} as NodeJS.ProcessEnv)
+    const store = createWorkspaceEnvStore({} as NodeJS.ProcessEnv)
     const app = buildOpencodeApp(
       baseConfig(),
       fakeOpencode('ok', { restart: () => { restartCalls += 1 } }),
@@ -957,7 +959,7 @@ describe('daemon proxy auth gate', () => {
     delete process.env.KORTIX_OPENCODE_DENY_ENV
     process.env.KORTIX_EXECUTOR_TOKEN = 'kortix_pat_exec'
 
-    const store = createProjectEnvStore({} as NodeJS.ProcessEnv)
+    const store = createWorkspaceEnvStore({} as NodeJS.ProcessEnv)
     const app = buildOpencodeApp(
       baseConfig(),
       fakeOpencode('ok', { restart: () => {} }),
@@ -1016,7 +1018,7 @@ describe('daemon proxy auth gate', () => {
 
   it('does not restart opencode when env sync matches the boot revision and values', async () => {
     let restartCalls = 0
-    const store = createProjectEnvStore({
+    const store = createWorkspaceEnvStore({
       KORTIX_PROJECT_SECRETS_REVISION: 'rev-boot',
       KORTIX_PROJECT_SECRET_NAMES: 'BOOT_SECRET',
       BOOT_SECRET: 'already-loaded',
@@ -1053,7 +1055,7 @@ describe('daemon proxy auth gate', () => {
       fakeOpencode('ok'),
       Date.now(),
       { repoMaterializationError: null, timeline: [] },
-      createProjectEnvStore(),
+      createWorkspaceEnvStore(),
     )
 
     const res = await app.request('/kortix/env', {
@@ -1076,7 +1078,7 @@ describe('daemon proxy auth gate', () => {
       try {
         await materializeRepo(baseConfig({
           autoClone: true,
-          projectTarget: target,
+          workspaceTarget: target,
           repoUrl: join(root, 'missing.git'),
           defaultBranch: 'main',
         }))

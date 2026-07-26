@@ -24,16 +24,16 @@ import { useCallback, useEffect, useState } from 'react';
 import { CatalogTab } from './catalog-tab';
 import { ConnectedTab } from './connected-tab';
 import { ModelsTab } from './models-tab';
-import type { ActiveTab, CatalogSubview, ProjectProviderModalProps } from './types';
+import type { ActiveTab, CatalogSubview, WorkspaceProviderModalProps } from './types';
 import { useConnectedProviders } from './use-connected-providers';
 import { pickInitialTab } from './utils';
 
-export type { ProjectProviderModalProps } from './types';
+export type { WorkspaceProviderModalProps } from './types';
 
 const CONNECTION_REFRESH_TIMEOUT_MS = 45_000;
 
-export function ProjectProviderModal({
-  projectId,
+export function WorkspaceProviderModal({
+  workspaceId,
   open,
   onOpenChange,
   defaultTab,
@@ -41,10 +41,10 @@ export function ProjectProviderModal({
   asPanel = false,
   allowedTabs,
   canWrite = false,
-}: ProjectProviderModalProps) {
+}: WorkspaceProviderModalProps) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const { connectedProviders, llmGatewayEnabled, providerStateLoading } = useConnectedProviders(
-    projectId,
+    workspaceId,
     open || asPanel,
   );
   const hasConnections = connectedProviders.length > 0;
@@ -142,7 +142,7 @@ export function ProjectProviderModal({
               {showTab('catalog') && (
                 <TabsTrigger value="catalog" className="text-xs">
                   {tHardcodedUi.raw(
-                    'componentsProjectsProjectProviderModal.line178JsxTextAddProvider',
+                    'componentsWorkspacesWorkspaceProviderModal.line178JsxTextAddProvider',
                   )}
                 </TabsTrigger>
               )}
@@ -206,7 +206,7 @@ export function ProjectProviderModal({
           <>
             <TabsContent value="connected" className="mt-0">
               <ConnectedTab
-                projectId={projectId}
+                workspaceId={workspaceId}
                 connectedProviders={connectedProviders}
                 search={search}
                 canWrite={canWrite}
@@ -216,7 +216,7 @@ export function ProjectProviderModal({
 
             <TabsContent value="catalog" className="mt-0">
               <CatalogTab
-                projectId={projectId}
+                workspaceId={workspaceId}
                 connectedIds={new Set(connectedProviders.map((p) => p.id))}
                 search={search}
                 subview={subview}
@@ -248,11 +248,11 @@ export function ProjectProviderModal({
       <ModalContent className="flex h-[min(680px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-[600px] flex-col gap-0 overflow-hidden p-0 lg:max-w-[600px]">
         <ModalHeader className="shrink-0 pb-3">
           <ModalTitle>
-            {tHardcodedUi.raw('componentsProjectsProjectProviderModal.line151JsxTextLlmProviders')}
+            {tHardcodedUi.raw('componentsWorkspacesWorkspaceProviderModal.line151JsxTextLlmProviders')}
           </ModalTitle>
           <ModalDescription>
             {tHardcodedUi.raw(
-              'componentsProjectsProjectProviderModal.line153JsxTextConnectProvidersKeysAreStoredPerProjectAnd',
+              'componentsWorkspacesWorkspaceProviderModal.line153JsxTextConnectProvidersKeysAreStoredPerWorkspaceAnd',
             )}
           </ModalDescription>
         </ModalHeader>

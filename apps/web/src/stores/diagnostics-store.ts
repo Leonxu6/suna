@@ -78,7 +78,7 @@ export interface RawDiagnostic {
  *
  * LSP servers store diagnostics keyed by absolute sandbox paths (e.g.
  * `/workspace/desktop/express-crud-app/src/server.js`), but the frontend
- * uses project-relative paths (e.g. `src/server.js`). This function
+ * uses workspace-relative paths (e.g. `src/server.js`). This function
  * handles the mismatch by:
  *
  *  1. Exact match (covers relative-to-relative)
@@ -119,8 +119,8 @@ export function findDiagnosticsForFile(
  * `file-browser` can compute diagnostic counts.
  *
  * Returns a map where keys are every possible suffix of the store keys
- * (e.g. for `/workspace/project/src/app.ts` it includes entries for
- * `src/app.ts`, `project/src/app.ts`, `app.ts`, etc.) This is O(totalKeys * avgDepth)
+ * (e.g. for `/workspace/workspace/src/app.ts` it includes entries for
+ * `src/app.ts`, `workspace/src/app.ts`, `app.ts`, etc.) This is O(totalKeys * avgDepth)
  * but in practice the number of files with diagnostics is small.
  */
 export function buildDiagnosticCountsMap(
@@ -175,11 +175,11 @@ export function getRelativePath(absPath: string): string {
   const clean = absPath.replace(/^file:\/\//, '');
   // If it looks absolute, try common sandbox prefixes
   if (clean.startsWith('/')) {
-    // Strip /workspace/desktop/.../ or /home/user/project/.../ patterns
-    // Strategy: find the deepest "project root" heuristic and strip it
-    // Common patterns: /workspace/X/Y/ where Y is the project
+    // Strip /workspace/desktop/.../ or /home/user/workspace/.../ patterns
+    // Strategy: find the deepest "workspace root" heuristic and strip it
+    // Common patterns: /workspace/X/Y/ where Y is the workspace
     const parts = clean.split('/').filter(Boolean);
-    // Look for common project markers going from right to left
+    // Look for common workspace markers going from right to left
     for (let i = 0; i < parts.length; i++) {
       if (['src', 'lib', 'app', 'pages', 'components', 'public', 'test', 'tests', 'pkg', 'cmd', 'internal'].includes(parts[i])) {
         return parts.slice(i).join('/');
@@ -202,7 +202,7 @@ export function getRelativePath(absPath: string): string {
  * Parse diagnostics from OpenCode tool output text.
  *
  * The Go backend embeds diagnostics as plain text in `<file_diagnostics>`
- * and `<project_diagnostics>` XML tags within the tool result. Each line
+ * and `<workspace_diagnostics>` XML tags within the tool result. Each line
  * follows the format:
  *
  *   Severity: /path/to/file.ts:line:col [source][code] (tags) message
@@ -217,7 +217,7 @@ export function parseDiagnosticsFromToolOutput(
   const result: Record<string, LspDiagnostic[]> = {};
 
   // Extract content from both tag types
-  const tagPattern = /<(?:file_diagnostics|project_diagnostics)>([\s\S]*?)<\/(?:file_diagnostics|project_diagnostics)>/g;
+  const tagPattern = /<(?:file_diagnostics|workspace_diagnostics)>([\s\S]*?)<\/(?:file_diagnostics|workspace_diagnostics)>/g;
   let tagMatch;
   const allLines: string[] = [];
 

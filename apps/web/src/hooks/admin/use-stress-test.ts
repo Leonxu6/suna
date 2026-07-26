@@ -14,7 +14,7 @@ export interface StressTestResult {
   request_id: number;
   status: 'pending' | 'running' | 'done' | 'error';
   thread_id?: string;
-  project_id?: string;
+  workspace_id?: string;
   agent_run_id?: string;
   // Timing metrics
   request_time: number;  // Time for HTTP request to complete
@@ -26,7 +26,7 @@ export interface StressTestResult {
   timing_breakdown?: {
     load_config_ms?: number;
     get_model_ms?: number;
-    create_project_ms?: number;
+    create_workspace_ms?: number;
     create_thread_ms?: number;
     create_message_and_run_ms?: number;
     total_setup_ms?: number;
@@ -69,7 +69,7 @@ export interface StressTestSummary {
   timing_breakdown?: {
     load_config_ms?: TimingBreakdownStats;
     get_model_ms?: TimingBreakdownStats;
-    create_project_ms?: TimingBreakdownStats;
+    create_workspace_ms?: TimingBreakdownStats;
     create_thread_ms?: TimingBreakdownStats;
     create_message_and_run_ms?: TimingBreakdownStats;
     total_setup_ms?: TimingBreakdownStats;
@@ -193,7 +193,7 @@ export function useStressTest() {
                           request_id: event.request_id,
                           status: event.status,
                           thread_id: event.thread_id,
-                          project_id: event.project_id,
+                          workspace_id: event.workspace_id,
                           agent_run_id: event.agent_run_id,
                           request_time: event.request_time,
                           time_to_first_response: event.time_to_first_response,

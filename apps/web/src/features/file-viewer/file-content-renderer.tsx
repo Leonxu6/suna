@@ -323,7 +323,7 @@ export function FileContentRenderer({
   const fileName = filePath.split('/').pop() || '';
   const isHeicImage = isHeicFile(fileName);
 
-  // Data access is supplied by the surface (live workspace vs. project git-ref)
+  // Data access is supplied by the surface (live workspace vs. workspace git-ref)
   // via <FileSourceProvider>, so this renderer stays presentation-only.
   const source = useFileSource();
   const { useFileContent, useBinaryBlob, Breadcrumbs } = source;

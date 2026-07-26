@@ -36,101 +36,101 @@ import { Switch } from '@/components/ui/switch';
 import { Icon } from '@/features/icon/icon';
 import { ErrorState } from '@/features/layout/section/error-state';
 import {
-  archiveProject,
-  getProject,
+  archiveWorkspace,
+  getWorkspace,
   inviteRepoCollaborator,
-  isManagedGithubProject,
-  listProjectBranches,
-  listProjectTriggers,
-  setProjectTriggersActivation,
+  isManagedGithubWorkspace,
+  listWorkspaceBranches,
+  listWorkspaceTriggers,
+  setWorkspaceTriggersActivation,
   updateExperimentalFeature,
-  updateProject,
-  updateProjectSandboxProvider,
+  updateWorkspace,
+  updateWorkspaceSandboxProvider,
   type ExperimentalFeatureView,
-  type KortixProject,
-  type ProjectDetail,
+  type KortixWorkspace,
+  type WorkspaceDetail,
   type SandboxProviderName,
 } from '@kortix/sdk';
 import {
   applySandboxProviderResult,
   pollSandboxProviderTransition,
 } from './sandbox-provider-result';
-import { refreshProjectProviderState } from '@kortix/sdk/react';
-import { PROJECT_ACTIONS } from '@/lib/project-actions';
-import { useProjectCan } from '@/lib/use-project-can';
+import { refreshWorkspaceProviderState } from '@kortix/sdk/react';
+import { WORKSPACE_ACTIONS } from '@/lib/workspace-actions';
+import { useWorkspaceCan } from '@/lib/use-workspace-can';
 import { TrashSolid } from '@mynaui/icons-react';
 import CustomizeSectionWrapper from '../component/section-wrapper';
 
-export function SettingsView({ projectId }: { projectId: string }) {
+export function SettingsView({ workspaceId }: { workspaceId: string }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
   const [archiveOpen, setArchiveOpen] = useState(false);
 
-  const projectQuery = useQuery({
-    queryKey: ['project', projectId],
-    queryFn: () => getProject(projectId),
+  const workspaceQuery = useQuery({
+    queryKey: ['workspace', workspaceId],
+    queryFn: () => getWorkspace(workspaceId),
     staleTime: 20_000,
   });
 
-  const project = projectQuery.data;
-  const canManage = project?.effective_project_role === 'manager';
-  // Real per-leaf write cap: a custom role granted project.write edits the
+  const workspace = workspaceQuery.data;
+  const canManage = workspace?.effective_workspace_role === 'manager';
+  // Real per-leaf write cap: a custom role granted workspace.write edits the
   // general controls (name/repo/experimental) without being a full manager.
-  // The mutating routes assert project.write, so a READ-only role sees the
+  // The mutating routes assert workspace.write, so a READ-only role sees the
   // section read-only. Archive/danger-zone stays manager-only below.
-  const canWrite = useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_WRITE).allowed === true;
+  const canWrite = useWorkspaceCan(workspaceId, WORKSPACE_ACTIONS.WORKSPACE_WRITE).allowed === true;
   const canEdit = canManage || canWrite;
 
   const archiveMutation = useMutation({
-    mutationFn: () => archiveProject(projectId),
+    mutationFn: () => archiveWorkspace(workspaceId),
     onSuccess: () => {
-      successToast('Project archived');
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      successToast('Workspace archived');
+      queryClient.invalidateQueries({ queryKey: ['workspaces'] });
       setArchiveOpen(false);
     },
-    onError: (error: Error) => errorToast(error.message || 'Failed to archive project'),
+    onError: (error: Error) => errorToast(error.message || 'Failed to archive workspace'),
   });
 
   return (
-    <CustomizeSectionWrapper title="Settings" description="Manage your project settings">
-      {projectQuery.isLoading && (
+    <CustomizeSectionWrapper title="Settings" description="Manage your workspace settings">
+      {workspaceQuery.isLoading && (
         <div className="space-y-5">
           <Skeleton className="h-56 rounded-md" />
           <Skeleton className="h-72 rounded-md" />
         </div>
       )}
 
-      {projectQuery.isError && (
+      {workspaceQuery.isError && (
         <ErrorState
           size="sm"
           title={tHardcodedUi.raw(
-            'appProjectsIdCustomizeSettingsPage.line86JsxAttrTitleFailedToLoadProject',
+            'appWorkspacesIdCustomizeSettingsPage.line86JsxAttrTitleFailedToLoadWorkspace',
           )}
-          description={(projectQuery.error as Error).message}
+          description={(workspaceQuery.error as Error).message}
           action={
-            <Button variant="outline" size="sm" onClick={() => projectQuery.refetch()}>
+            <Button variant="outline" size="sm" onClick={() => workspaceQuery.refetch()}>
               Retry
             </Button>
           }
         />
       )}
 
-      {project && (
+      {workspace && (
         <div className="space-y-8">
-          <GeneralProjectCard project={project} canManage={canEdit} />
-          <RepositoryCard project={project} canManage={canEdit} />
+          <GeneralWorkspaceCard workspace={workspace} canManage={canEdit} />
+          <RepositoryCard workspace={workspace} canManage={canEdit} />
           {canManage && (
             <section className="space-y-4">
               <Label>Automation</Label>
-              <TriggersActivationCard projectId={projectId} canManage={canEdit} />
+              <TriggersActivationCard workspaceId={workspaceId} canManage={canEdit} />
             </section>
           )}
-          <ExperimentalCard project={project} canManage={canEdit} />
+          <ExperimentalCard workspace={workspace} canManage={canEdit} />
           {canManage && (
             <section className="space-y-4">
               <Label>
                 {tHardcodedUi.raw(
-                  'appProjectsIdCustomizeSettingsPage.line110JsxAttrTitleDangerZone',
+                  'appWorkspacesIdCustomizeSettingsPage.line110JsxAttrTitleDangerZone',
                 )}
               </Label>
               <div className="bg-popover rounded-md border px-4 py-3">
@@ -138,12 +138,12 @@ export function SettingsView({ projectId }: { projectId: string }) {
                   <div className="min-w-0">
                     <p className="text-foreground text-sm font-medium">
                       {tHardcodedUi.raw(
-                        'appProjectsIdCustomizeSettingsPage.line116JsxTextArchiveProject',
+                        'appWorkspacesIdCustomizeSettingsPage.line116JsxTextArchiveWorkspace',
                       )}
                     </p>
                     <p className="text-muted-foreground mt-0.5 text-xs text-pretty">
                       {tHardcodedUi.raw(
-                        'appProjectsIdCustomizeSettingsPage.line119JsxTextHideThisProjectFromTheActiveProjectList',
+                        'appWorkspacesIdCustomizeSettingsPage.line119JsxTextHideThisWorkspaceFromTheActiveWorkspaceList',
                       )}
                     </p>
                   </div>
@@ -167,9 +167,9 @@ export function SettingsView({ projectId }: { projectId: string }) {
         open={archiveOpen}
         onOpenChange={setArchiveOpen}
         title={tHardcodedUi.raw(
-          'appProjectsIdCustomizeSettingsPage.line140JsxAttrTitleArchiveProject',
+          'appWorkspacesIdCustomizeSettingsPage.line140JsxAttrTitleArchiveWorkspace',
         )}
-        description={project ? `Archive ${project.name}? Current sessions remain recoverable.` : ''}
+        description={workspace ? `Archive ${workspace.name}? Current sessions remain recoverable.` : ''}
         confirmLabel="Archive"
         onConfirm={() => archiveMutation.mutate()}
         isPending={archiveMutation.isPending}
@@ -178,27 +178,27 @@ export function SettingsView({ projectId }: { projectId: string }) {
   );
 }
 
-function RepositoryCard({ project, canManage }: { project: KortixProject; canManage: boolean }) {
+function RepositoryCard({ workspace, canManage }: { workspace: KortixWorkspace; canManage: boolean }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
-  const repoUrl = project.repo_url;
+  const repoUrl = workspace.repo_url;
   const githubUrl = githubRepoWebUrl(repoUrl);
   const repoLabel = githubUrl?.replace('https://github.com/', '') || repoUrl || '-';
-  const managed = isManagedGithubProject(project);
+  const managed = isManagedGithubWorkspace(workspace);
   const branchesQuery = useQuery({
-    queryKey: ['project-branches', project.project_id],
-    queryFn: () => listProjectBranches(project.project_id),
+    queryKey: ['workspace-branches', workspace.workspace_id],
+    queryFn: () => listWorkspaceBranches(workspace.workspace_id),
     staleTime: 60_000,
   });
   const branchNames = Array.from(
     new Set([
-      project.default_branch,
+      workspace.default_branch,
       ...(branchesQuery.data?.branches.map((branch) => branch.name) ?? []),
     ]),
   );
 
-  const [defaultBranch, setDefaultBranch] = useState(project.default_branch);
-  const [manifestPath, setManifestPath] = useState(project.manifest_path);
+  const [defaultBranch, setDefaultBranch] = useState(workspace.default_branch);
+  const [manifestPath, setManifestPath] = useState(workspace.manifest_path);
   const { debouncedValue: debouncedBranch, isLoading: isDebouncingBranch } = useDebounce(
     defaultBranch,
     500,
@@ -209,17 +209,17 @@ function RepositoryCard({ project, canManage }: { project: KortixProject; canMan
   );
 
   useEffect(() => {
-    setDefaultBranch(project.default_branch);
-    setManifestPath(project.manifest_path);
-  }, [project.default_branch, project.manifest_path]);
+    setDefaultBranch(workspace.default_branch);
+    setManifestPath(workspace.manifest_path);
+  }, [workspace.default_branch, workspace.manifest_path]);
 
   const mutation = useMutation({
     mutationFn: (patch: { default_branch: string; manifest_path: string }) =>
-      updateProject(project.project_id, patch),
+      updateWorkspace(workspace.workspace_id, patch),
     onSuccess: (updated) => {
-      queryClient.setQueryData(['project', project.project_id], updated);
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      queryClient.invalidateQueries({ queryKey: ['project-branches', project.project_id] });
+      queryClient.setQueryData(['workspace', workspace.workspace_id], updated);
+      queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      queryClient.invalidateQueries({ queryKey: ['workspace-branches', workspace.workspace_id] });
     },
     onError: (error: Error) => errorToast(error.message || 'Failed to update repository'),
   });
@@ -232,15 +232,15 @@ function RepositoryCard({ project, canManage }: { project: KortixProject; canMan
     const branch = debouncedBranch.trim();
     const manifest = debouncedManifest.trim();
     if (!branch) return;
-    if (branch === project.default_branch && manifest === project.manifest_path) return;
+    if (branch === workspace.default_branch && manifest === workspace.manifest_path) return;
 
     mutate({ default_branch: branch, manifest_path: manifest });
   }, [
     debouncedBranch,
     debouncedManifest,
     canManage,
-    project.default_branch,
-    project.manifest_path,
+    workspace.default_branch,
+    workspace.manifest_path,
     isPending,
     mutate,
   ]);
@@ -265,7 +265,7 @@ function RepositoryCard({ project, canManage }: { project: KortixProject; canMan
           <Field>
             <div className="flex items-center justify-between gap-2">
               <FieldLabel htmlFor="default-branch">
-                {tHardcodedUi.raw('appProjectsIdCustomizeSettingsPage.line270JsxTextDefaultBranch')}
+                {tHardcodedUi.raw('appWorkspacesIdCustomizeSettingsPage.line270JsxTextDefaultBranch')}
               </FieldLabel>
               {saving ? <SaveStatus /> : null}
             </div>
@@ -291,7 +291,7 @@ function RepositoryCard({ project, canManage }: { project: KortixProject; canMan
           </Field>
           <Field>
             <FieldLabel htmlFor="manifest-path">
-              {tHardcodedUi.raw('appProjectsIdCustomizeSettingsPage.line280JsxTextManifestPath')}
+              {tHardcodedUi.raw('appWorkspacesIdCustomizeSettingsPage.line280JsxTextManifestPath')}
             </FieldLabel>
             <Input
               id="manifest-path"
@@ -306,7 +306,7 @@ function RepositoryCard({ project, canManage }: { project: KortixProject; canMan
 
         {managed ? (
           <div className="border-border/60 border-t pt-5">
-            <RepoCollaboratorInvite projectId={project.project_id} canManage={canManage} />
+            <RepoCollaboratorInvite workspaceId={workspace.workspace_id} canManage={canManage} />
           </div>
         ) : null}
       </div>
@@ -314,9 +314,9 @@ function RepositoryCard({ project, canManage }: { project: KortixProject; canMan
   );
 }
 
-function ExperimentalCard({ project, canManage }: { project: KortixProject; canManage: boolean }) {
+function ExperimentalCard({ workspace, canManage }: { workspace: KortixWorkspace; canManage: boolean }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
-  const features = (project.experimental_features ?? []).filter((f) => f.available);
+  const features = (workspace.experimental_features ?? []).filter((f) => f.available);
   const [expanded, setExpanded] = useState(false);
 
   if (features.length === 0) return null;
@@ -325,7 +325,7 @@ function ExperimentalCard({ project, canManage }: { project: KortixProject; canM
     <section className="space-y-4">
       <Label>
         {tI18nHardcoded.raw(
-          'autoComponentsProjectsCustomizeSectionsSettingsViewJsxTextExperimentalWIPcb2304ee',
+          'autoComponentsWorkspacesCustomizeSectionsSettingsViewJsxTextExperimentalWIPcb2304ee',
         )}
       </Label>
       <Disclosure
@@ -349,12 +349,12 @@ function ExperimentalCard({ project, canManage }: { project: KortixProject; canM
             {features.map((feature) => (
               <ExperimentalFeatureRow
                 key={feature.key}
-                projectId={project.project_id}
+                workspaceId={workspace.workspace_id}
                 feature={feature}
                 canManage={canManage}
               />
             ))}
-            <SandboxProviderRow project={project} canManage={canManage} />
+            <SandboxProviderRow workspace={workspace} canManage={canManage} />
           </div>
         </DisclosureContent>
       </Disclosure>
@@ -363,11 +363,11 @@ function ExperimentalCard({ project, canManage }: { project: KortixProject; canM
 }
 
 function ExperimentalFeatureRow({
-  projectId,
+  workspaceId,
   feature,
   canManage,
 }: {
-  projectId: string;
+  workspaceId: string;
   feature: ExperimentalFeatureView;
   canManage: boolean;
 }) {
@@ -378,18 +378,18 @@ function ExperimentalFeatureRow({
   const [pendingValue, setPendingValue] = useState<boolean | null>(null);
 
   const mutation = useMutation({
-    mutationFn: (next: boolean) => updateExperimentalFeature(projectId, feature.key, next),
+    mutationFn: (next: boolean) => updateExperimentalFeature(workspaceId, feature.key, next),
     onSettled: () => setPendingValue(null),
     onSuccess: (updated) => {
-      queryClient.setQueryData(['project', projectId], updated);
-      queryClient.setQueryData<ProjectDetail | undefined>(
-        ['project-detail', projectId],
-        (current) => (current ? { ...current, project: updated } : current),
+      queryClient.setQueryData(['workspace', workspaceId], updated);
+      queryClient.setQueryData<WorkspaceDetail | undefined>(
+        ['workspace-detail', workspaceId],
+        (current) => (current ? { ...current, workspace: updated } : current),
       );
-      queryClient.invalidateQueries({ queryKey: ['project-detail', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['workspace-detail', workspaceId] });
+      queryClient.invalidateQueries({ queryKey: ['workspaces'] });
       if (feature.key === 'llm_gateway') {
-        refreshProjectProviderState(queryClient, projectId, { removeProjectScopedCache: true });
+        refreshWorkspaceProviderState(queryClient, workspaceId, { removeWorkspaceScopedCache: true });
       }
     },
     onError: (error: Error) => errorToast(error.message || `Failed to update ${feature.name}`),
@@ -423,43 +423,43 @@ function ExperimentalFeatureRow({
   );
 }
 
-// Per-project sandbox-provider pin — rendered as a row INSIDE the Experimental list.
-// Overrides the platform's weighted distribution for THIS project only (e.g. put one
-// project on Platinum even when the fleet is mostly Daytona). Options come from the
-// project payload (`available_sandbox_providers` = the usable set). Hidden only when
+// Per-workspace sandbox-provider pin — rendered as a row INSIDE the Experimental list.
+// Overrides the platform's weighted distribution for THIS workspace only (e.g. put one
+// workspace on Platinum even when the fleet is mostly Daytona). Options come from the
+// workspace payload (`available_sandbox_providers` = the usable set). Hidden only when
 // no provider is usable.
 const AUTO_PROVIDER = '__auto__';
 function SandboxProviderRow({
-  project,
+  workspace,
   canManage,
 }: {
-  project: KortixProject;
+  workspace: KortixWorkspace;
   canManage: boolean;
 }) {
   const queryClient = useQueryClient();
-  const available = project.available_sandbox_providers ?? [];
-  const current = project.default_sandbox_provider ?? null;
+  const available = workspace.available_sandbox_providers ?? [];
+  const current = workspace.default_sandbox_provider ?? null;
   const label = (p: string) => p.charAt(0).toUpperCase() + p.slice(1);
 
   const mutation = useMutation({
     mutationFn: (next: SandboxProviderName | null) =>
-      updateProjectSandboxProvider(project.project_id, next),
+      updateWorkspaceSandboxProvider(workspace.workspace_id, next),
     onSuccess: (result, next) => {
-      // FIX-L: the PATCH returns EITHER the updated project (immediate) OR a
+      // FIX-L: the PATCH returns EITHER the updated workspace (immediate) OR a
       // preparation object (the prepare branch — a switch to a different enabled
-      // provider). Write the project cache ONLY for the immediate result; a
-      // preparation is a transition, not a project, and must not clobber the
-      // cached project shape.
-      const kind = applySandboxProviderResult(queryClient, project.project_id, result);
+      // provider). Write the workspace cache ONLY for the immediate result; a
+      // preparation is a transition, not a workspace, and must not clobber the
+      // cached workspace shape.
+      const kind = applySandboxProviderResult(queryClient, workspace.workspace_id, result);
       if (kind === 'preparation') {
         successToast(`Preparing ${next ? label(next) : 'the sandbox provider'}… this can take a few minutes`);
         // Poll the durable transition (bounded, backoff, terminal-stop, 404 = done)
-        // and refresh the project once it settles so the now-active provider shows.
-        void pollSandboxProviderTransition(project.project_id, {
+        // and refresh the workspace once it settles so the now-active provider shows.
+        void pollSandboxProviderTransition(workspace.workspace_id, {
           onSettled: (state) => {
-            queryClient.invalidateQueries({ queryKey: ['project', project.project_id] });
-            queryClient.invalidateQueries({ queryKey: ['project-detail', project.project_id] });
-            queryClient.invalidateQueries({ queryKey: ['projects'] });
+            queryClient.invalidateQueries({ queryKey: ['workspace', workspace.workspace_id] });
+            queryClient.invalidateQueries({ queryKey: ['workspace-detail', workspace.workspace_id] });
+            queryClient.invalidateQueries({ queryKey: ['workspaces'] });
             const status = state?.latest?.status;
             if (status === 'activated') {
               successToast(`Switched to ${label(state?.latest?.target_provider ?? '')}`);
@@ -485,7 +485,7 @@ function SandboxProviderRow({
           </Badge>
         </div>
         <p className="text-muted-foreground mt-0.5 text-xs text-pretty">
-          Pin this project to a specific sandbox provider, overriding the platform
+          Pin this workspace to a specific sandbox provider, overriding the platform
           default. New sessions here run on the chosen provider — “Automatic” follows
           the platform default.
         </p>
@@ -514,26 +514,26 @@ function SandboxProviderRow({
 }
 
 function TriggersActivationCard({
-  projectId,
+  workspaceId,
   canManage,
 }: {
-  projectId: string;
+  workspaceId: string;
   canManage: boolean;
 }) {
   const queryClient = useQueryClient();
-  const queryKey = ['project-triggers', projectId];
+  const queryKey = ['workspace-triggers', workspaceId];
   const triggersQuery = useQuery({
     queryKey,
-    queryFn: () => listProjectTriggers(projectId),
+    queryFn: () => listWorkspaceTriggers(workspaceId),
     staleTime: 10_000,
   });
   const paused = triggersQuery.data?.triggers_paused ?? false;
 
   const mutation = useMutation({
-    mutationFn: (next: boolean) => setProjectTriggersActivation(projectId, next),
+    mutationFn: (next: boolean) => setWorkspaceTriggersActivation(workspaceId, next),
     onSuccess: (data, next) => {
       queryClient.setQueryData(queryKey, data);
-      successToast(next ? 'All triggers paused for this project' : 'Triggers resumed');
+      successToast(next ? 'All triggers paused for this workspace' : 'Triggers resumed');
     },
     onError: (error: Error) => errorToast(error.message || 'Failed to update trigger activation'),
   });
@@ -546,7 +546,7 @@ function TriggersActivationCard({
           {paused && <span className="text-muted-foreground font-normal"> · paused</span>}
         </FieldTitle>
         <FieldDescription>
-          Dev kill-switch — stop the platform auto-running this project&apos;s schedules &amp;
+          Dev kill-switch — stop the platform auto-running this workspace&apos;s schedules &amp;
           webhooks (manual test-fires still work). Use it when another environment owns the
           triggers.
         </FieldDescription>
@@ -555,17 +555,17 @@ function TriggersActivationCard({
         checked={paused}
         disabled={!canManage || mutation.isPending || triggersQuery.isLoading}
         onCheckedChange={(v) => mutation.mutate(v)}
-        aria-label="Pause all triggers for this project"
+        aria-label="Pause all triggers for this workspace"
       />
     </Field>
   );
 }
 
 function RepoCollaboratorInvite({
-  projectId,
+  workspaceId,
   canManage,
 }: {
-  projectId: string;
+  workspaceId: string;
   canManage: boolean;
 }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
@@ -573,7 +573,7 @@ function RepoCollaboratorInvite({
   const [permission, setPermission] = useState<'read' | 'write'>('write');
 
   const inviteMutation = useMutation({
-    mutationFn: () => inviteRepoCollaborator(projectId, username.trim(), permission),
+    mutationFn: () => inviteRepoCollaborator(workspaceId, username.trim(), permission),
     onSuccess: (res) => {
       if (res.alreadyCollaborator) {
         successToast(`@${res.username} already has access to this repo`);
@@ -596,7 +596,7 @@ function RepoCollaboratorInvite({
       <div className="space-y-1">
         <p className="text-foreground text-sm font-medium">
           {tI18nHardcoded.raw(
-            'autoComponentsProjectsCustomizeSectionsSettingsViewJsxTextAddPeople18915e9b',
+            'autoComponentsWorkspacesCustomizeSectionsSettingsViewJsxTextAddPeople18915e9b',
           )}
         </p>
         <p className="text-muted-foreground text-xs text-pretty">
@@ -616,7 +616,7 @@ function RepoCollaboratorInvite({
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder={tI18nHardcoded.raw(
-                    'autoComponentsProjectsCustomizeSectionsSettingsViewJsxAttrPlaceholderGitHub84efb7a1',
+                    'autoComponentsWorkspacesCustomizeSectionsSettingsViewJsxAttrPlaceholderGitHub84efb7a1',
                   )}
                   variant="popover"
                   autoCapitalize="off"
@@ -642,12 +642,12 @@ function RepoCollaboratorInvite({
                 <SelectContent>
                   <SelectItem value="write">
                     {tI18nHardcoded.raw(
-                      'autoComponentsProjectsCustomizeSectionsSettingsViewJsxTextCanEdit2eb88c1b',
+                      'autoComponentsWorkspacesCustomizeSectionsSettingsViewJsxTextCanEdit2eb88c1b',
                     )}
                   </SelectItem>
                   <SelectItem value="read">
                     {tI18nHardcoded.raw(
-                      'autoComponentsProjectsCustomizeSectionsSettingsViewJsxTextCanView39f4dd36',
+                      'autoComponentsWorkspacesCustomizeSectionsSettingsViewJsxTextCanView39f4dd36',
                     )}
                   </SelectItem>
                 </SelectContent>
@@ -692,32 +692,32 @@ function githubRepoWebUrl(repoUrl: string | null | undefined): string | null {
   return null;
 }
 
-function GeneralProjectCard({
-  project,
+function GeneralWorkspaceCard({
+  workspace,
   canManage,
 }: {
-  project: Awaited<ReturnType<typeof getProject>>;
+  workspace: Awaited<ReturnType<typeof getWorkspace>>;
   canManage: boolean;
 }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
-  const [name, setName] = useState(project.name);
+  const [name, setName] = useState(workspace.name);
   const { debouncedValue: debouncedName, isLoading: isDebouncing } = useDebounce(name, 500);
 
   useEffect(() => {
-    setName(project.name);
-  }, [project.name]);
+    setName(workspace.name);
+  }, [workspace.name]);
 
   const mutation = useMutation({
     mutationFn: (nextName: string) =>
-      updateProject(project.project_id, {
+      updateWorkspace(workspace.workspace_id, {
         name: nextName,
       }),
     onSuccess: (updated) => {
-      queryClient.setQueryData(['project', project.project_id], updated);
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.setQueryData(['workspace', workspace.workspace_id], updated);
+      queryClient.invalidateQueries({ queryKey: ['workspaces'] });
     },
-    onError: (error: Error) => errorToast(error.message || 'Failed to update project'),
+    onError: (error: Error) => errorToast(error.message || 'Failed to update workspace'),
   });
 
   const { mutate, isPending } = mutation;
@@ -726,25 +726,25 @@ function GeneralProjectCard({
     if (!canManage || isPending) return;
 
     const trimmed = debouncedName.trim();
-    if (!trimmed || trimmed === project.name) return;
+    if (!trimmed || trimmed === workspace.name) return;
 
     mutate(trimmed);
-  }, [debouncedName, canManage, project.name, isPending, mutate]);
+  }, [debouncedName, canManage, workspace.name, isPending, mutate]);
 
   const saving = isDebouncing || isPending;
 
   return (
     <section className="space-y-4">
-      <Label htmlFor="project-name">General</Label>
+      <Label htmlFor="workspace-name">General</Label>
       <Field>
         <div className="flex items-center justify-between gap-2">
-          <FieldLabel htmlFor="project-name">
-            {tHardcodedUi.raw('appProjectsIdCustomizeSettingsPage.line259JsxTextProjectName')}
+          <FieldLabel htmlFor="workspace-name">
+            {tHardcodedUi.raw('appWorkspacesIdCustomizeSettingsPage.line259JsxTextWorkspaceName')}
           </FieldLabel>
           {saving ? <SaveStatus /> : null}
         </div>
         <Input
-          id="project-name"
+          id="workspace-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           disabled={!canManage || isPending}

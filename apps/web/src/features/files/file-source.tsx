@@ -4,7 +4,7 @@ import type { FileSource } from '@/features/file-viewer';
 import { useFileContent } from './hooks';
 import { useBinaryBlob } from './hooks/use-binary-blob';
 import { downloadFile, uploadFile } from './api/runtime-files';
-import { FilePathBreadcrumbs } from '@/features/project-files';
+import { FilePathBreadcrumbs } from '@/features/workspace-files';
 
 /**
  * Live-workspace data source for the shared file viewer/modal. The hooks are

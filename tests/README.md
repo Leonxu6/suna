@@ -32,7 +32,7 @@ tests/
       02-services.spec.ts
       03-frontend-config.spec.ts
       04-auth-flow.spec.ts
-      08-accounts-project-access.spec.ts
+      08-accounts-workspace-access.spec.ts
       09-admin-ops.spec.ts
       10-production-golden-paths.spec.ts
       11-production-boundaries.spec.ts
@@ -60,7 +60,7 @@ tests/
 | `02-services` | 4 | HTTP health checks on all ports |
 | `03-frontend-config` | 4 | Runtime config URLs correct (no placeholders) |
 | `04-auth-flow` | 4 | API auth + browser login |
-| `08-accounts-project-access` | 4 | Accounts, invites, project access, and no legacy route leaks |
+| `08-accounts-workspace-access` | 4 | Accounts, invites, project access, and no legacy route leaks |
 | `09-admin-ops` | 2 | Admin overview and operations dashboard |
 | `10-production-golden-paths` | gated | SPEC 10.5 golden paths when enabled |
 | `11-production-boundaries` | gated | SPEC 10.6/10.7 boundaries, SLOs, and negative-space probes |

@@ -1,9 +1,9 @@
 /**
- * 09 — Everything from just a PAT: list → pick/provision project → create
+ * 09 — Everything from just a PAT: list → pick/provision workspace → create
  * session → ready → stream → send → wait for idle → render the reply.
  *
- * Unlike 07 (which needs KORTIX_PROJECT_ID and KORTIX_SESSION_ID exported),
- * this one bootstraps whatever is missing: it uses your first project (or
+ * Unlike 07 (which needs KORTIX_WORKSPACE_ID and KORTIX_SESSION_ID exported),
+ * this one bootstraps whatever is missing: it uses your first workspace (or
  * provisions one if the account has none) and always creates a fresh session.
  * It then waits for the runtime's `session.idle` event instead of sleeping a
  * fixed interval, so the final transcript render is complete.
@@ -15,8 +15,8 @@
  *   KORTIX_API_URL=http://localhost:8008/v1 KORTIX_API_KEY=kortix_pat_... \
  *     bun run examples/09-full-flow.ts "What files are in this repo?"
  *
- * Reuse the project/session it prints to skip provisioning next time:
- *   KORTIX_PROJECT_ID=... KORTIX_SESSION_ID=... bun run examples/09-full-flow.ts "..."
+ * Reuse the workspace/session it prints to skip provisioning next time:
+ *   KORTIX_WORKSPACE_ID=... KORTIX_SESSION_ID=... bun run examples/09-full-flow.ts "..."
  *
  * As an npm consumer, one import line changes:
  *   import { classifyTurn, createKortix, narrowChatEvent } from '@kortix/sdk';
@@ -68,38 +68,38 @@ async function main() {
 
   const kortix = createKortix({ backendUrl, getToken: async () => apiKey });
 
-  // 1. Projects — list them, then reuse the env override, the first one, or
+  // 1. Workspaces — list them, then reuse the env override, the first one, or
   //    provision a new one when the account is empty.
-  const projects = await kortix.projects.list();
-  console.log(`${projects.length} project(s):`);
-  for (const p of projects) console.log(`  - ${p.name} (${p.project_id})`);
+  const workspaces = await kortix.workspaces.list();
+  console.log(`${workspaces.length} workspace(s):`);
+  for (const p of workspaces) console.log(`  - ${p.name} (${p.workspace_id})`);
 
-  let projectId = process.env.KORTIX_PROJECT_ID;
-  if (!projectId) {
-    if (projects.length > 0) {
-      projectId = projects[0]!.project_id;
-      console.log(`\nusing first project: ${projects[0]!.name}`);
+  let workspaceId = process.env.KORTIX_WORKSPACE_ID;
+  if (!workspaceId) {
+    if (workspaces.length > 0) {
+      workspaceId = workspaces[0]!.workspace_id;
+      console.log(`\nusing first workspace: ${workspaces[0]!.name}`);
     } else {
-      console.log('\nno projects — provisioning "sdk-playground"…');
-      const project = await kortix.projects.provision({
+      console.log('\nno workspaces — provisioning "sdk-playground"…');
+      const workspace = await kortix.workspaces.provision({
         name: "sdk-playground",
       });
-      projectId = project.project_id;
-      console.log(`provisioned ${project.name} (${projectId})`);
+      workspaceId = workspace.workspace_id;
+      console.log(`provisioned ${workspace.name} (${workspaceId})`);
     }
   }
 
   // 2. Session — reuse the env override or create a fresh one.
   let sessionId = process.env.KORTIX_SESSION_ID;
   if (!sessionId) {
-    const created = await kortix.projects.createSession(projectId, {
+    const created = await kortix.workspaces.createSession(workspaceId, {
       name: "sdk full-flow",
     });
     sessionId = created.session_id;
     console.log(`created session ${sessionId}`);
   }
 
-  const session = kortix.session(projectId, sessionId);
+  const session = kortix.session(workspaceId, sessionId);
 
   // 3. Ready the session (boots/resumes the sandbox — slow on first run),
   //    then connect the stream BEFORE sending so no early events are missed.
@@ -160,7 +160,7 @@ async function main() {
   }
 
   console.log("\nreuse this pair to skip provisioning next time:");
-  console.log(`  export KORTIX_PROJECT_ID=${projectId}`);
+  console.log(`  export KORTIX_WORKSPACE_ID=${workspaceId}`);
   console.log(`  export KORTIX_SESSION_ID=${sessionId}`);
   process.exit(0);
 }

@@ -53,21 +53,21 @@ describe('Channels view — per-channel binding management (spec §2.5)', () => 
     expect(channelsSource).toContain('useUpdateChannelBinding');
   });
 
-  test('agent picker reuses the shared AgentSelector (same component as chat input/schedules), offering a project-default entry plus visible agents', () => {
+  test('agent picker reuses the shared AgentSelector (same component as chat input/schedules), offering a workspace-default entry plus visible agents', () => {
     expect(channelsSource).toContain("from '@/features/session/session-chat-input'");
     expect(channelsSource).toContain('<AgentSelector');
     expect(channelsSource).toContain('useVisibleAgents');
-    expect(channelsSource).toContain('Project default');
+    expect(channelsSource).toContain('Workspace default');
   });
 
-  test('model override reuses the shared ModelSelector (not a hand-rolled input) and labels the unset state "Project default"', () => {
+  test('model override reuses the shared ModelSelector (not a hand-rolled input) and labels the unset state "Workspace default"', () => {
     expect(channelsSource).toContain("from '@/features/session/model-selector'");
     expect(channelsSource).toContain('<ModelSelector');
-    expect(channelsSource).toContain('unsetLabel="Project default"');
+    expect(channelsSource).toContain('unsetLabel="Workspace default"');
   });
 
   test('join-policy picker covers all three conversation policies', () => {
-    expect(channelsSource).toContain("value: 'project_open'");
+    expect(channelsSource).toContain("value: 'workspace_open'");
     expect(channelsSource).toContain("value: 'owner_only'");
     expect(channelsSource).toContain("value: 'owner_approval'");
   });

@@ -42,7 +42,7 @@ export type {
   SessionStatus,
   Agent,
   Command,
-  Project,
+  Workspace,
   Model,
   Provider,
   Todo,

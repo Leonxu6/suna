@@ -167,7 +167,7 @@ test.describe.serial('13 — SDK-only web session', () => {
     page.on('response', (response) => {
       if (
         response.status() >= 400
-        && (response.url().includes('/v1/projects/') || response.url().includes('/v1/p/'))
+        && (response.url().includes('/v1/workspaces/') || response.url().includes('/v1/p/'))
       ) {
         failedKortixResponses.push(
           `${response.status()} ${response.request().method()} ${response.url()}`,

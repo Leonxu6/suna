@@ -84,7 +84,7 @@ const FILES: Record<string, RepoFile> = {
   'kortix.yaml': {
     lang: 'toml',
     lines: [
-      'project:',
+      'workspace:',
       '  name: acme',
       '',
       'connectors:         # 3,000+ apps, one scoped token',

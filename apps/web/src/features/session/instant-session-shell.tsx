@@ -13,7 +13,7 @@ import { SessionBootChecklistInline } from '@/features/session/session-starting-
 import { useSessionWallpaperLayer } from '@/features/session/session-wallpaper-layer';
 import { SessionWelcome } from '@/features/session/session-welcome';
 import { optimisticUploadedFileRef } from '@/features/session/uploaded-file-refs';
-import { ProjectHomeWelcomeBody } from '@/features/workspace/project-layout/project-home';
+import { WorkspaceHomeWelcomeBody } from '@/features/workspace/workspace-layout/workspace-home';
 import type { Command } from '@kortix/sdk/react';
 import { readStartStash, writeStartStash } from '@kortix/sdk/react';
 import { playSound } from '@/lib/sounds';
@@ -42,17 +42,17 @@ import { GridFileCard } from './grid-file-card';
  * gracefully falls back to the real (empty) Actions view.
  */
 export function InstantSessionShell({
-  projectId,
+  workspaceId,
   sessionId,
   stage,
   boundAgentName,
   onSubmit,
 }: {
-  projectId: string;
+  workspaceId: string;
   /** The route's session id (== the pending-prompt namespace the page migrates). */
   sessionId: string;
   stage: SessionStartStage;
-  /** Immutable project-session agent returned by /start. */
+  /** Immutable workspace-session agent returned by /start. */
   boundAgentName?: string | null;
   /** Fired on the first send so the page can mount the real chat (which auto-sends
    *  the handed-off prompt) and crossfade it in. */
@@ -73,7 +73,7 @@ export function InstantSessionShell({
   } | null>(() => {
     if (typeof window === 'undefined') return null;
     // `readStartStash` covers the canonical SDK stash (written under the route
-    // session id by this shell, the project-home composer, and
+    // session id by this shell, the workspace-home composer, and
     // `useConfigureThread` — all three producers now share the one canonical
     // shape) plus its `opencode_pending_prompt` legacy fallback for any other
     // as-yet-unconverted producer.
@@ -86,7 +86,7 @@ export function InstantSessionShell({
   });
   const submitted = submission?.text ?? null;
 
-  // Starter-prompt → composer prefill, identical to the project-home composer.
+  // Starter-prompt → composer prefill, identical to the workspace-home composer.
   const [prefill, setPrefill] = useState<{ text: string; id: number } | null>(null);
   const applySuggestion = useCallback((text: string) => {
     setPrefill({ text, id: Date.now() });
@@ -101,7 +101,7 @@ export function InstantSessionShell({
       // the runtime is healthy. `sessionId` here is the route/Kortix-session
       // id, not the eventual OpenCode pin (`useCanonicalRuntimeSession`
       // resolves those independently — see `ensureOpencodeSessionPin` in
-      // apps/api/src/projects/routes/shared.ts); the session page's
+      // apps/api/src/workspaces/routes/shared.ts); the session page's
       // `migrateStash` hands this canonical stash off onto the resolved pin
       // once it exists.
       writeStartStash(sessionId, {
@@ -155,7 +155,7 @@ export function InstantSessionShell({
       onSend={handleSend}
       onCommand={handleCommand}
       sessionId={sessionId}
-      projectId={projectId}
+      workspaceId={workspaceId}
       prefill={prefill}
       boundAgentName={boundAgentName}
       // While the computer boots after the first send the input stays fully
@@ -170,7 +170,7 @@ export function InstantSessionShell({
       onQueueMessage={handleQueueMessage}
       onRemoveQueuedMessage={handleRemoveQueuedMessage}
       autoFocus
-      // Hero radius pre-submit (matches the project home); back to the default
+      // Hero radius pre-submit (matches the workspace home); back to the default
       // card radius once docked so the crossfade into SessionChat doesn't pop.
       cardClassName={submitted ? undefined : 'rounded-xl'}
     />
@@ -204,16 +204,16 @@ export function InstantSessionShell({
       />
 
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
-        {/* Empty new session → the identical project-home empty state (centered
+        {/* Empty new session → the identical workspace-home empty state (centered
             heading + hero composer + starter chips, setup pills at the bottom),
-            so a fresh session opens onto the same surface as the project index
+            so a fresh session opens onto the same surface as the workspace index
             page. Swapped out for the optimistic turn the moment a first message
             is sent (the crossfade is unchanged); the composer moves to its
             regular bottom position at the same time. */}
         {!submitted && (
           <div className="flex min-h-0 flex-1 flex-col px-4.5">
-            <ProjectHomeWelcomeBody
-              projectId={projectId}
+            <WorkspaceHomeWelcomeBody
+              workspaceId={workspaceId}
               onPickSuggestion={applySuggestion}
               composer={composerEl}
             />
@@ -281,8 +281,8 @@ export function InstantSessionShell({
   return (
     <SessionLayout
       sessionId={sessionId}
-      projectId={projectId}
-      projectSessionId={sessionId}
+      workspaceId={workspaceId}
+      workspaceSessionId={sessionId}
       transient
       // Side-panel content: the boot checklist while still coming up, then the
       // real (empty) Actions view once ready — so an open panel is never stuck on

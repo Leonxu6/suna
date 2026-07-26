@@ -226,16 +226,16 @@ export function __clearCloneTokenCacheForTests(): void {
 }
 
 async function resolveCloneCredential(cfg: Config): Promise<CloneCredential | undefined> {
-  if (!cfg.apiUrl || !cfg.projectId || !cfg.sandboxToken) return undefined
+  if (!cfg.apiUrl || !cfg.workspaceId || !cfg.sandboxToken) return undefined
   // Universal proxy origin: when the repo is served by the Kortix git proxy
-  // (KORTIX_REPO_URL = `${KORTIX_URL}/v1/git/<projectId>.git`), the git
+  // (KORTIX_REPO_URL = `${KORTIX_URL}/v1/git/<workspaceId>.git`), the git
   // credential IS our own KORTIX_TOKEN — the proxy authenticates it and resolves
   // the real upstream + host credential server-side. No clone-credential round
   // trip, and a real GitHub token never enters the sandbox.
   if (cfg.repoUrl && /\/v1\/git\//.test(cfg.repoUrl)) {
     return { username: 'x-access-token', token: cfg.sandboxToken }
   }
-  const cacheKey = `${cfg.apiUrl}\0${cfg.projectId}\0${cfg.sandboxToken}`
+  const cacheKey = `${cfg.apiUrl}\0${cfg.workspaceId}\0${cfg.sandboxToken}`
   if (cachedCloneToken?.key === cacheKey) return cachedCloneToken.value
 
   const rawBase = cfg.apiUrl.replace(/\/+$/, '')
@@ -244,7 +244,7 @@ async function resolveCloneCredential(cfg: Config): Promise<CloneCredential | un
     : rawBase.endsWith('/v1')
       ? rawBase
       : `${rawBase}/v1`
-  const url = `${base}/projects/${encodeURIComponent(cfg.projectId)}/git/clone-credential`
+  const url = `${base}/workspaces/${encodeURIComponent(cfg.workspaceId)}/git/clone-credential`
 
   // The control plane is reached over the public internet (KORTIX_API_URL).
   // A bare fetch with no timeout/retry turns one transient blip — or a
@@ -344,7 +344,7 @@ export async function configureGitCredentialHelper(
   cfg: Config,
   home: string,
 ): Promise<void> {
-  if (!cfg.repoUrl || !cfg.projectId || !cfg.sandboxToken) return
+  if (!cfg.repoUrl || !cfg.workspaceId || !cfg.sandboxToken) return
   const host = deriveAuthHost(cfg.repoUrl)
   if (!host) return
   const username = (await resolveCloneCredential(cfg).catch(() => undefined))?.username
@@ -383,7 +383,7 @@ export async function configureGitCredentialHelper(
  * after the repo is materialized.
  */
 export async function configureRepoCredentialHelper(cfg: Config, target: string): Promise<void> {
-  if (!cfg.repoUrl || !cfg.projectId || !cfg.sandboxToken) return
+  if (!cfg.repoUrl || !cfg.workspaceId || !cfg.sandboxToken) return
   if (!(await pathExists(`${target}/.git`))) return
   const host = deriveAuthHost(cfg.repoUrl)
   if (!host) return
@@ -645,15 +645,15 @@ async function swapStageIntoTarget(stage: string, target: string): Promise<void>
 }
 
 /**
- * Materialize the project repository into `cfg.projectTarget` at the configured
+ * Materialize the workspace repository into `cfg.workspaceTarget` at the configured
  * branch. Ported from core/scripts/kortix-daemon clone_project_if_requested.
  */
 export async function materializeRepo(cfg: Config): Promise<void> {
   if (!cfg.repoUrl) {
-    throw new Error('KORTIX_PROJECT_AUTO_CLONE is enabled but KORTIX_REPO_URL is unset')
+    throw new Error('KORTIX_WORKSPACE_AUTO_CLONE is enabled but KORTIX_REPO_URL is unset')
   }
 
-  const target = cfg.projectTarget
+  const target = cfg.workspaceTarget
   const base = cfg.defaultBranch
   await mkdir(target, { recursive: true })
 
@@ -897,21 +897,21 @@ export async function materializeScaffoldSeed(target: string, base: string): Pro
  * failure, so a flaky clone never bricks the seed. Reuses materializeRepo's
  * battle-tested clone (retries, stall-abort, proxy auth) verbatim.
  */
-export async function materializeProjectSeed(cfg: Config): Promise<boolean> {
+export async function materializeWorkspaceSeed(cfg: Config): Promise<boolean> {
   if (!cfg.repoUrl) return false
   const t0 = Date.now()
   try {
-    await clearDirContents(cfg.projectTarget)
+    await clearDirContents(cfg.workspaceTarget)
     // No branchName during seed capture (no session yet); baseSha=tip so a baked /workspace
     // (if any) is treated as mismatched and re-materialized to the real repo.
     await materializeRepo({ ...cfg, branchName: undefined, sessionFresh: true })
-    logger.info('[git] project seed materialized at base', {
+    logger.info('[git] workspace seed materialized at base', {
       ms: Date.now() - t0,
       base: cfg.defaultBranch,
     })
     return true
   } catch (err) {
-    logger.warn('[git] project seed materialize failed; warm seed will fall back to scaffold', {
+    logger.warn('[git] workspace seed materialize failed; warm seed will fall back to scaffold', {
       err: err instanceof Error ? err.message.slice(0, 200) : String(err),
     })
     return false
@@ -1036,7 +1036,7 @@ export async function commitAndPushWorkingTree(
   cfg: Config,
   opts: { message?: string } = {},
 ): Promise<CommitPushResult> {
-  const target = cfg.projectTarget
+  const target = cfg.workspaceTarget
   const before = await readRepoInfo(target)
   if (!before) throw new Error('project repo is not materialized')
 
@@ -1090,7 +1090,7 @@ export async function commitAndPushWorkingTree(
 }
 
 export async function refreshRepo(cfg: Config): Promise<{ before: RepoInfo; after: RepoInfo }> {
-  const target = cfg.projectTarget
+  const target = cfg.workspaceTarget
   const before = await readRepoInfo(target)
   if (!before) {
     throw new Error('project repo is not materialized')

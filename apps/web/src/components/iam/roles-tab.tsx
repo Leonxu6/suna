@@ -467,7 +467,7 @@ function RoleDialog({
   const [keyTouched, setKeyTouched] = useState(isEdit);
   const [description, setDescription] = useState(role?.description ?? '');
   const [resourceType, setResourceType] = useState<ResourceType>(
-    role?.resource_type ?? prefill?.resourceType ?? 'project',
+    role?.resource_type ?? prefill?.resourceType ?? 'workspace',
   );
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(prefill?.actions ?? []),
@@ -668,7 +668,7 @@ function RoleDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="project">Project</SelectItem>
+                <SelectItem value="workspace">Workspace</SelectItem>
                 <SelectItem value="account">Account</SelectItem>
               </SelectContent>
             </Select>
@@ -841,7 +841,7 @@ interface ActionGroup {
 
 /**
  * Group catalog entries by their capability prefix for readability. Actions
- * are dot-namespaced (e.g. project.gitops.push, project.schedule.create); we
+ * are dot-namespaced (e.g. workspace.gitops.push, workspace.schedule.create); we
  * key on the middle segment (the capability), falling back to the leading
  * segment for two-part actions. The group label is humanized from that segment.
  */

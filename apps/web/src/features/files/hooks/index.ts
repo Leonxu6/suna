@@ -22,8 +22,8 @@ export {
   fileSearchKeys,
 } from './use-file-search';
 
-// Server health & project info
-export { useServerHealth, useCurrentProject } from './use-server-health';
+// Server health & workspace info
+export { useServerHealth, useCurrentWorkspace } from './use-server-health';
 
 // File mutations (write operations)
 export {

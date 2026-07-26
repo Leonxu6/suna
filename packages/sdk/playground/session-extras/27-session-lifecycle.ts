@@ -11,20 +11,20 @@
 import {
   makeKortix,
   pickOrCreateSessionId,
-  pickProjectId,
+  pickWorkspaceId,
   retryUntilReady,
   run,
 } from "../_shared";
 
 run("session-lifecycle", async () => {
   const kortix = makeKortix();
-  const projectId = await pickProjectId(kortix);
+  const workspaceId = await pickWorkspaceId(kortix);
   const sessionId = await pickOrCreateSessionId(
     kortix,
-    projectId,
+    workspaceId,
     "sdk lifecycle test",
   );
-  const session = kortix.session(projectId, sessionId);
+  const session = kortix.session(workspaceId, sessionId);
 
   const row = await session.get();
   console.log(`✓ get(): status=${(row as { status?: string } | null)?.status}`);

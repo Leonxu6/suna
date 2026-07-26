@@ -3,7 +3,7 @@ import { logger } from './logger';
 export const EXECUTION_HEARTBEAT_INTERVAL_MS = 20_000;
 export const EXECUTION_LEASE_TTL_SECONDS = 120;
 export interface ExecutionLeaseContext {
-  projectId: string;
+  workspaceId: string;
   sessionId: string;
   token: string;
   apiRoot: string;
@@ -15,12 +15,20 @@ export interface ExecutionLeaseReporterOptions {
 }
 
 export function executionLeaseContextFromEnv(): ExecutionLeaseContext | null {
-  const projectId = process.env.KORTIX_PROJECT_ID?.trim();
+  const workspaceId = (
+    process.env.KORTIX_WORKSPACE_ID ??
+    process.env.KORTIX_PROJECT_ID
+  )?.trim();
   const sessionId = process.env.KORTIX_SESSION_ID?.trim();
   const token = (process.env.KORTIX_SANDBOX_TOKEN || process.env.KORTIX_TOKEN || '').trim();
   const apiUrl = process.env.KORTIX_API_URL?.replace(/\/$/, '');
-  if (!projectId || !sessionId || !token || !apiUrl) return null;
-  return { projectId, sessionId, token, apiRoot: apiUrl.endsWith('/v1') ? apiUrl : `${apiUrl}/v1` };
+  if (!workspaceId || !sessionId || !token || !apiUrl) return null;
+  return {
+    workspaceId,
+    sessionId,
+    token,
+    apiRoot: apiUrl.endsWith('/v1') ? apiUrl : `${apiUrl}/v1`,
+  };
 }
 
 export class ExecutionLeaseReporter {
@@ -112,7 +120,7 @@ export class ExecutionLeaseReporter {
       }
     }
     const response = await this.fetchFn(
-      `${this.context.apiRoot}/projects/${encodeURIComponent(this.context.projectId)}/turn-stream`,
+      `${this.context.apiRoot}/workspaces/${encodeURIComponent(this.context.workspaceId)}/turn-stream`,
       {
         method: 'POST',
         headers: {

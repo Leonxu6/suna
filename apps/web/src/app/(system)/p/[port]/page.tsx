@@ -9,16 +9,16 @@ import { useTabStore } from '@/stores/tab-store';
  *
  * Preview tabs are normally opened via the LocalhostLinkInterceptor or other
  * tab-system entry points, both of which use `history.pushState` to flip the
- * URL while keeping the surrounding shell (project shell, etc.) mounted —
+ * URL while keeping the surrounding shell (workspace shell, etc.) mounted —
  * that's where BrowserPanel actually renders. This page exists only for
  * direct navigation / refresh of `/p/[port]` URLs.
  *
  * Behavior:
  *   - If the preview tab already exists in the persisted store, activate it.
  *     A surrounding shell that mounts <BrowserPanel /> will then render
- *     the iframe (project-shell does this on /projects/*).
+ *     the iframe (workspace-shell does this on /workspaces/*).
  *   - Otherwise we can't reconstruct the sandbox context, so we redirect to
- *     the projects index instead of leaving the user on a blank page.
+ *     the workspaces index instead of leaving the user on a blank page.
  */
 export default function PreviewPage({
   params,
@@ -34,7 +34,7 @@ export default function PreviewPage({
     if (tabs[tabId]) {
       setActiveTab(tabId);
     } else {
-      router.replace('/projects');
+      router.replace('/workspaces');
     }
   }, [port, tabs, setActiveTab, router]);
 

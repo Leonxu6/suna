@@ -66,7 +66,7 @@ function GitHubSetup() {
     if (setupAction === 'uninstall') {
       setState('done');
       setMessage('GitHub App removed from your account.');
-      redirectTimer.current = window.setTimeout(() => router.replace('/projects'), 900);
+      redirectTimer.current = window.setTimeout(() => router.replace('/workspaces'), 900);
       return;
     }
 
@@ -81,7 +81,7 @@ function GitHubSetup() {
     if (!installState || !installationId) {
       setState('error');
       setMessage(
-        'GitHub did not return the installation details. Try connecting again from your project or account settings.',
+        'GitHub did not return the installation details. Try connecting again from your workspace or account settings.',
       );
       return;
     }
@@ -177,7 +177,7 @@ function GitHubSetup() {
         : 'GitHub connected. Redirecting you back now.',
     );
     redirectTimer.current = window.setTimeout(
-      () => router.replace(consumeGitHubSetupReturn() ?? '/projects?new=1'),
+      () => router.replace(consumeGitHubSetupReturn() ?? '/workspaces?new=1'),
       900,
     );
   }
@@ -267,7 +267,7 @@ function GitHubSetup() {
                 size="lg"
                 variant="outline"
                 className="w-full"
-                onClick={() => router.replace(consumeGitHubSetupReturn() ?? '/projects')}
+                onClick={() => router.replace(consumeGitHubSetupReturn() ?? '/workspaces')}
               >
                 Back
               </Button>
@@ -275,8 +275,8 @@ function GitHubSetup() {
           </Rise>
         ) : state === 'error' ? (
           <Rise delay={0.06}>
-            <Button size="lg" className="w-full" onClick={() => router.replace('/projects')}>
-              Back to projects
+            <Button size="lg" className="w-full" onClick={() => router.replace('/workspaces')}>
+              Back to workspaces
             </Button>
           </Rise>
         ) : null}

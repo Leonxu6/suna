@@ -32,7 +32,7 @@ import {
 import { getEnv } from '@/lib/env-config';
 import { cn } from '@/lib/utils';
 import { useCurrentAccountStore } from '@/stores/current-account-store';
-import { listProjectsForAccount, type KortixProject } from '@kortix/sdk';
+import { listWorkspacesForAccount, type KortixWorkspace } from '@kortix/sdk';
 import { ShieldSolid, TrashSolid } from '@mynaui/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, KeyRound, X } from 'lucide-react';
@@ -54,7 +54,7 @@ function formatRelative(iso: string | null): string {
   return d.toLocaleDateString();
 }
 
-/** Sentinel Select value for the account-wide (no project) scope. */
+/** Sentinel Select value for the account-wide (no workspace) scope. */
 const ACCOUNT_SCOPE = '__account__';
 
 function shortId(id: string): string {
@@ -62,23 +62,23 @@ function shortId(id: string): string {
 }
 
 function ScopeBadge({
-  projectId,
-  projects,
+  workspaceId,
+  workspaces,
 }: {
-  projectId: string | null;
-  projects: KortixProject[];
+  workspaceId: string | null;
+  workspaces: KortixWorkspace[];
 }) {
-  if (!projectId) {
+  if (!workspaceId) {
     return (
       <Badge variant="muted" size="xs">
         Account-wide
       </Badge>
     );
   }
-  const name = projects.find((p) => p.project_id === projectId)?.name;
+  const name = workspaces.find((p) => p.workspace_id === workspaceId)?.name;
   return (
     <Badge variant="muted" size="xs">
-      {name ?? shortId(projectId)}
+      {name ?? shortId(workspaceId)}
     </Badge>
   );
 }
@@ -102,11 +102,11 @@ function CopyButton({ value }: { value: string }) {
 
 function TokenRow({
   token,
-  projects,
+  workspaces,
   onChange,
 }: {
   token: AccountToken;
-  projects: KortixProject[];
+  workspaces: KortixWorkspace[];
   onChange: () => void;
 }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
@@ -138,7 +138,7 @@ function TokenRow({
             >
               {token.name}
             </span>
-            <ScopeBadge projectId={token.project_id} projects={projects} />
+            <ScopeBadge workspaceId={token.workspace_id} workspaces={workspaces} />
             {revoked && <Badge variant="destructive">{token.status}</Badge>}
           </div>
           <div className="text-muted-foreground mt-1 flex items-center gap-2 text-xs">
@@ -249,12 +249,12 @@ export function CliTokensTab() {
     queryFn: () => listAccountTokens(selectedAccountId ?? undefined),
   });
 
-  const projectsQuery = useQuery({
-    queryKey: ['projects', selectedAccountId],
-    queryFn: () => listProjectsForAccount(selectedAccountId ?? undefined),
+  const workspacesQuery = useQuery({
+    queryKey: ['workspaces', selectedAccountId],
+    queryFn: () => listWorkspacesForAccount(selectedAccountId ?? undefined),
     staleTime: 30_000,
   });
-  const projects = projectsQuery.data ?? [];
+  const workspaces = workspacesQuery.data ?? [];
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: ['account-tokens'] });
@@ -286,7 +286,7 @@ export function CliTokensTab() {
       {creating && (
         <div className="mb-4">
           <InlineCreate
-            projects={projects}
+            workspaces={workspaces}
             onClose={() => setCreating(false)}
             onCreated={invalidate}
           />
@@ -340,13 +340,13 @@ export function CliTokensTab() {
       ) : (
         <div className="space-y-2">
           {active.map((t) => (
-            <TokenRow key={t.token_id} token={t} projects={projects} onChange={invalidate} />
+            <TokenRow key={t.token_id} token={t} workspaces={workspaces} onChange={invalidate} />
           ))}
           {revoked.length > 0 && (
             <div className="space-y-3">
               <label className="text-muted-foreground text-sm font-medium">Revoked</label>
               {revoked.map((t) => (
-                <TokenRow key={t.token_id} token={t} projects={projects} onChange={invalidate} />
+                <TokenRow key={t.token_id} token={t} workspaces={workspaces} onChange={invalidate} />
               ))}
             </div>
           )}
@@ -364,7 +364,7 @@ export function CliTokensTab() {
         <pre className="bg-foreground text-background overflow-x-auto rounded-t-lg px-4 py-3 font-mono text-xs">
           {`kortix login --token <paste-from-above>
 kortix whoami
-kortix projects ls`}
+kortix workspaces ls`}
         </pre>
       </div>
 
@@ -378,7 +378,7 @@ kortix projects ls`}
           </p>
         </div>
         <pre className="bg-foreground text-background overflow-x-auto rounded-t-lg px-4 py-3 font-mono text-xs">
-          {`curl -X POST ${apiBase}/projects/<project-id>/sessions \\
+          {`curl -X POST ${apiBase}/workspaces/<workspace-id>/sessions \\
   -H "Authorization: Bearer <api-key>" \\
   -H "Content-Type: application/json" \\
   -d '{"initial_prompt": "Summarize new signups", "origin_ref": "your-user-123"}'`}
@@ -389,11 +389,11 @@ kortix projects ls`}
 }
 
 function InlineCreate({
-  projects,
+  workspaces,
   onClose,
   onCreated,
 }: {
-  projects: KortixProject[];
+  workspaces: KortixWorkspace[];
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -406,7 +406,7 @@ function InlineCreate({
     mutationFn: () =>
       createAccountToken({
         name: name.trim(),
-        projectId: scope === ACCOUNT_SCOPE ? undefined : scope,
+        workspaceId: scope === ACCOUNT_SCOPE ? undefined : scope,
       }),
     onSuccess: (token) => {
       setCreated(token);
@@ -495,11 +495,11 @@ function InlineCreate({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ACCOUNT_SCOPE}>Account-wide</SelectItem>
-                {projects.length > 0 && (
+                {workspaces.length > 0 && (
                   <SelectGroup>
-                    <SelectLabel>Project</SelectLabel>
-                    {projects.map((p) => (
-                      <SelectItem key={p.project_id} value={p.project_id}>
+                    <SelectLabel>Workspace</SelectLabel>
+                    {workspaces.map((p) => (
+                      <SelectItem key={p.workspace_id} value={p.workspace_id}>
                         {p.name}
                       </SelectItem>
                     ))}
@@ -508,7 +508,7 @@ function InlineCreate({
               </SelectContent>
             </Select>
             <p className="text-muted-foreground text-xs">
-              Account-wide keys reach every project. A project key is limited to that one project.
+              Account-wide keys reach every workspace. A workspace key is limited to that one workspace.
             </p>
           </div>
         </div>

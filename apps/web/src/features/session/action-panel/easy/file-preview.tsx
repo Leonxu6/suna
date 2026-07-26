@@ -25,7 +25,7 @@ import {
 import { isBrowserViewable } from '@/features/files/api/runtime-files';
 import { workspaceFileSource } from '@/features/files/file-source';
 import { useFileContent } from '@/features/files/hooks';
-import { getFileIcon } from '@/features/project-files';
+import { getFileIcon } from '@/features/workspace-files';
 import { useIsMobile } from '@/hooks/utils';
 import { track } from '@/lib/track';
 import { useIsExpanded, useToggleExpanded } from '@/stores/kortix-computer-store';
@@ -83,8 +83,8 @@ function PreviewShell({
    *  separate display title. */
   fileName?: string;
   path: string;
-  /** Project-session ids the share link is scoped to. Omitted where the session
-   *  has no project context yet, in which case the control is omitted entirely
+  /** Workspace-session ids the share link is scoped to. Omitted where the session
+   *  has no workspace context yet, in which case the control is omitted entirely
    *  rather than shown disabled (W4). */
   shareContext?: ShareContext;
   onClose: () => void;

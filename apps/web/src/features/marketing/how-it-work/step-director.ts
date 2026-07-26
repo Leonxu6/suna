@@ -16,7 +16,7 @@ import {
 
 // ── Step 1 — "Create" ───────────────────────────────────────────────────────
 
-export type Step1Project = {
+export type Step1Workspace = {
   name: string;
   status: 'draft' | 'live';
   files: number;
@@ -25,7 +25,7 @@ export type Step1Project = {
 };
 
 export type Step1Director = {
-  projects: Step1Project[];
+  workspaces: Step1Workspace[];
   scrollback: StepCliBlock[];
   typed: string;
   menu: StepCliMenuState | null;
@@ -33,7 +33,7 @@ export type Step1Director = {
   start: () => void;
 };
 
-const STEP1_PROJECT = 'acme-ops';
+const STEP1_WORKSPACE = 'acme-ops';
 
 const STEP1_SPEED = {
   start: 520,
@@ -61,10 +61,10 @@ function step1ScaffoldLines(runtime: RuntimeOption): Line[] {
     ok(t('Using '), t(runtime.label, 'fg'), t(' runtime')),
     [],
     [
-      t('Initialized Kortix project '),
-      t(`"${STEP1_PROJECT}"`, 'fg'),
+      t('Initialized Kortix workspace '),
+      t(`"${STEP1_WORKSPACE}"`, 'fg'),
       t(' in '),
-      t(`~/${STEP1_PROJECT}`, 'faded'),
+      t(`~/${STEP1_WORKSPACE}`, 'faded'),
     ],
     [t('Wrote 9 files:')],
     [t('  + ', 'faded'), t('kortix.yaml')],
@@ -75,15 +75,15 @@ function step1ScaffoldLines(runtime: RuntimeOption): Line[] {
     [t('Git: initialized (main)', 'dim')],
     [],
     [t('Next:')],
-    [t(`  cd ${STEP1_PROJECT}`, 'fg')],
+    [t(`  cd ${STEP1_WORKSPACE}`, 'fg')],
   ];
 }
 
 function step1StaticBlocks(): StepCliBlock[] {
   return [
     {
-      cmd: cmdLine(`kortix init ${STEP1_PROJECT}`),
-      out: [[], [t('Creating a new Kortix project…', 'dim')], ...step1ScaffoldLines(RUNTIMES[0])],
+      cmd: cmdLine(`kortix init ${STEP1_WORKSPACE}`),
+      out: [[], [t('Creating a new Kortix workspace…', 'dim')], ...step1ScaffoldLines(RUNTIMES[0])],
     },
   ];
 }
@@ -91,7 +91,7 @@ function step1StaticBlocks(): StepCliBlock[] {
 export function useStep1Director(): Step1Director {
   const reduced = useReducedMotion();
 
-  const [projects, setProjects] = useState<Step1Project[]>([]);
+  const [workspaces, setWorkspaces] = useState<Step1Workspace[]>([]);
   const [scrollback, setScrollback] = useState<StepCliBlock[]>([]);
   const [typed, setTyped] = useState('');
   const [menu, setMenu] = useState<StepCliMenuState | null>(null);
@@ -104,9 +104,9 @@ export function useStep1Director(): Step1Director {
   useEffect(() => {
     if (!reduced) return;
     setScrollback(step1StaticBlocks());
-    setProjects([
+    setWorkspaces([
       {
-        name: STEP1_PROJECT,
+        name: STEP1_WORKSPACE,
         status: 'draft',
         files: 9,
         branch: 'main',
@@ -138,7 +138,7 @@ export function useStep1Director(): Step1Director {
 
     const reset = () => {
       setScrollback([]);
-      setProjects([]);
+      setWorkspaces([]);
       setMenu(null);
       setTyped('');
     };
@@ -164,11 +164,11 @@ export function useStep1Director(): Step1Director {
         const chosenIdx = loopRef.current % RUNTIMES.length;
         const runtime = RUNTIMES[chosenIdx];
 
-        await typeCommand(`kortix init ${STEP1_PROJECT}`);
+        await typeCommand(`kortix init ${STEP1_WORKSPACE}`);
         if (cancelled) return;
 
         appendLine([]);
-        appendLine([t('Creating a new Kortix project…', 'dim')]);
+        appendLine([t('Creating a new Kortix workspace…', 'dim')]);
         await sleep(STEP1_SPEED.line);
 
         setMenu({ selected: 0, chosen: null });
@@ -190,9 +190,9 @@ export function useStep1Director(): Step1Director {
           if (cancelled) return;
           appendLine(lines[i]);
           if (i === 0) {
-            setProjects([
+            setWorkspaces([
               {
-                name: STEP1_PROJECT,
+                name: STEP1_WORKSPACE,
                 status: 'draft',
                 files: 9,
                 branch: 'main',
@@ -219,7 +219,7 @@ export function useStep1Director(): Step1Director {
   }, [started, reduced]);
 
   return {
-    projects,
+    workspaces,
     scrollback,
     typed,
     menu,

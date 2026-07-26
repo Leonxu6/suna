@@ -18,7 +18,7 @@ JWT=$(cat /tmp/userjwt); HDR=(-H "Authorization: Bearer $JWT" -H 'Content-Type: 
 
 worker(){
   local w=$1 i=$2 t0; t0=$(nowms); local out=/tmp/load/$w-$i
-  local sid; sid=$(curl -s -m20 "${HDR[@]}" -X POST "$BASE/v1/projects/$PID/sessions" -d '{"provider":"platinum","branch_already_created":false}'|python3 -c "import sys,json;print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null)
+  local sid; sid=$(curl -s -m20 "${HDR[@]}" -X POST "$BASE/v1/workspaces/$PID/sessions" -d '{"provider":"platinum","branch_already_created":false}'|python3 -c "import sys,json;print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null)
   [ -z "$sid" ] && { echo "ready=0 correct=0 fail=create" > "$out"; return; }
   local ext="" st="" row
   while :; do row=$(psql "select external_id||'|'||status from kortix.session_sandboxes where session_id='$sid' order by created_at desc limit 1;"); ext=${row%%|*}; st=${row##*|}; [ "$st" = active ] && [ -n "$ext" ] && break; [ $(( ($(nowms)-t0)/1000 )) -ge 240 ] && break; sleep 2; done
@@ -26,7 +26,7 @@ worker(){
   local ta=$(( $(nowms)-t0 ))
   local rok=0; while :; do curl -s -m6 "${HDR[@]}" "$BASE/v1/p/$ext/8000/kortix/health" 2>/dev/null|grep -q '"runtimeReady":true' && { rok=1; break; }; [ $(( ($(nowms)-t0)/1000 )) -ge 240 ] && break; sleep 1; done
   local tr=$(( $(nowms)-t0 ))
-  curl -s -m30 "${HDR[@]}" -X POST "$BASE/v1/projects/$PID/sessions/$sid/ensure-opencode" -d '{}' >/dev/null 2>&1
+  curl -s -m30 "${HDR[@]}" -X POST "$BASE/v1/workspaces/$PID/sessions/$sid/ensure-opencode" -d '{}' >/dev/null 2>&1
   local oc; oc=$(curl -s -m10 "${HDR[@]}" "$BASE/v1/p/$ext/8000/session?directory=%2Fworkspace"|python3 -c "import sys,json
 try:
  d=json.load(sys.stdin);ss=d if isinstance(d,list) else d.get('sessions',d.get('data',[]));print(ss[0]['id'] if ss else '')

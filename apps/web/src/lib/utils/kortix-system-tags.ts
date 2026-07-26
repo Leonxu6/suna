@@ -20,7 +20,7 @@ export function stripKortixSystemTags(text: string): string {
 export interface SessionReport {
 	sessionId: string
 	status: "COMPLETE" | "FAILED"
-	project: string
+	workspace: string
 	prompt: string
 	result: string
 }
@@ -41,7 +41,7 @@ export function extractSessionReport(text: string): SessionReport | null {
 	return {
 		sessionId: get("session-id"),
 		status: get("status") === "FAILED" ? "FAILED" : "COMPLETE",
-		project: get("project"),
+		workspace: get("workspace"),
 		prompt: get("prompt"),
 		result: get("result"),
 	}
@@ -85,8 +85,8 @@ export function extractKortixSystemMessages(text: string): KortixSystemMessage[]
 		if (
 			type === "session-report" ||
 			type.startsWith("pty-") ||
-			type === "project-status" ||
-			type === "project-context" ||
+			type === "workspace-status" ||
+			type === "workspace-context" ||
 			type === "workspace-context" ||
 			type === "session-context" ||
 			type === "memory-context"
@@ -116,9 +116,9 @@ function describeSystemMessage(type: string, source: string, body: string): { la
 		return { label: "Tasks", detail: "sync" }
 	}
 
-	// Project status injection
-	if (type === "project-status") {
-		return { label: "Project", detail: "status" }
+	// Workspace status injection
+	if (type === "workspace-status") {
+		return { label: "Workspace", detail: "status" }
 	}
 
 	// Rules / instructions

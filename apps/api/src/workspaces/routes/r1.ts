@@ -27,8 +27,8 @@ import { getCatalogItemDetail } from '../../marketplace/catalog';
 import { loadWorkspaceTriggers } from '../triggers';
 import { invalidateWorkspaceMirror } from '../git';
 import { createRoute, z } from '@hono/zod-openapi';
-import { accountGithubInstallations, workspaceMembers, workspaces } from '@kortix/db';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { accountGithubInstallations, accounts, workspaceMembers, workspaces } from '@kortix/db';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { createHash, randomUUID } from 'node:crypto';
 import { enforceWorkspaceQuota, grantWorkspaceRole, loadWorkspaceForUser, resolveWorkspaceAccount, assertWorkspaceCapability } from '../lib/access';
 import { AnyObject, WorkspaceSchema, workspaceWebhooksApp, workspacesApp } from '../lib/app';
@@ -541,6 +541,13 @@ workspacesApp.openapi(
       updatedAt: now,
     })
     .returning();
+
+  await db
+    .update(accounts)
+    .set({ defaultWorkspaceId: row.workspaceId })
+    .where(
+      and(eq(accounts.accountId, scope.accountId), isNull(accounts.defaultWorkspaceId)),
+    );
 
   await grantWorkspaceRole({
     accountId: scope.accountId,

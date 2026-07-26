@@ -10,20 +10,20 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { kortix } from '@/lib/kortix';
-import type { ProjectSecret } from '@kortix/sdk';
+import type { WorkspaceSecret } from '@kortix/sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GitBranch, KeyRound, Trash2, UserCog } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-export function SecretsTab({ projectId }: { projectId: string }) {
+export function SecretsTab({ workspaceId }: { workspaceId: string }) {
   const qc = useQueryClient();
-  const key = ['project-secrets', projectId] as const;
+  const key = ['workspace-secrets', workspaceId] as const;
   const refresh = () => qc.invalidateQueries({ queryKey: key });
 
   const secrets = useQuery({
     queryKey: key,
-    queryFn: () => kortix.project(projectId).secrets.list(),
+    queryFn: () => kortix.workspace(workspaceId).secrets.list(),
   });
 
   const [name, setName] = useState('');
@@ -31,7 +31,7 @@ export function SecretsTab({ projectId }: { projectId: string }) {
   const [gitToken, setGitToken] = useState('');
 
   const upsert = useMutation({
-    mutationFn: () => kortix.project(projectId).secrets.upsert({ name: name.trim(), value }),
+    mutationFn: () => kortix.workspace(workspaceId).secrets.upsert({ name: name.trim(), value }),
     onSuccess: () => {
       setName('');
       setValue('');
@@ -42,7 +42,7 @@ export function SecretsTab({ projectId }: { projectId: string }) {
   });
 
   const remove = useMutation({
-    mutationFn: (n: string) => kortix.project(projectId).secrets.remove(n),
+    mutationFn: (n: string) => kortix.workspace(workspaceId).secrets.remove(n),
     onSuccess: () => {
       refresh();
       toast.success('Secret removed');
@@ -52,7 +52,7 @@ export function SecretsTab({ projectId }: { projectId: string }) {
 
   const setGitCredential = useMutation({
     mutationFn: () =>
-      kortix.project(projectId).secrets.setGitCredential({ token: gitToken.trim() }),
+      kortix.workspace(workspaceId).secrets.setGitCredential({ token: gitToken.trim() }),
     onSuccess: () => {
       setGitToken('');
       toast.success('Git credential saved');
@@ -60,7 +60,7 @@ export function SecretsTab({ projectId }: { projectId: string }) {
     onError: () => toast.error('Could not save git credential'),
   });
 
-  const items: ProjectSecret[] = secrets.data?.items ?? [];
+  const items: WorkspaceSecret[] = secrets.data?.items ?? [];
 
   return (
     <div className="space-y-4">
@@ -110,7 +110,7 @@ export function SecretsTab({ projectId }: { projectId: string }) {
         {items.map((s, i) => (
           <SecretRow
             key={String(s.name ?? i)}
-            projectId={projectId}
+            workspaceId={workspaceId}
             secret={s}
             onChanged={refresh}
             onRemove={() => remove.mutate(String(s.name))}
@@ -124,7 +124,7 @@ export function SecretsTab({ projectId }: { projectId: string }) {
           <GitBranch className="size-4 text-muted-foreground" /> Git credential
         </div>
         <p className="text-xs text-muted-foreground">
-          A token the agent uses to clone and push to the project repository.
+          A token the agent uses to clone and push to the workspace repository.
         </p>
         <form
           className="mt-3 flex flex-wrap gap-2"
@@ -151,14 +151,14 @@ export function SecretsTab({ projectId }: { projectId: string }) {
 }
 
 function SecretRow({
-  projectId,
+  workspaceId,
   secret,
   onChanged,
   onRemove,
   removing,
 }: {
-  projectId: string;
-  secret: ProjectSecret;
+  workspaceId: string;
+  secret: WorkspaceSecret;
   onChanged: () => void;
   onRemove: () => void;
   removing: boolean;
@@ -170,7 +170,7 @@ function SecretRow({
 
   const setPersonalMut = useMutation({
     mutationFn: (input: { value?: string; active?: boolean }) =>
-      kortix.project(projectId).secrets.setPersonal(name, input),
+      kortix.workspace(workspaceId).secrets.setPersonal(name, input),
     onSuccess: () => {
       setPersonal('');
       onChanged();
@@ -180,7 +180,7 @@ function SecretRow({
   });
 
   const removePersonalMut = useMutation({
-    mutationFn: () => kortix.project(projectId).secrets.removePersonal(name),
+    mutationFn: () => kortix.workspace(workspaceId).secrets.removePersonal(name),
     onSuccess: () => {
       onChanged();
       toast.success('Override removed');

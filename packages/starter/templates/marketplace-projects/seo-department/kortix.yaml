@@ -163,7 +163,7 @@ triggers:
       intent fit; cluster new topic opportunities; produce briefs or refresh
       patches where useful; and maintain the editorial backlog in memory. Do not
       publish or materially change live copy without approval unless the operator
-      has explicitly enabled auto-publishing for this project.
+      has explicitly enabled auto-publishing for this workspace.
 
   - slug: monthly-seo-growth-report
     name: Monthly SEO growth report

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { shredAgentEnvFile, writeAgentEnvFile } from '../agent-env-file'
-import { createProjectEnvStore } from '../project-env'
+import { createWorkspaceEnvStore } from '../workspace-env'
 
 let dir: string
 
@@ -21,7 +21,7 @@ function shPath() {
 
 describe('writeAgentEnvFile', () => {
   test('writes a 0600 shell file that exports each secret', () => {
-    const store = createProjectEnvStore({
+    const store = createWorkspaceEnvStore({
       KORTIX_PROJECT_SECRET_NAMES: 'API_KEY',
       API_KEY: 'secret',
     } as NodeJS.ProcessEnv)
@@ -35,7 +35,7 @@ describe('writeAgentEnvFile', () => {
   })
 
   test('injection-safe — values are single-quote escaped', () => {
-    const store = createProjectEnvStore({
+    const store = createWorkspaceEnvStore({
       KORTIX_PROJECT_SECRET_NAMES: 'EVIL',
       EVIL: "$(touch /tmp/pwned); a'b",
     } as NodeJS.ProcessEnv)
@@ -48,7 +48,7 @@ describe('writeAgentEnvFile', () => {
   })
 
   test('skips a value containing a NUL byte rather than breaking the file', () => {
-    const store = createProjectEnvStore({
+    const store = createWorkspaceEnvStore({
       KORTIX_PROJECT_SECRET_NAMES: 'GOOD,BADNUL',
       GOOD: 'ok',
       BADNUL: `x${String.fromCharCode(0)}y`,
@@ -64,7 +64,7 @@ describe('writeAgentEnvFile', () => {
   })
 
   test('drops reserved/dangerous names even if they reach the store', () => {
-    const store = createProjectEnvStore({
+    const store = createWorkspaceEnvStore({
       KORTIX_PROJECT_SECRET_NAMES: 'GOOD,PATH,LD_PRELOAD,BASH_ENV',
       GOOD: 'ok',
       PATH: '/evil',
@@ -82,7 +82,7 @@ describe('writeAgentEnvFile', () => {
   })
 
   test('rotation + revocation: exports new value, unsets a removed boot secret', () => {
-    const store = createProjectEnvStore({
+    const store = createWorkspaceEnvStore({
       KORTIX_PROJECT_SECRET_NAMES: 'API_KEY,OLD',
       API_KEY: 'v1',
       OLD: 'gone-soon',
@@ -103,7 +103,7 @@ describe('writeAgentEnvFile', () => {
   test('emits the per-session cred allowlist (no-restart hot-swap fix) but NOT daemon-internal KORTIX_*', () => {
     // The no-restart hot-swap reuses the seed opencode, so its env never gets the
     // per-session creds; this file (BASH_ENV) must carry them to the agent's shells.
-    const store = createProjectEnvStore({
+    const store = createWorkspaceEnvStore({
       KORTIX_PROJECT_SECRET_NAMES: 'API_KEY',
       API_KEY: 'secret',
     } as NodeJS.ProcessEnv)
@@ -141,7 +141,7 @@ describe('writeAgentEnvFile', () => {
   })
 
   test('shredAgentEnvFile removes the file', () => {
-    const store = createProjectEnvStore({
+    const store = createWorkspaceEnvStore({
       KORTIX_PROJECT_SECRET_NAMES: 'API_KEY',
       API_KEY: 'secret',
     } as NodeJS.ProcessEnv)

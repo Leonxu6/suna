@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -21,9 +21,15 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { CreateAccountModal } from '@/features/accounts/create-account-modal';
 import { useAdminRole } from '@/hooks/admin/use-admin-role';
 import { isAccountCreationRestricted, isBillingEnabled } from '@/lib/config';
-import { listAccounts, type KortixAccount } from '@kortix/sdk';
+import {
+  listAccounts,
+  listWorkspacesForAccount,
+  type KortixAccount,
+  type KortixWorkspace,
+} from '@kortix/sdk';
 import { usePermission } from '@/lib/use-permission';
 import { cn } from '@/lib/utils';
+import { accountWorkspaceDestination } from '@/lib/workspace-navigation';
 import { useAccountSettingsModalStore } from '@/stores/account-settings-modal-store';
 import { useCurrentAccountStore } from '@/stores/current-account-store';
 import {
@@ -47,7 +53,6 @@ export function AccountSwitcher({
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const tHardcodedUi = useTranslations('hardcodedUi');
   const router = useRouter();
-  const pathname = usePathname();
   const queryClient = useQueryClient();
   const { selectedAccountId, setSelectedAccountId } = useCurrentAccountStore();
   const billingActive = isBillingEnabled();
@@ -98,11 +103,18 @@ export function AccountSwitcher({
     requestAnimationFrame(() => fn());
   };
 
-  const switchAccount = (account: KortixAccount) => {
+  const switchAccount = async (account: KortixAccount) => {
     setSelectedAccountId(account.account_id);
     close();
-    if (pathname?.startsWith('/accounts/')) {
-      router.push(`/accounts/${account.account_id}`);
+    try {
+      const workspaces = await queryClient.fetchQuery<KortixWorkspace[]>({
+        queryKey: ['workspaces', account.account_id],
+        queryFn: () => listWorkspacesForAccount(account.account_id),
+        staleTime: 30_000,
+      });
+      router.push(accountWorkspaceDestination(account, workspaces));
+    } catch {
+      router.push('/workspaces');
     }
   };
 
@@ -185,7 +197,10 @@ export function AccountSwitcher({
               const itemLabel = account.name || 'Account';
               const active = account.account_id === activeAccount?.account_id;
               return (
-                <DropdownMenuItem key={account.account_id} onSelect={() => switchAccount(account)}>
+                <DropdownMenuItem
+                  key={account.account_id}
+                  onSelect={() => void switchAccount(account)}
+                >
                   <EntityAvatar label={itemLabel} size="xs" />
                   <span className="min-w-0 flex-1 truncate text-sm leading-tight font-medium">
                     {itemLabel}
@@ -276,9 +291,9 @@ export function AccountSwitcher({
           void queryClient.invalidateQueries({ queryKey: ['accounts'] });
           setSelectedAccountId(account.account_id);
           void queryClient.invalidateQueries({
-            queryKey: ['projects', account.account_id],
+            queryKey: ['workspaces', account.account_id],
           });
-          router.push('/projects');
+          router.push('/workspaces');
         }}
       />
     </>

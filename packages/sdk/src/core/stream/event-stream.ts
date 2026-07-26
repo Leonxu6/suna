@@ -339,7 +339,7 @@ export function openEventStream(opts: OpenEventStreamOptions): EventStreamHandle
               // reconnect cycles) this piles up fast: every retry can leave a
               // stray in-flight fetch behind, and under HTTP/1.1's 6-per-origin
               // cap those leaked connections alone can saturate the pool and
-              // queue out every other request (/projects, /sessions, ...).
+              // queue out every other request (/workspaces, /sessions, ...).
               // Setting this to 1 makes a failed fetch complete the generator
               // (a clean `done`, no throw, no internal retry/sleep) instead of
               // scheduling its own reconnect — so THIS module's outer loop is

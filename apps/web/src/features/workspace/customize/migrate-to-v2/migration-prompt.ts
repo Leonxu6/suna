@@ -1,7 +1,7 @@
 /**
  * The seed prompt for "Migrate to v2" — a normal agent session does the
  * conversion because it's just files + git (Marko's framing). We start a
- * fresh session with this as the first message; the project's default agent
+ * fresh session with this as the first message; the workspace's default agent
  * reads the repo, rewrites the manifest, and opens a change request for a
  * human to review. Nothing here merges anything — that's the whole point of
  * routing config changes through the same CR path as any other edit.
@@ -23,18 +23,18 @@
  * independently testable and diffable — this is the load-bearing artifact of
  * the feature, not the wiring around it.
  */
-export const MIGRATE_TO_V2_PROMPT = `Migrate this project's manifest from kortix_version 1 (kortix.toml) to kortix_version 2 (kortix.yaml). Read everything first, then make the change, then land it as a change request — do not merge it yourself.
+export const MIGRATE_TO_V2_PROMPT = `Migrate this workspace's manifest from kortix_version 1 (kortix.toml) to kortix_version 2 (kortix.yaml). Read everything first, then make the change, then land it as a change request — do not merge it yourself.
 
 ## 1. Read before you write
 
-- The current manifest: \`kortix.toml\` (or \`kortix.yaml\` if this project already partially moved — check \`kortix_version\` at the top either way).
+- The current manifest: \`kortix.toml\` (or \`kortix.yaml\` if this workspace already partially moved — check \`kortix_version\` at the top either way).
 - Any \`[[agents]]\` entries in the v1 manifest — these carry \`connectors\`, \`kortix_cli\`, and \`env\` grants per agent name. An agent name with NO \`[[agents]]\` entry at all is today unrestricted (v1's back-compat default is "all" when a grant key is omitted).
-- \`.kortix/opencode/opencode.jsonc\` — if it sets a top-level \`default_agent\`, that is the project's existing default; use it. If it doesn't, pick the agent whose \`.kortix/opencode/agents/*.md\` frontmatter has \`mode: primary\` and reads as the general/primary one (usually the first-created or the one with the broadest permissions). Record which you picked and why in the change request description — a human reviews this before it merges, so a defensible choice beats blocking on it.
+- \`.kortix/opencode/opencode.jsonc\` — if it sets a top-level \`default_agent\`, that is the workspace's existing default; use it. If it doesn't, pick the agent whose \`.kortix/opencode/agents/*.md\` frontmatter has \`mode: primary\` and reads as the general/primary one (usually the first-created or the one with the broadest permissions). Record which you picked and why in the change request description — a human reviews this before it merges, so a defensible choice beats blocking on it.
 - **You do NOT need to read each agent's \`.md\` frontmatter to migrate it.** v1's frontmatter (mode/model/temperature/permission/prompt/…) is ALREADY valid v2 OpenCode behavior — it stays exactly where it is, unchanged. This migration is governance-only.
 
 ## 2. Bring the platform baseline up to date first
 
-A project still on a v1 manifest is usually also running stale platform skills. Refresh them BEFORE touching the manifest so the migration lands on a current baseline:
+A workspace still on a v1 manifest is usually also running stale platform skills. Refresh them BEFORE touching the manifest so the migration lands on a current baseline:
 
 1. \`kortix marketplace updates\` — a hash-diff report of every marketplace-tracked item (the kortix-managed skills like \`kortix-system\`/\`kortix-memory\`, plus any marketplace skills the user installed).
 2. If updates are listed, apply them: \`kortix marketplace update --all\`. **This commits directly to \`main\` through the platform's own hash-safe update path — it is intentionally NOT part of your change request.** It only rewrites files whose installed hash no longer matches the catalog, so untouched user files are never clobbered.
@@ -79,14 +79,14 @@ Rules that the schema enforces (get these right or \`kortix validate\` fails):
 - \`disable\` is a hard error too — it's the manifest-governance \`enabled\` (inverted): write \`enabled: false\` instead. (This is unrelated to a NATIVE \`disable\` key that might already be hand-authored in an agent's own \`.md\` frontmatter — leave that alone; it's a different, runtime-level concept.)
 - \`env\` is a hard error in v2 — it is renamed \`secrets\`. **v2 defaults every omitted grant (\`connectors\`/\`secrets\`/\`kortix_cli\`/\`skills\`) to \`"none"\` (deny-by-default), unlike v1 which defaulted an omitted grant to \`"all"\`.** To avoid silently narrowing an agent's access during migration, write the EXPLICIT value that reproduces today's behavior for every agent — if a v1 agent had no \`[[agents]]\` entry, or its \`env\`/\`connectors\`/\`kortix_cli\` were omitted or set to \`all\`, write \`secrets: all\`, \`connectors: all\`, \`kortix_cli: all\` explicitly in its v2 block. Only narrow a grant if the v1 manifest already narrowed it (an explicit list, or \`none\`) — carry that exact list over. \`skills\` has no v1 equivalent; default new agents to \`all\` unless you have a specific reason to narrow.
 - \`channels\` is removed entirely in v2 — delete any \`[[channels]]\` block. Channel↔agent routing now lives in the dashboard (Customize → Channels), not in git. Do not try to replicate it in the manifest.
-- Every other top-level section (\`project\`, \`env\` for required/optional documentation vars — NOT the per-agent grant, top-level \`opencode\` config-dir settings, \`sandbox\`, \`triggers\`, \`connectors\`, \`apps\`) keeps its v1 shape unchanged — translated to YAML, not restructured. If \`triggers[].agent\` names an agent, make sure that name still exists in the new \`agents\` map (rename references if you renamed an agent).
+- Every other top-level section (\`workspace\`, \`env\` for required/optional documentation vars — NOT the per-agent grant, top-level \`opencode\` config-dir settings, \`sandbox\`, \`triggers\`, \`connectors\`, \`apps\`) keeps its v1 shape unchanged — translated to YAML, not restructured. If \`triggers[].agent\` names an agent, make sure that name still exists in the new \`agents\` map (rename references if you renamed an agent).
 - If an agent has no \`.md\` today (a bare \`[[agents]]\` entry with no matching OpenCode agent file), still declare it in \`agents:\` with its governance grants carried over — don't drop it. It will simply have no behavior until someone adds \`.kortix/opencode/agents/<name>.md\`.
 
 ## 5. Legacy keys v2 refuses — drop these while you convert
 
 v1 tolerates several retired keys with a deprecation warning; v2 makes every one of them a hard error. Remove them as part of the conversion and note each removal in the change request description:
 
-- **Retired \`kortix_cli\` actions** — \`project.session.exec\`, \`project.gateway.routing.edit\`, \`project.schedule.read\`, \`project.schedule.write\`, \`project.webhook.read\`, \`project.webhook.write\`, \`channel.read\`, \`channel.connect\`, \`channel.send\`, \`channel.disconnect\`. These were removed from the enforcement catalog and have been no-ops for a while — granting or omitting them never had any effect, so deleting them from a grant list changes nothing. Do NOT substitute a broader grant (e.g. \`all\`) to "cover" a deleted action.
+- **Retired \`kortix_cli\` actions** — \`workspace.session.exec\`, \`workspace.gateway.routing.edit\`, \`workspace.schedule.read\`, \`workspace.schedule.write\`, \`workspace.webhook.read\`, \`workspace.webhook.write\`, \`channel.read\`, \`channel.connect\`, \`channel.send\`, \`channel.disconnect\`. These were removed from the enforcement catalog and have been no-ops for a while — granting or omitting them never had any effect, so deleting them from a grant list changes nothing. Do NOT substitute a broader grant (e.g. \`all\`) to "cover" a deleted action.
 - **\`credential = "per_user"\` on a \`[[connectors]]\` entry** — the per-user credential mode was removed; every connector is \`"shared"\` now. Delete the \`credential\` key (or write \`shared\` explicitly if the entry already spelled it out).
 - **\`agent_scope\` on a \`[[connectors]]\` entry** — retired; the runtime no longer reads it. Per-agent connector access is expressed from the OTHER side now: each agent's \`connectors:\` grant in the \`agents:\` map. If a v1 connector had \`agent_scope = ["a", "b"]\`, make sure agents outside that list don't get that connector slug in their \`connectors\` grant (use an explicit slug list instead of \`all\` for the agents that should keep access), then delete the key.
 - **Legacy singular \`[sandbox]\` image keys** (\`image\`, \`dockerfile\`, \`cpu\`, \`memory\`, \`disk\`, …) — already an error in v1's validator; if \`kortix validate\` flags them, move the image definition under \`[[sandbox.templates]]\` → \`sandbox.templates:\` with a named slug.
@@ -98,7 +98,7 @@ A representative v1 \`kortix.toml\`:
 \`\`\`toml
 kortix_version = 1
 
-[project]
+[workspace]
 name = "acme-ops"
 
 [env]
@@ -108,7 +108,7 @@ required = ["DATABASE_URL"]
 name = "dev"
 connectors = ["github", "linear"]
 env = "all"
-kortix_cli = ["project.file.read", "project.file.write", "project.session.exec"]
+kortix_cli = ["workspace.file.read", "workspace.file.write", "workspace.session.exec"]
 
 [[agents]]
 name = "support"
@@ -138,7 +138,7 @@ becomes this v2 \`kortix.yaml\`:
 kortix_version: 2
 default_agent: dev
 
-project:
+workspace:
   name: acme-ops
 
 env:
@@ -151,9 +151,9 @@ agents:
       - github
       - linear
     secrets: all          # v1 "env = all", renamed
-    kortix_cli:           # project.session.exec dropped — retired no-op action
-      - project.file.read
-      - project.file.write
+    kortix_cli:           # workspace.session.exec dropped — retired no-op action
+      - workspace.file.read
+      - workspace.file.write
     skills: all
   support:
     # v1 had no grants (implicit all) — but the github connector was
@@ -178,7 +178,7 @@ connectors:
     # access now lives in the agents map above.
 \`\`\`
 
-Note what happened: the \`[[channels]]\` block is gone (dashboard-owned now), \`env\` became \`secrets\`, the retired CLI action and connector keys were dropped, every omitted-in-v1 grant was written out explicitly, and the old \`agent_scope\` was honored by adjusting the AGENTS' \`connectors\` grants rather than copied over. Your project will differ — apply the rules, not this output verbatim.
+Note what happened: the \`[[channels]]\` block is gone (dashboard-owned now), \`env\` became \`secrets\`, the retired CLI action and connector keys were dropped, every omitted-in-v1 grant was written out explicitly, and the old \`agent_scope\` was honored by adjusting the AGENTS' \`connectors\` grants rather than copied over. Your workspace will differ — apply the rules, not this output verbatim.
 
 ## 7. Leave every agent's \`.md\` alone
 
@@ -189,7 +189,7 @@ Do not open, edit, or reformat any \`.kortix/opencode/agents/*.md\` file as part
 - Write the fully assembled manifest to \`kortix.yaml\` at the repo root (same directory as the old \`kortix.toml\`).
 - Carry over meaningful TOML comments as YAML comments next to the same keys — hand-written context in a manifest is documentation someone chose to leave; don't strip it.
 - Delete the old \`kortix.toml\` in the same commit — don't leave both files (the platform always prefers \`kortix.yaml\` when both exist, but a stale v1 file next to it is confusing for the next person who edits by hand).
-- You do not need to touch any project setting outside git — the platform resolves \`kortix.yaml\` automatically once it exists, regardless of the configured manifest filename.
+- You do not need to touch any workspace setting outside git — the platform resolves \`kortix.yaml\` automatically once it exists, regardless of the configured manifest filename.
 
 ## 9. Validate before you're done
 
@@ -197,7 +197,7 @@ Run \`kortix validate\` (it auto-detects \`kortix.yaml\`). Fix every error it re
 
 ## 10. Land it as a change request — never merge
 
-First, re-sync: \`git fetch origin\` and check whether \`origin/main\` advanced while you worked (\`git log HEAD..origin/main --oneline\`) — on active projects it will (connectors added from the dashboard, other sessions merging). If it moved, rebase; if the rebase conflicts on \`kortix.toml\` (main changed the manifest you deleted), don't fight it — \`git rebase --abort\`, \`git reset --hard origin/main\`, and redo the conversion against the CURRENT manifest, then continue. Never revert main's changes to win a conflict.
+First, re-sync: \`git fetch origin\` and check whether \`origin/main\` advanced while you worked (\`git log HEAD..origin/main --oneline\`) — on active workspaces it will (connectors added from the dashboard, other sessions merging). If it moved, rebase; if the rebase conflicts on \`kortix.toml\` (main changed the manifest you deleted), don't fight it — \`git rebase --abort\`, \`git reset --hard origin/main\`, and redo the conversion against the CURRENT manifest, then continue. Never revert main's changes to win a conflict.
 
 Then commit, **push the branch**, and open the change request. A commit that is never pushed leaves the CR empty ("No changes detected") and un-appliable — the platform refuses such a CR outright (\`422 CR_HEAD_NOT_AHEAD\`):
 

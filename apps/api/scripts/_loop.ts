@@ -19,10 +19,10 @@ let pass=0;
 console.log(`######## REAL-USER LOOP (${N} spawns) ########`);
 for (let n=1;n<=N;n++){
   const t0=now();
-  const prov:any = await (await fetch(`${BASE}/v1/projects/provision`,{method:'POST',headers:H,body:JSON.stringify({name:`loop-${t0}-${n}`,seed_starter:true,account_id:ACC})})).json();
+  const prov:any = await (await fetch(`${BASE}/v1/workspaces/provision`,{method:'POST',headers:H,body:JSON.stringify({name:`loop-${t0}-${n}`,seed_starter:true,account_id:ACC})})).json();
   if(!prov.project_id){ console.log(`[#${n}] PROVISION FAIL`); continue; }
   const tSes=now();
-  const ses:any = await (await fetch(`${BASE}/v1/projects/${prov.project_id}/sessions`,{method:'POST',headers:H,body:JSON.stringify({provider:'platinum',branch_already_created:false})})).json();
+  const ses:any = await (await fetch(`${BASE}/v1/workspaces/${prov.project_id}/sessions`,{method:'POST',headers:H,body:JSON.stringify({provider:'platinum',branch_already_created:false})})).json();
   const spawnMs = now()-tSes;           // session-create now blocks until runtimeReady
   if(!ses.session_id){ console.log(`[#${n}] SESSION FAIL ${JSON.stringify(ses).slice(0,120)}`); continue; }
   // async provisioning: poll the row until baseUrl + active (provider create()

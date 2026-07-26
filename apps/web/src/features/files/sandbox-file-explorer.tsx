@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { RefreshCw, ServerOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { DriveExplorer, FileExplorerSourceProvider } from '@/features/project-files';
+import { DriveExplorer, FileExplorerSourceProvider } from '@/features/workspace-files';
 import { useRuntimeStore } from '@kortix/sdk/react';
 import { useServerHealth } from './hooks';
 import { sandboxExplorerSource } from './sandbox-explorer-source';
@@ -19,7 +19,7 @@ export function SandboxFileExplorer({
   shareContext,
 }: {
   embedded?: boolean;
-  shareContext?: { projectId: string; sessionId: string };
+  shareContext?: { workspaceId: string; sessionId: string };
 } = {}) {
   return (
     <FileExplorerSourceProvider value={sandboxExplorerSource}>

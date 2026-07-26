@@ -4,7 +4,7 @@ Companion to the "create a new OpenCode skill" line in this skill's
 `<when-to-load>`. A skill is reusable know-how, written down once so every
 future session can load it on demand instead of rediscovering the workflow
 from scratch. This page teaches you to author one to the **agentskills.io
-specification** and land it in a Kortix project the right way.
+specification** and land it in a Kortix workspace the right way.
 
 ## When to use this guide
 
@@ -46,7 +46,7 @@ very file is one of its `references/`.)
 
 ## Where skills live in Kortix
 
-In a Kortix project, skills go under the OpenCode config dir:
+In a Kortix workspace, skills go under the OpenCode config dir:
 
 ```
 .kortix/opencode/skills/<name>/SKILL.md
@@ -54,8 +54,8 @@ In a Kortix project, skills go under the OpenCode config dir:
 
 The directory name **must equal** the `name` in the frontmatter. At
 runtime, OpenCode also discovers skills from `.opencode/skills/`,
-`.claude/skills/`, and `.agents/skills/` (project and home directory). For
-a Kortix project, author under `.kortix/opencode/skills/` — that's the
+`.claude/skills/`, and `.agents/skills/` (workspace and home directory). For
+a Kortix workspace, author under `.kortix/opencode/skills/` — that's the
 canonical home and what the marketplace installs into.
 
 OpenCode lists every discovered skill in the `skill` tool description and
@@ -67,7 +67,7 @@ internalizing:
   the skill never fires.
 - **A new skill reaches future sessions only after a change request
   merges.** Writing the file on a session branch makes it available *to
-  that session*; to make it permanent for the project, commit, push, and
+  that session*; to make it permanent for the workspace, commit, push, and
   open a CR (`kortix cr open`). See the `<change-requests>` section above.
 
 ## The SKILL.md file
@@ -116,7 +116,7 @@ and rejected by spec validators:
 - 1–64 characters, lowercase alphanumeric and single hyphens only
 - No leading/trailing hyphen, no consecutive `--`
 - Must match the containing directory exactly, and be unique among the
-  project's skills
+  workspace's skills
 - Good: `release-notes`, `competitor-teardown`, `invoice-parse` — Bad:
   `-draft`, `My_Skill`, `pdf--merge`
 
@@ -193,7 +193,7 @@ Two complementary checks — do both:
 
 ## Make it land and shareable
 
-- **Persist it in the project.** A skill file on a session branch is gone
+- **Persist it in the workspace.** A skill file on a session branch is gone
   when the session ends. To make it permanent: commit, `git push origin
   HEAD`, then `kortix cr open --title "Add <name> skill" --description
   "..."`. It reaches future sessions only after the CR merges to `main`.
@@ -204,8 +204,8 @@ Two complementary checks — do both:
     directory (`.zip`, not tar). The bundled files are part of the skill;
     don't strip them.
   - Stay within **100 files** and **70 MB**.
-- **For reuse across projects**, move the skill into a marketplace/registry
-  source and index it there, so other projects can `kortix marketplace
+- **For reuse across workspaces**, move the skill into a marketplace/registry
+  source and index it there, so other workspaces can `kortix marketplace
   install` it instead of copy-pasting. (Registry *authoring* commands —
   `kortix registry build/validate` — are developer tools, distinct from
   the consumer `kortix marketplace` surface described in this skill's
@@ -249,7 +249,7 @@ character — most often `:`, but also `#`, `[`, `{`, a leading `-`, or
 `yes`/`no`/`null`. Wrap the value in double quotes.
 
 **Invalid name** — Breaks the `^[a-z0-9]+(-[a-z0-9]+)*$` rule, doesn't
-match the directory, or duplicates an existing skill. Check the project's
+match the directory, or duplicates an existing skill. Check the workspace's
 existing skill names before settling on one.
 
 **"Unexpected fields in frontmatter"** — A non-allowed key sits at the top

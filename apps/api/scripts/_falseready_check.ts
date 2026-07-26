@@ -8,9 +8,9 @@ const H = { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' }
 const B = 'http://localhost:8008';
 const now = () => Date.now();
 
-const prov: any = await (await fetch(`${B}/v1/projects/provision`, { method: 'POST', headers: H, body: JSON.stringify({ name: `frc-${now()}`, seed_starter: true }) })).json();
+const prov: any = await (await fetch(`${B}/v1/workspaces/provision`, { method: 'POST', headers: H, body: JSON.stringify({ name: `frc-${now()}`, seed_starter: true }) })).json();
 const t0 = now();
-const ses: any = await (await fetch(`${B}/v1/projects/${prov.project_id}/sessions`, { method: 'POST', headers: H, body: JSON.stringify({ branch_already_created: false }) })).json();
+const ses: any = await (await fetch(`${B}/v1/workspaces/${prov.project_id}/sessions`, { method: 'POST', headers: H, body: JSON.stringify({ branch_already_created: false }) })).json();
 console.log('session', ses.session_id?.slice(0, 8));
 let row: any = null;
 while (!row?.externalId) { [row] = await db.select().from(sessionSandboxes).where(eq(sessionSandboxes.sessionId, ses.session_id)).limit(1); if (!row?.externalId) await Bun.sleep(200); }

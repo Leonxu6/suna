@@ -1,6 +1,6 @@
 # @kortix/sandbox-agent-server
 
-Thin sandbox-side daemon that runs inside every Kortix project-session sandbox.
+Thin sandbox-side daemon that runs inside every Kortix workspace session.
 
 **Scope:**
 
@@ -33,11 +33,11 @@ in-process daemon.
    It only reads files off disk, so it comes up first and stays up regardless
    of repo/opencode state — previews work while the agent is still booting.
    Non-fatal: a bind failure is logged and `static_web_port` reports `null`.
-3. If `KORTIX_PROJECT_AUTO_CLONE=1`, `git clone` the project repo to
+3. If `KORTIX_WORKSPACE_AUTO_CLONE=1`, clone the workspace repo to
    `/workspace/.kortix` and check out the requested branch. Failures are
    logged but non-fatal — the daemon still serves `/kortix/health`.
-4. Resolve `OPENCODE_CONFIG_DIR` (project overlay wins over the baked default).
-5. Start the opencode supervisor in the cloned project directory (`opencode serve --port <internal> --hostname 127.0.0.1`).
+4. Resolve `OPENCODE_CONFIG_DIR` (workspace overlay wins over the baked default).
+5. Start the opencode supervisor in the cloned workspace directory (`opencode serve --port <internal> --hostname 127.0.0.1`).
    If the binary isn't found we keep going and report `opencode: 'starting'`.
 6. Start the Hono proxy on `0.0.0.0:KORTIX_SERVICE_PORT`.
 7. Trap signals; on shutdown, drain proxy + static web + kill child.
@@ -68,14 +68,14 @@ in-process daemon.
 - `daemon` is always `"ok"` if the route responds.
 - `opencode` is `"ok" | "starting" | "down"`. `"starting"` covers both
   pre-bind and between-restart states.
-- `repo`, `branch`, `commit_sha` come from `git` in `KORTIX_PROJECT_TARGET` and
+- `repo`, `branch`, `commit_sha` come from `git` in `KORTIX_WORKSPACE_TARGET` and
   are `null` when no repo has been materialized.
 
 ### `POST /kortix/refresh`
 
 Requires a valid `X-Kortix-User-Context` signed with `KORTIX_TOKEN`. On success,
 the daemon fetches origin, runs `git pull --ff-only` for the session branch, and
-restarts opencode so project config changes are picked up without recreating the
+restarts opencode so workspace config changes are picked up without recreating the
 sandbox. Missing/invalid context returns `401`; no materialized repo or a
 non-fast-forward conflict returns `409`.
 
@@ -97,17 +97,30 @@ KORTIX_SERVICE_PORT=8000
 KORTIX_OPENCODE_INTERNAL_PORT=4096
 KORTIX_STATIC_PORT=3211
 KORTIX_WORKSPACE=/workspace
-KORTIX_PROJECT_TARGET=/workspace/.kortix
+KORTIX_WORKSPACE_TARGET=/workspace/.kortix
 KORTIX_DEFAULT_BRANCH=main
 KORTIX_BRANCH_FETCH_ATTEMPTS=60
 KORTIX_BRANCH_FETCH_DELAY=0.25
 KORTIX_DEFAULT_OPENCODE_CONFIG_DIR=/ephemeral/kortix-master/opencode
-KORTIX_PROJECT_AUTO_CLONE=0
+KORTIX_WORKSPACE_AUTO_CLONE=0
+KORTIX_WORKSPACE_ID=
+KORTIX_WORKSPACE_SECRET_NAMES=
+KORTIX_WORKSPACE_SECRETS_REVISION=
 KORTIX_REPO_URL=
 KORTIX_BRANCH_NAME=
 KORTIX_GITHUB_TOKEN=
 KORTIX_TOKEN=
 ```
+
+The daemon accepts these deprecated compatibility variables:
+
+- `KORTIX_PROJECT_TARGET`
+- `KORTIX_PROJECT_AUTO_CLONE`
+- `KORTIX_PROJECT_ID`
+- `KORTIX_PROJECT_SECRET_NAMES`
+- `KORTIX_PROJECT_SECRETS_REVISION`
+
+The canonical `KORTIX_WORKSPACE_*` value takes precedence when both names exist.
 
 ## Build
 
@@ -123,7 +136,7 @@ The binary built on macOS will not execute locally; that's expected. To
 smoke-test the daemon on macOS, run from source:
 
 ```
-KORTIX_PROJECT_AUTO_CLONE=0 KORTIX_SERVICE_PORT=9999 bun run src/main.ts
+KORTIX_WORKSPACE_AUTO_CLONE=0 KORTIX_SERVICE_PORT=9999 bun run src/main.ts
 curl -s http://localhost:9999/kortix/health
 ```
 

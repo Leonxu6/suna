@@ -29,10 +29,10 @@ import {
  *  - **No `scrollContainerRef`** → `useWindowVirtualizer` (the public pages,
  *    which scroll the whole window; SSR-safe first-page-plain-grid gating).
  *  - **`scrollContainerRef` given** → `useVirtualizer` against that element
- *    (the in-project Customize panel, which owns its own scroll container).
+ *    (the in-workspace Customize panel, which owns its own scroll container).
  *
  * Both render the same `MarketplaceExploreCard` grid, so there is a single
- * card + grid implementation shared across public and in-project.
+ * card + grid implementation shared across public and in-workspace.
  */
 export function MarketplacePagedGrid({
   query,
@@ -52,13 +52,13 @@ export function MarketplacePagedGrid({
   query?: string;
   type?: string;
   source?: string;
-  /** Unauthenticated catalog reads (public pages). Off for the in-project view. */
+  /** Unauthenticated catalog reads (public pages). Off for the in-workspace view. */
   publicOnly?: boolean;
   columns?: number;
   gridClassName?: string;
   showSource?: boolean;
   initialData?: () => { pages: ItemsPage[]; pageParams: number[] };
-  /** The ancestor scroll element to virtualize against (in-project panel). When
+  /** The ancestor scroll element to virtualize against (in-workspace panel). When
    *  omitted, the window is the scroll container (public pages). */
   scrollContainerRef?: RefObject<HTMLElement | null>;
   emptyTitle: string;

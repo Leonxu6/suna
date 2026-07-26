@@ -25,7 +25,7 @@ import {
   getToolInfo,
   type MessageWithParts,
 } from '@/ui';
-import { projectChildSessionHref } from './session-spawn-urls';
+import { workspaceChildSessionHref } from './session-spawn-urls';
 
 export function SessionSpawnTool({ part, forceOpen }: ToolProps) {
   const input = partInput(part);
@@ -35,7 +35,7 @@ export function SessionSpawnTool({ part, forceOpen }: ToolProps) {
 
   const agentName = (input.agent as string) || 'kortix';
   const description = (input.description as string) || '';
-  const projectName = (input.project as string) || '';
+  const workspaceName = (input.workspace as string) || '';
   const fullPrompt = (input.prompt as string) || '';
 
   const childSessionId: string | undefined = useMemo(() => getChildSessionId(part), [part]);
@@ -52,7 +52,7 @@ export function SessionSpawnTool({ part, forceOpen }: ToolProps) {
   const isRunning = status === 'running' || status === 'pending';
   const isCompleted = status === 'completed';
   const childHref = useMemo(
-    () => projectChildSessionHref(pathname, childSessionId),
+    () => workspaceChildSessionHref(pathname, childSessionId),
     [pathname, childSessionId],
   );
 
@@ -63,7 +63,7 @@ export function SessionSpawnTool({ part, forceOpen }: ToolProps) {
     return info.title + (info.subtitle ? ` · ${info.subtitle}` : '');
   }, [childToolParts]);
 
-  const label = description || projectName || fullPrompt.split('\n')[0]?.slice(0, 80) || '';
+  const label = description || workspaceName || fullPrompt.split('\n')[0]?.slice(0, 80) || '';
 
   const subtitle = isRunning ? (lastActivity ?? label) : label || undefined;
   const hasPreview = Boolean(childSessionId);

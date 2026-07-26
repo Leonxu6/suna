@@ -10,20 +10,20 @@ import { UserAvatar } from '@/components/ui/user-avatar';
 import { Icon } from '@/features/icon/icon';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import { ErrorState } from '@/features/layout/section/error-state';
-import { ProjectFilesProvider } from '@/features/project-files';
-import type { ChangeRequest } from '@/features/project-files/api/change-requests';
-import { ChangeRequestDetailDialog } from '@/features/project-files/components/change-request-detail-dialog';
-import { CheckpointDetailDialog } from '@/features/project-files/components/checkpoint-detail-dialog';
+import { WorkspaceFilesProvider } from '@/features/workspace-files';
+import type { ChangeRequest } from '@/features/workspace-files/api/change-requests';
+import { ChangeRequestDetailDialog } from '@/features/workspace-files/components/change-request-detail-dialog';
+import { CheckpointDetailDialog } from '@/features/workspace-files/components/checkpoint-detail-dialog';
 import {
   useChangeRequests,
   useCloseChangeRequest,
   useMergeChangeRequest,
   useReopenChangeRequest,
-} from '@/features/project-files/hooks/use-change-requests';
-import { useCommits } from '@/features/project-files/hooks/use-commits';
-import { getProject, type ProjectCommit } from '@kortix/sdk';
-import { PROJECT_ACTIONS } from '@/lib/project-actions';
-import { useProjectCan } from '@/lib/use-project-can';
+} from '@/features/workspace-files/hooks/use-change-requests';
+import { useCommits } from '@/features/workspace-files/hooks/use-commits';
+import { getWorkspace, type WorkspaceCommit } from '@kortix/sdk';
+import { WORKSPACE_ACTIONS } from '@/lib/workspace-actions';
+import { useWorkspaceCan } from '@/lib/use-workspace-can';
 import { cn } from '@/lib/utils';
 import {
   Check,
@@ -47,7 +47,7 @@ import {
 
 const LIST_CLASS = 'bg-popover overflow-hidden divide-y divide-border rounded-md border';
 
-function relCommit(c: ProjectCommit): string {
+function relCommit(c: WorkspaceCommit): string {
   try {
     return formatDistanceToNowStrict(new Date(commitTime(c)), { addSuffix: true });
   } catch {
@@ -79,7 +79,7 @@ function CheckpointRow({
   index,
   onOpen,
 }: {
-  commit: ProjectCommit;
+  commit: WorkspaceCommit;
   index: number;
   onOpen: (sha: string) => void;
 }) {
@@ -258,36 +258,36 @@ function ListSkeleton({ rows = 6 }: { rows?: number }) {
 // section
 // ---------------------------------------------------------------------------
 
-export function ChangesView({ projectId }: { projectId: string }) {
-  const projectQuery = useQuery({
-    queryKey: ['projects', projectId, 'meta'],
-    queryFn: () => getProject(projectId),
+export function ChangesView({ workspaceId }: { workspaceId: string }) {
+  const workspaceQuery = useQuery({
+    queryKey: ['workspaces', workspaceId, 'meta'],
+    queryFn: () => getWorkspace(workspaceId),
     staleTime: 60_000,
   });
-  const defaultBranch = projectQuery.data?.default_branch ?? '';
-  // Apply/Dismiss/Reopen assert project.gitops.push server-side; a read-only role
+  const defaultBranch = workspaceQuery.data?.default_branch ?? '';
+  // Apply/Dismiss/Reopen assert workspace.gitops.push server-side; a read-only role
   // (gitops.read but not gitops.push) still SEES the change list + diffs, just no
   // action buttons that would 403. Fails safe: false until the probe resolves.
-  const canAct = useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_GITOPS_PUSH).allowed === true;
+  const canAct = useWorkspaceCan(workspaceId, WORKSPACE_ACTIONS.WORKSPACE_GITOPS_PUSH).allowed === true;
 
   return (
-    <ProjectFilesProvider value={{ projectId, ref: defaultBranch, defaultBranch }}>
+    <WorkspaceFilesProvider value={{ workspaceId, ref: defaultBranch, defaultBranch }}>
       <ChangesTimeline
         defaultBranch={defaultBranch}
-        projectLoading={projectQuery.isLoading}
+        workspaceLoading={workspaceQuery.isLoading}
         canAct={canAct}
       />
-    </ProjectFilesProvider>
+    </WorkspaceFilesProvider>
   );
 }
 
 function ChangesTimeline({
   defaultBranch,
-  projectLoading,
+  workspaceLoading,
   canAct,
 }: {
   defaultBranch: string;
-  projectLoading: boolean;
+  workspaceLoading: boolean;
   canAct: boolean;
 }) {
   const [selectedSha, setSelectedSha] = useState<string | null>(null);
@@ -303,7 +303,7 @@ function ChangesTimeline({
   const shaList = useMemo(() => commits.map((c) => c.hash), [commits]);
 
   const loading =
-    projectLoading || crsQuery.isLoading || (Boolean(defaultBranch) && commitsQuery.isLoading);
+    workspaceLoading || crsQuery.isLoading || (Boolean(defaultBranch) && commitsQuery.isLoading);
   const isFetching = commitsQuery.isFetching || crsQuery.isFetching;
 
   const refresh = (

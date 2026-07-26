@@ -1,6 +1,6 @@
 ---
 name: kortix-onboarding
-description: "Guide a new Kortix user through their first session: set expectations about what Kortix is, turn a vague ask into a strong first prompt, deliver one real result, then surface deeper capabilities (connectors, memory, triggers, subagents, marketplace) and plant a retention hook. Use when the user is new, asks 'what can you do / how does this work / where do I start', sends a vague or exploratory first message, or has no prior history in this project. Do NOT use when they arrive with a specific, well-formed task — just do it."
+description: "Guide a new Kortix user through their first session: set expectations about what Kortix is, turn a vague ask into a strong first prompt, deliver one real result, then surface deeper capabilities (connectors, memory, triggers, subagents, marketplace) and plant a retention hook. Use when the user is new, asks 'what can you do / how does this work / where do I start', sends a vague or exploratory first message, or has no prior history in this workspace. Do NOT use when they arrive with a specific, well-formed task — just do it."
 ---
 
 # Onboarding a New Kortix User
@@ -11,7 +11,7 @@ The best onboarding is a solved problem. My job in a first session is to get the
 
 - The user's first message is exploratory: "what can you do?", "how does this work?", "I'm new here", "where do I start?"
 - Their prompt is vague or under-specified, suggesting they don't yet know what Kortix can do.
-- There's no prior session history in this project.
+- There's no prior session history in this workspace.
 - They explicitly ask for help getting started.
 
 **Do NOT use this when the user arrives with a specific, well-formed task.** If they know what they want, skip straight to doing it. Solving is the onboarding.
@@ -76,7 +76,7 @@ What I do:
 - Hand over the artifact directly — the finished PDF/DOCX/PPTX/XLSX, the deployed site URL, the message sent. The deliverable *is* the pitch.
 - Then pull them one step deeper instead of just asking "anything else?": propose a specific extension. "Want me to turn this into a deck you can share?" / "I can break this out by region too." / "I spotted two outliers worth a closer look — dig in?"
 - If they described data they have but didn't provide, nudge: "Drop the actual file in and I'll work from your real numbers instead of estimates."
-- If the work is worth keeping, say so plainly: "If you want this to stick around in the project, I'll commit it and open a change request for you to approve — that's how anything becomes permanent here."
+- If the work is worth keeping, say so plainly: "If you want this to stick around in the workspace, I'll commit it and open a change request for you to approve — that's how anything becomes permanent here."
 
 What I avoid:
 - Breaking the moment with account or billing talk.
@@ -93,7 +93,7 @@ What I avoid:
 
 I surface these *contextually*, never as a list:
 - **Connectors** — they mention email, a CRM, a doc, a calendar → "I can connect your [tool] and do this directly. I'll mint a setup link right here — one click, and I never see the raw credentials." I mint the link in the same turn; I never send them digging through settings or ask them to paste a secret.
-- **Memory / company brain** — a fact, person, account, or preference recurs → "Want me to remember this for next time? It lives in the project so every future session starts already knowing it." Kortix gets better the more it's used.
+- **Memory / company brain** — a fact, person, account, or preference recurs → "Want me to remember this for next time? It lives in the workspace so every future session starts already knowing it." Kortix gets better the more it's used.
 - **Subagents / parallel sessions** — the job is many similar units (per company, per region, per file) → "I can split this across parallel agents and bring the results back together — much faster than one at a time."
 - **Marketplace** — the need is a repeatable specialty → "There's likely a ready-made skill for this in the marketplace — want me to find and install one?"
 

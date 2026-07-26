@@ -1,7 +1,7 @@
 'use server';
 
 import { accountHasAppAccess } from '@/lib/auth/account-access';
-import { resolveFirstProjectPathForNewUser } from '@/lib/auth/bootstrap-first-project';
+import { resolveFirstWorkspacePathForNewUser } from '@/lib/auth/bootstrap-first-workspace';
 import { buildMobileSessionHandoffUrl } from '@/lib/auth/mobile-handoff';
 import { isInviteReturnUrl, sanitizeAuthReturnUrl } from '@/lib/auth/return-url';
 import {
@@ -438,7 +438,7 @@ export async function signUpWithPassword(prevState: any, formData: FormData) {
   let redirectTo = returnUrl;
 
   // Invited users (returnUrl → /invites/:id) must land on the accept/decline
-  // dialog verbatim; don't override with a freshly-provisioned first project.
+  // dialog verbatim; don't override with a freshly-provisioned first workspace.
   if (
     billingEnabled &&
     !alreadyExists &&
@@ -451,12 +451,12 @@ export async function signUpWithPassword(prevState: any, formData: FormData) {
         '',
       );
       if (backendUrl) {
-        const projectPath = await resolveFirstProjectPathForNewUser({
+        const workspacePath = await resolveFirstWorkspacePathForNewUser({
           backendUrl,
           accessToken: signInData.session.access_token,
           isNewUser: true,
         });
-        if (projectPath) redirectTo = projectPath;
+        if (workspacePath) redirectTo = workspacePath;
       }
     } catch {
       // Fall back to the default return URL.
@@ -543,14 +543,14 @@ export async function verifyOtp(prevState: any, formData: FormData) {
   const authEvent = isNewUser ? 'signup' : 'login';
 
   // For new cloud users with no plan yet, land in account management. The
-  // repo-first app surface starts from /projects; the old plan route is not v1.
+  // repo-first app surface starts from /workspaces; the old plan route is not v1.
   const runtimeEnv = getServerPublicEnv();
   const billingEnabled = runtimeEnv.BILLING_ENABLED;
   let finalDestination = returnUrl;
 
   // Invited users (returnUrl → /invites/:id) must land on the accept/decline
   // dialog verbatim — skip the billing-aware landing (account page or a freshly
-  // provisioned first project), which would otherwise skip the dialog.
+  // provisioned first workspace), which would otherwise skip the dialog.
   if (billingEnabled && isNewUser && !isInviteReturnUrl(returnUrl) && data.session?.access_token) {
     try {
       const backendUrl = (process.env.BACKEND_URL || runtimeEnv.BACKEND_URL || '').replace(
@@ -567,12 +567,12 @@ export async function verifyOtp(prevState: any, formData: FormData) {
           if (!accountHasAppAccess(accountState)) {
             finalDestination = '/accounts';
           } else {
-            const projectPath = await resolveFirstProjectPathForNewUser({
+            const workspacePath = await resolveFirstWorkspacePathForNewUser({
               backendUrl,
               accessToken: data.session.access_token,
               isNewUser: true,
             });
-            if (projectPath) finalDestination = projectPath;
+            if (workspacePath) finalDestination = workspacePath;
           }
         }
       }

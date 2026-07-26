@@ -12,7 +12,7 @@ import { useCallback, useState } from 'react';
 
 import { STATUS_TEXT } from '@/components/ui/status';
 import { errorToast, successToast } from '@/components/ui/toast';
-import { getProjectSession } from '@kortix/sdk';
+import { getWorkspaceSession } from '@kortix/sdk';
 import { useChatSendStore } from '@/stores/chat-send-store';
 
 /** git-status status → single-letter badge, using the canonical status tones. */
@@ -24,13 +24,13 @@ export const CHANGE_STATUS_BADGE: Record<string, { letter: string; cls: string; 
 
 /** The base branch this session forks from (e.g. `main`). Defaults to `main`. */
 export function useSessionBaseRef(
-  projectId: string | undefined,
+  workspaceId: string | undefined,
   gitSessionId: string | undefined,
 ): string {
   const sessionQuery = useQuery({
-    queryKey: ['project', 'session', projectId, gitSessionId],
-    queryFn: () => getProjectSession(projectId!, gitSessionId!),
-    enabled: !!projectId && !!gitSessionId,
+    queryKey: ['workspace', 'session', workspaceId, gitSessionId],
+    queryFn: () => getWorkspaceSession(workspaceId!, gitSessionId!),
+    enabled: !!workspaceId && !!gitSessionId,
     staleTime: 60_000,
   });
   return sessionQuery.data?.base_ref ?? 'main';

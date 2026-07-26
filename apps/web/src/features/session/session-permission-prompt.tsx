@@ -13,8 +13,8 @@
  *  - per session: "Allow everything" writes a blanket allow ruleset onto the
  *    opencode session (survives tab close) + auto-approves anything already
  *    pending; a client-side auto-approver backstops any ask that still arrives.
- *  - persistent (footer, gated on `project.customize.write`): writes the
- *    project's opencode permission config — future sessions stop asking.
+ *  - persistent (footer, gated on `workspace.customize.write`): writes the
+ *    workspace's opencode permission config — future sessions stop asking.
  */
 
 import { Button } from '@/components/ui/button';
@@ -25,8 +25,8 @@ import {
   allowAllPermissionsForSession,
   resetSessionPermissions,
 } from '@kortix/sdk/react';
-import { PROJECT_ACTIONS } from '@/lib/project-actions';
-import { useProjectCan } from '@/lib/use-project-can';
+import { WORKSPACE_ACTIONS } from '@/lib/workspace-actions';
+import { useWorkspaceCan } from '@/lib/use-workspace-can';
 import { cn } from '@/lib/utils';
 import { useRuntimePendingStore } from '@kortix/sdk/react';
 import { PERMISSION_LABELS, type PermissionRequest } from '@/ui/types';
@@ -59,11 +59,11 @@ export function SessionPermissionPrompt({
   permissions,
   onReply,
 }: SessionPermissionPromptProps) {
-  // Only the /projects/[id]/sessions/[sessionId] route has a project in scope —
+  // Only the /workspaces/[id]/sessions/[sessionId] route has a workspace in scope —
   // on plain /sessions/[id], `id` IS the session, so no config surface.
   const params = useParams<{ id?: string; sessionId?: string }>();
-  const projectId = params?.sessionId ? params.id : undefined;
-  const canWriteConfig = useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_CUSTOMIZE_WRITE);
+  const workspaceId = params?.sessionId ? params.id : undefined;
+  const canWriteConfig = useWorkspaceCan(workspaceId, WORKSPACE_ACTIONS.WORKSPACE_CUSTOMIZE_WRITE);
 
   const autoApprove = useRuntimePendingStore((s) => !!s.autoApproveAllSessions[sessionId]);
   const setAutoApproveAll = useRuntimePendingStore((s) => s.setAutoApproveAll);
@@ -120,7 +120,7 @@ export function SessionPermissionPrompt({
     }
   }, [sessionId, setAutoApproveAll]);
 
-  /** Persist an allow into the project's opencode permission config (the same
+  /** Persist an allow into the workspace's opencode permission config (the same
    * surface Settings → Permissions edits), then release the pending asks it
    * covers. `type === '*'` = always allow everything. */
   const allowInConfig = useCallback(
@@ -147,11 +147,11 @@ export function SessionPermissionPrompt({
         await Promise.all(covered.map((p) => onReply(p.id, 'once')));
         successToast(
           type === '*'
-            ? 'Saved — permissions are always allowed in this project now'
-            : `Saved — "${PERMISSION_LABELS[type] || type}" is always allowed in this project now`,
+            ? 'Saved — permissions are always allowed in this workspace now'
+            : `Saved — "${PERMISSION_LABELS[type] || type}" is always allowed in this workspace now`,
         );
       } catch (e) {
-        errorToast(e instanceof Error ? e.message : 'Failed to update the project config');
+        errorToast(e instanceof Error ? e.message : 'Failed to update the workspace config');
       } finally {
         setBusy(null);
       }
@@ -274,10 +274,10 @@ export function SessionPermissionPrompt({
       </div>
       {canWriteConfig.allowed ? (
         // Deliberately set apart from the one-off buttons above: these WRITE the
-        // project's permission config — every future session stops asking.
+        // workspace's permission config — every future session stops asking.
         <div className="bg-muted/40 border-border/40 flex flex-wrap items-center gap-2 border-t px-3 py-1.5">
           <span className="text-muted-foreground text-[11px]">
-            Project config <span className="opacity-70">(applies to future sessions)</span>:
+            Workspace config <span className="opacity-70">(applies to future sessions)</span>:
           </span>
           {uniqueTypes.map((type) => (
             <Button

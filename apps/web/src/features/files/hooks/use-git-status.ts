@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useRuntimeStore } from '@kortix/sdk/react';
 import { getFileStatus } from '../api/runtime-files';
 import type { GitFileStatus } from '@/features/file-browser/types';
-import { useCurrentProject, useServerHealth } from './use-server-health';
+import { useCurrentWorkspace, useServerHealth } from './use-server-health';
 
 export const gitStatusKeys = {
   all: ['runtime-files', 'git-status'] as const,
@@ -13,19 +13,19 @@ export const gitStatusKeys = {
 };
 
 /**
- * Fetch the git file status for the current project.
+ * Fetch the git file status for the current workspace.
  * Returns an array of files with uncommitted changes (added, modified, deleted).
  */
 export function useGitStatus(options?: { enabled?: boolean }) {
   const serverUrl = useRuntimeStore((s) => s.getActiveServerUrl());
   const { data: health } = useServerHealth();
-  const { data: project } = useCurrentProject({
+  const { data: workspace } = useCurrentWorkspace({
     enabled: options?.enabled !== false,
   });
   const enabled =
     options?.enabled !== false &&
     health?.healthy === true &&
-    project?.vcs === 'git';
+    workspace?.vcs === 'git';
 
   return useQuery<GitFileStatus[]>({
     queryKey: gitStatusKeys.status(serverUrl),

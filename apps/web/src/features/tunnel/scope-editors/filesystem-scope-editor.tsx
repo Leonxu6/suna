@@ -108,7 +108,7 @@ export function FilesystemScopeEditor({ scope, onChange }: FilesystemScopeEditor
             value={pathInput}
             onChange={(e) => setPathInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addPath())}
-            placeholder="/home/user/projects"
+            placeholder="/home/user/workspaces"
             className="flex-1 rounded-2xl border bg-background px-2.5 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
           <Button variant="outline" size="sm" onClick={addPath} disabled={!pathInput.trim()}>

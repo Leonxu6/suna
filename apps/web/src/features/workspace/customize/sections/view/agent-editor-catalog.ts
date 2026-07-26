@@ -20,7 +20,7 @@ export const THEME_COLORS = [
 ] as const;
 export const WORKSPACE_MODES = ['runtime', 'read', 'branch'] as const;
 export const WORKSPACE_MODE_HELP: Record<(typeof WORKSPACE_MODES)[number], string> = {
-  runtime: 'Works directly in the live project workspace.',
+  runtime: 'Works directly in the live workspace workspace.',
   read: 'Can read files but cannot modify them.',
   branch: 'Works on an isolated git branch, merged in later.',
 };
@@ -63,7 +63,7 @@ export const PERMISSION_KEY_HELP: Record<string, string> = {
   list: 'List directory contents.',
   bash: 'Run shell commands.',
   task: 'Launch a subagent to run a task.',
-  external_directory: 'Access paths outside this project workspace.',
+  external_directory: 'Access paths outside this workspace workspace.',
   lsp: 'Use language-server tooling — go-to-definition, diagnostics.',
   todowrite: "Maintain the session's todo list.",
   question: 'Ask the user a clarifying question mid-run.',
@@ -75,84 +75,84 @@ export const PERMISSION_KEY_HELP: Record<string, string> = {
 /**
  * The grantable `kortix_cli` action catalog, grouped for the picker. MUST stay
  * in sync with `GRANTABLE_KORTIX_CLI_ACTIONS` in @kortix/manifest-schema (=
- * PROJECT_ACTIONS in apps/api iam/actions.ts — every project-scoped action,
- * including the manager-tier leaves project.delete / project.members.manage /
- * project.gateway.keys.manage, still reachable via a project's `manager`
+ * WORKSPACE_ACTIONS in apps/api iam/actions.ts — every workspace-scoped action,
+ * including the manager-tier leaves workspace.delete / workspace.members.manage /
+ * workspace.gateway.keys.manage, still reachable via a workspace's `manager`
  * role). Mirrored here (not imported) because the manifest-schema/api
  * packages aren't in the web bundle — same mirror discipline as
- * apps/web/src/lib/project-actions.ts. Kept in sync by
+ * apps/web/src/lib/workspace-actions.ts. Kept in sync by
  * agent-editor.test.tsx's drift guard against the real
  * `GRANTABLE_KORTIX_CLI_ACTIONS` constant.
  *
- * Account-scoped admin actions (member.*, billing.*, token.*, project.create,
+ * Account-scoped admin actions (member.*, billing.*, token.*, workspace.create,
  * …) are ALSO absent — but that omission is a UX curation choice, not the
- * security boundary: every agent-session token is project-scoped, and
+ * security boundary: every agent-session token is workspace-scoped, and
  * apps/api's IAM v2 engine refuses any account-scope action for a
- * project-bound token before an agent's grant is even consulted (see
+ * workspace-bound token before an agent's grant is even consulted (see
  * `iam/engine-v2.ts`'s `computeTokenScope`).
  */
 export const KORTIX_CLI_CATALOG: { group: string; actions: string[] }[] = [
-  { group: 'Project', actions: ['project.read', 'project.write', 'project.delete'] },
-  { group: 'Change requests', actions: ['project.cr.open', 'project.cr.merge'] },
+  { group: 'Workspace', actions: ['workspace.read', 'workspace.write', 'workspace.delete'] },
+  { group: 'Change requests', actions: ['workspace.cr.open', 'workspace.cr.merge'] },
   {
     group: 'Sessions',
     actions: [
-      'project.session.read',
-      'project.session.start',
-      'project.session.stop',
-      'project.session.bindings.write',
+      'workspace.session.read',
+      'workspace.session.start',
+      'workspace.session.stop',
+      'workspace.session.bindings.write',
     ],
   },
-  { group: 'Members', actions: ['project.members.read', 'project.members.manage'] },
+  { group: 'Members', actions: ['workspace.members.read', 'workspace.members.manage'] },
   {
     group: 'Triggers',
     actions: [
-      'project.trigger.read',
-      'project.trigger.create',
-      'project.trigger.update',
-      'project.trigger.delete',
-      'project.trigger.fire',
+      'workspace.trigger.read',
+      'workspace.trigger.create',
+      'workspace.trigger.update',
+      'workspace.trigger.delete',
+      'workspace.trigger.fire',
     ],
   },
   {
     group: 'LLM gateway',
     actions: [
-      'project.gateway.logs.read',
-      'project.gateway.spend.read',
-      'project.gateway.budget.set',
-      'project.gateway.keys.manage',
+      'workspace.gateway.logs.read',
+      'workspace.gateway.spend.read',
+      'workspace.gateway.budget.set',
+      'workspace.gateway.keys.manage',
     ],
   },
   {
     group: 'Configuration',
     actions: [
-      'project.agent.read',
-      'project.agent.write',
-      'project.skill.read',
-      'project.skill.write',
-      'project.command.read',
-      'project.command.write',
-      'project.file.read',
-      'project.file.write',
-      'project.customize.read',
-      'project.customize.write',
+      'workspace.agent.read',
+      'workspace.agent.write',
+      'workspace.skill.read',
+      'workspace.skill.write',
+      'workspace.command.read',
+      'workspace.command.write',
+      'workspace.file.read',
+      'workspace.file.write',
+      'workspace.customize.read',
+      'workspace.customize.write',
     ],
   },
   {
     group: 'Git',
-    actions: ['project.gitops.read', 'project.gitops.push', 'project.gitops.merge'],
+    actions: ['workspace.gitops.read', 'workspace.gitops.push', 'workspace.gitops.merge'],
   },
-  { group: 'Secrets', actions: ['project.secret.read', 'project.secret.write'] },
+  { group: 'Secrets', actions: ['workspace.secret.read', 'workspace.secret.write'] },
   {
     group: 'Connectors',
     actions: [
-      'project.connector.read',
-      'project.connector.write',
-      'project.connector.profiles.manage',
+      'workspace.connector.read',
+      'workspace.connector.write',
+      'workspace.connector.profiles.manage',
     ],
   },
   {
     group: 'Review',
-    actions: ['project.review.read', 'project.review.submit', 'project.review.act'],
+    actions: ['workspace.review.read', 'workspace.review.submit', 'workspace.review.act'],
   },
 ];

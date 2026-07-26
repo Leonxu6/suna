@@ -136,10 +136,10 @@ async function main() {
   ok('seed credit account', await seedCredits(accountId), '');
 
   // 3. provision project (managed + starter -> snapshot build)
-  const prov = await api('POST', '/projects/provision', { account_id: accountId, name: `e2e upload ${Date.now().toString().slice(-6)}`, seed_starter: true });
+  const prov = await api('POST', '/workspaces/provision', { account_id: accountId, name: `e2e upload ${Date.now().toString().slice(-6)}`, seed_starter: true });
   const projectId = prov.json?.project_id || prov.json?.id;
-  if (!ok('POST /projects/provision', !!projectId, `${prov.status} ${prov.text.slice(0, 160)}`)) return finish();
-  if (OPENROUTER) await api('POST', `/projects/${projectId}/secrets`, { name: 'OPENROUTER_API_KEY', value: OPENROUTER });
+  if (!ok('POST /workspaces/provision', !!projectId, `${prov.status} ${prov.text.slice(0, 160)}`)) return finish();
+  if (OPENROUTER) await api('POST', `/workspaces/${projectId}/secrets`, { name: 'OPENROUTER_API_KEY', value: OPENROUTER });
 
   // 4. snapshot ready — the refactored endpoint returns { templates, builds }.
   //    A template is usable when `ready: true` (image present on the provider).
@@ -147,7 +147,7 @@ async function main() {
   let snapReady = false;
   const snapEnd = Date.now() + 11 * 60_000;
   while (Date.now() < snapEnd) {
-    const s = await api('GET', `/projects/${projectId}/snapshots`);
+    const s = await api('GET', `/workspaces/${projectId}/snapshots`);
     const templates: any[] = s.json?.templates ?? [];
     const builds: any[] = s.json?.builds ?? [];
     const tStates = templates.map((t) => `${t.slug}:${t.ready ? 'ready' : t.daytona_state || t.provider_state || '?'}`).join(',');
@@ -160,7 +160,7 @@ async function main() {
   if (!ok('snapshot ready', snapReady)) return finish({ projectId });
 
   // 5. session
-  const sess = await api('POST', `/projects/${projectId}/sessions`, { name: 'upload session' });
+  const sess = await api('POST', `/workspaces/${projectId}/sessions`, { name: 'upload session' });
   const sessionId = sess.json?.session_id || sess.json?.id;
   if (!ok('POST session', !!sessionId, `${sess.status} ${sess.text.slice(0, 160)}`)) return finish({ projectId });
 
@@ -171,7 +171,7 @@ async function main() {
   let ext = '', sbStatus = '', startStage = '';
   const sbEnd = Date.now() + 5 * 60_000;
   while (Date.now() < sbEnd) {
-    const sb = await api('POST', `/projects/${projectId}/sessions/${sessionId}/start?wait_ms=8000`);
+    const sb = await api('POST', `/workspaces/${projectId}/sessions/${sessionId}/start?wait_ms=8000`);
     startStage = sb.json?.stage ?? '';
     const sandbox = sb.json?.sandbox ?? null;
     sbStatus = sandbox?.status ?? '';
@@ -317,8 +317,8 @@ async function main() {
 }
 
 async function finish(cleanup?: { projectId?: string; sessionId?: string }) {
-  if (cleanup?.sessionId) await api('DELETE', `/projects/${cleanup.projectId}/sessions/${cleanup.sessionId}`);
-  if (cleanup?.projectId) await api('DELETE', `/projects/${cleanup.projectId}`);
+  if (cleanup?.sessionId) await api('DELETE', `/workspaces/${cleanup.projectId}/sessions/${cleanup.sessionId}`);
+  if (cleanup?.projectId) await api('DELETE', `/workspaces/${cleanup.projectId}`);
   log('==============================');
   log(`RESULT: ${PASS} passed, ${FAIL} failed`);
   process.exit(FAIL > 0 ? 1 : 0);

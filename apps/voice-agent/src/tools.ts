@@ -38,7 +38,9 @@ const runCommandParams = z.object({
     .string()
     .nullable()
     .optional()
-    .describe('Working directory, relative to the project root. Defaults to the project root.'),
+    .describe(
+      'Working directory, relative to the workspace root. Defaults to the workspace root.',
+    ),
 });
 
 export interface VoiceTools {
@@ -56,8 +58,8 @@ export function buildTools(): VoiceTools {
   const send_prompt = tool<CallContext, typeof sendPromptParams, string>({
     name: 'send_prompt',
     description:
-      'Hand a request to the Kortix agent for this project. Use for anything needing real ' +
-      'information, project files, connectors, memory, or actions. Asynchronous: returns the ' +
+      'Hand a request to the Kortix agent for this workspace. Use for anything needing real ' +
+      'information, workspace files, connectors, memory, or actions. Asynchronous: returns the ' +
       'instant the request is queued, not when Kortix has an answer — say one short sentence ' +
       'that you are checking, then stop talking. The answer arrives later as something to speak.',
     parameters: sendPromptParams,
@@ -77,7 +79,7 @@ export function buildTools(): VoiceTools {
   const run_command = tool<CallContext, typeof runCommandParams, string>({
     name: 'run_command',
     description:
-      "Run a shell command in this project's sandbox and get its output back directly — for " +
+      "Run a shell command in this workspace's sandbox and get its output back directly — for " +
       'quick checks only (reading a short file, listing a directory, checking something exists). ' +
       'Waits a few seconds and returns the result. Not a hand-off: never use this for anything ' +
       'that changes real state or needs judgement — use send_prompt for that instead.',

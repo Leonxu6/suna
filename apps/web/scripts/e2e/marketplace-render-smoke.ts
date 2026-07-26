@@ -84,7 +84,7 @@ async function installRoutes(page: Page) {
     });
   });
 
-  await page.route('**/projects/debug-marketplace-project/registry/updates', async (route) => {
+  await page.route('**/workspaces/debug-marketplace-workspace/registry/updates', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -96,7 +96,7 @@ async function installRoutes(page: Page) {
   });
 
   await page.route(
-    '**/projects/debug-marketplace-project/marketplace/update-all',
+    '**/workspaces/debug-marketplace-workspace/marketplace/update-all',
     async (route) => {
       updateAllCalls += 1;
       assert(route.request().method() === 'POST', 'update-all should use POST');
@@ -119,7 +119,7 @@ async function installRoutes(page: Page) {
     },
   );
 
-  await page.route('**/projects/debug-marketplace-project/registry', async (route) => {
+  await page.route('**/workspaces/debug-marketplace-workspace/registry', async (route) => {
     assert(
       route.request().headers().authorization === 'Bearer debug-marketplace-token',
       'installed request should include the debug bootstrap auth token',

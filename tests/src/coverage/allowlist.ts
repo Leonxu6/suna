@@ -13,36 +13,36 @@ export const uncoveredAllow: AllowEntry[] = [
   },
   {
     method: "POST",
-    path: "/v1/projects/:*/sessions/:*/voice/prompt",
+    path: "/v1/workspaces/:*/sessions/:*/voice/prompt",
     reason:
       "worker-only HMAC callback from the realtime voice worker; the end-user voice action is exposed through the flow-covered voice MCP",
   },
   {
     method: "POST",
-    path: "/v1/projects/:*/sessions/:*/voice/run-command",
+    path: "/v1/workspaces/:*/sessions/:*/voice/run-command",
     reason:
       "worker-only HMAC callback from the realtime voice worker; the end-user voice action is exposed through the flow-covered voice MCP",
   },
   {
     method: "POST",
-    path: "/v1/projects/:*/sessions/:*/voice/turns",
+    path: "/v1/workspaces/:*/sessions/:*/voice/turns",
     reason:
       "worker-only HMAC transcript sink called by the realtime voice worker; not an end-user API route",
   },
   {
     method: "PUT",
-    path: "/v1/executor/projects/:*/connectors/:*/sensitive",
+    path: "/v1/executor/workspaces/:*/connectors/:*/sensitive",
     reason:
       "executor-scoped runtime endpoint — called by the in-sandbox executor with its own token, not by end-user clients; the user-facing equivalent is flow-covered",
   },
   {
     method: "DELETE",
-    path: "/v1/projects/:*/channels/teams/installation",
+    path: "/v1/workspaces/:*/channels/teams/installation",
     reason: "teams disconnect — manage-ACL teardown symmetric with the flow-covered connect",
   },
   {
     method: "GET",
-    path: "/v1/projects/:*/channels/teams/manifest",
+    path: "/v1/workspaces/:*/channels/teams/manifest",
     reason: "teams sideload manifest — read-only generated artifact",
   },
   {
@@ -57,12 +57,12 @@ export const uncoveredAllow: AllowEntry[] = [
   },
   {
     method: "GET",
-    path: "/v1/projects/:*/channels/teams/file",
+    path: "/v1/workspaces/:*/channels/teams/file",
     reason: "server-side file download proxy, exercised via the in-sandbox teams CLI, not end-user clients",
   },
   {
     method: "POST",
-    path: "/v1/projects/:*/channels/teams/file/upload",
+    path: "/v1/workspaces/:*/channels/teams/file/upload",
     reason: "server-side consent-card upload, exercised via the in-sandbox teams CLI, not end-user clients",
   },
   {

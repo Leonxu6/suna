@@ -20,8 +20,8 @@
  *   POST …/iam/members/:userId/effective:batch
  * which return { allowed, reason, action, resource_type }. The `reason`
  * field is the engine's rationale (super_admin / account_role /
- * account_role_insufficient / no_project_membership / project_role /
- * project_role_insufficient), letting us assert WHY a decision was made.
+ * account_role_insufficient / no_project_membership / workspace_role /
+ * workspace_role_insufficient), letting us assert WHY a decision was made.
  *
  * Covers IAM-4,5,6 (default/no-custom-role-bound behavior → fold into
  * effective reads) and IAM-9,10,11,12,13 (engine semantics). IAM-1,2,3,7,8,
@@ -46,7 +46,7 @@ const EFFECTIVE_BATCH = '/v1/accounts/:accountId/iam/members/:userId/effective:b
 const SUPER_ADMIN = '/v1/accounts/:accountId/iam/members/:userId/super-admin';
 const GROUPS = '/v1/accounts/:accountId/iam/groups';
 const GROUP_MEMBERS = '/v1/accounts/:accountId/iam/groups/:groupId/members';
-const PROJECT_GRANTS = '/v1/projects/:projectId/group-grants';
+const PROJECT_GRANTS = '/v1/workspaces/:workspaceId/group-grants';
 
 // Coverage keys for `meta.routes` — must be `METHOD PATH`, matching the
 // route manifest (spec/routes.generated.json) exactly.
@@ -143,7 +143,7 @@ flow('IAM-6', { domain: 'iam', routes: [R_EFFECTIVE] }, async (ctx) => {
   const team = await ctx.fixtures.team();
   const admin = await team.addMember('admin');
   const member = await team.addMember('member');
-  const project = await team.project();
+  const project = await team.workspace();
 
   await ctx.step(
     'admin → implicit Manager → project.delete allowed (manager action set)',
@@ -152,7 +152,7 @@ flow('IAM-6', { domain: 'iam', routes: [R_EFFECTIVE] }, async (ctx) => {
         params: { accountId: team.id, userId: admin.userId! },
         query: { action: 'project.delete', resourceType: 'project', resourceId: project.id },
       });
-      r.status(200).body().has('$.allowed', true).has('$.reason', 'project_role');
+      r.status(200).body().has('$.allowed', true).has('$.reason', 'workspace_role');
     },
   );
 
@@ -250,11 +250,11 @@ flow(
   async (ctx) => {
     const team = await ctx.fixtures.team({ enterprise: true });
     const member = await team.addMember('member');
-    const project = await team.project();
+    const project = await team.workspace();
 
     // Low direct role: User (cannot delete).
     await ctx.step('give member a direct User role on the project', async () => {
-      await team.grantProjectRole(project.id, member.userId!, 'user');
+      await team.grantWorkspaceRole(project.id, member.userId!, 'user');
     });
 
     // High group grant: Manager (can delete) on the same project.
@@ -282,7 +282,7 @@ flow(
           .post(
             PROJECT_GRANTS,
             { group_id: groupId, role: 'manager' },
-            { params: { projectId: project.id } },
+            { params: { workspaceId: project.id } },
           );
         grant.status(201).body().has('$.role', 'manager');
       },
@@ -295,7 +295,7 @@ flow(
           params: { accountId: team.id, userId: member.userId! },
           query: { action: 'project.delete', resourceType: 'project', resourceId: project.id },
         });
-        r.status(200).body().has('$.allowed', true).has('$.reason', 'project_role');
+        r.status(200).body().has('$.allowed', true).has('$.reason', 'workspace_role');
       },
     );
   },
@@ -352,7 +352,7 @@ flow('IAM-12', { domain: 'iam', routes: [R_EFFECTIVE_BATCH, R_EFFECTIVE] }, asyn
   const team = await ctx.fixtures.team();
   const member = await team.addMember('member');
   const admin = await team.addMember('admin');
-  const project = await team.project();
+  const project = await team.workspace();
 
   await ctx.step(
     'plain member: account.read allowed, account.write + project.create denied',
@@ -389,19 +389,19 @@ flow('IAM-12', { domain: 'iam', routes: [R_EFFECTIVE_BATCH, R_EFFECTIVE] }, asyn
   await ctx.step(
     'project_members row bridges to the project role: direct Editor → project.write allowed',
     async () => {
-      await team.grantProjectRole(project.id, member.userId!, 'editor');
+      await team.grantWorkspaceRole(project.id, member.userId!, 'editor');
       const r = await ctx.client.as(ctx.P.OWNER).get(EFFECTIVE, {
         params: { accountId: team.id, userId: member.userId! },
         query: { action: 'project.write', resourceType: 'project', resourceId: project.id },
       });
-      r.status(200).body().has('$.allowed', true).has('$.reason', 'project_role');
+      r.status(200).body().has('$.allowed', true).has('$.reason', 'workspace_role');
     },
   );
 });
 
 // ─── IAM-13: scope match ────────────────────────────────────────────────────
 // A project group-grant matches only its own project. Grant a group Manager
-// on project A; the member is allowed on A (project_role) but denied on
+// on project A; the member is allowed on A (workspace_role) but denied on
 // project B (no_project_membership), and the account-scoped probe (no
 // resourceId) is also denied — proving the grant is scoped to A's resource.
 
@@ -414,8 +414,8 @@ flow(
   async (ctx) => {
     const team = await ctx.fixtures.team({ enterprise: true });
     const member = await team.addMember('member');
-    const projectA = await team.project();
-    const projectB = await team.project();
+    const projectA = await team.workspace();
+    const projectB = await team.workspace();
 
     let groupId = '';
     await ctx.step('create group, add member, grant group Manager on project A only', async () => {
@@ -439,19 +439,19 @@ flow(
         .post(
           PROJECT_GRANTS,
           { group_id: groupId, role: 'manager' },
-          { params: { projectId: projectA.id } },
+          { params: { workspaceId: projectA.id } },
         );
       grant.status(201);
     });
 
     await ctx.step(
-      'matching scope (project A) → project.delete allowed via project_role',
+      'matching scope (project A) → project.delete allowed via workspace_role',
       async () => {
         const r = await ctx.client.as(ctx.P.OWNER).get(EFFECTIVE, {
           params: { accountId: team.id, userId: member.userId! },
           query: { action: 'project.delete', resourceType: 'project', resourceId: projectA.id },
         });
-        r.status(200).body().has('$.allowed', true).has('$.reason', 'project_role');
+        r.status(200).body().has('$.allowed', true).has('$.reason', 'workspace_role');
       },
     );
 

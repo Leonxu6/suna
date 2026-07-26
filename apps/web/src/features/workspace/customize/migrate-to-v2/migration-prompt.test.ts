@@ -62,7 +62,7 @@ describe('MIGRATE_TO_V2_PROMPT — the core migration artifact', () => {
   test('lists every v2 clean-break the validator hard-errors on', () => {
     expect(MIGRATE_TO_V2_PROMPT).toContain('per_user');
     expect(MIGRATE_TO_V2_PROMPT).toContain('agent_scope');
-    expect(MIGRATE_TO_V2_PROMPT).toContain('project.session.exec');
+    expect(MIGRATE_TO_V2_PROMPT).toContain('workspace.session.exec');
     expect(MIGRATE_TO_V2_PROMPT).toContain('channel.send');
   });
 
@@ -88,7 +88,7 @@ describe('MIGRATE_TO_V2_PROMPT — the core migration artifact', () => {
       .split('\n')
       .map((line) => line.replace(/#.*$/, ''))
       .join('\n');
-    for (const removed of ['credential:', 'agent_scope:', 'channels:', 'project.session.exec']) {
+    for (const removed of ['credential:', 'agent_scope:', 'channels:', 'workspace.session.exec']) {
       expect(withoutComments).not.toContain(removed);
     }
   });

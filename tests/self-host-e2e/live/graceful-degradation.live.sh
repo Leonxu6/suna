@@ -10,7 +10,7 @@
 #
 #   - billing off               -> billing reads never 500 (account-state 200,
 #                                   everything else a clean 404 + billing_disabled)
-#   - managed-git absent         -> POST /v1/projects/provision returns a
+#   - managed-git absent         -> POST /v1/workspaces/provision returns a
 #                                   graceful 503, not a crash
 #
 # NEVER runs by default: gated on RUN_SELFHOST_LIVE=1, and always allocates a
@@ -174,17 +174,17 @@ AUTH_HEADER="authorization: Bearer $ACCESS"
 API="http://localhost:$API_PORT"
 
 section "Managed-git absent: pre-check + provision degrade gracefully (no 500)"
-STATUS_JSON=$(curl -fsS -H "$AUTH_HEADER" "$API/v1/projects/managed-git/status")
+STATUS_JSON=$(curl -fsS -H "$AUTH_HEADER" "$API/v1/workspaces/managed-git/status")
 [ "$(printf '%s' "$STATUS_JSON" | json_get configured)" = "False" ] || die "expected managed-git/status.configured=false, got: $STATUS_JSON"
-ok "GET /v1/projects/managed-git/status -> 200 {configured: false}"
+ok "GET /v1/workspaces/managed-git/status -> 200 {configured: false}"
 
-PROVISION_CODE=$(curl -s -o /tmp_provision_body.$$ -w '%{http_code}' -X POST "$API/v1/projects/provision" \
+PROVISION_CODE=$(curl -s -o /tmp_provision_body.$$ -w '%{http_code}' -X POST "$API/v1/workspaces/provision" \
   -H "$AUTH_HEADER" -H 'content-type: application/json' -d '{}')
 PROVISION_BODY=$(cat /tmp_provision_body.$$ 2>/dev/null || true)
 rm -f /tmp_provision_body.$$
-[ "$PROVISION_CODE" = "503" ] || die "expected 503 from POST /v1/projects/provision with managed-git unconfigured, got $PROVISION_CODE: $PROVISION_BODY"
+[ "$PROVISION_CODE" = "503" ] || die "expected 503 from POST /v1/workspaces/provision with managed-git unconfigured, got $PROVISION_CODE: $PROVISION_BODY"
 printf '%s' "$PROVISION_BODY" | grep -qi "not configured" || die "503 body doesn't explain why: $PROVISION_BODY"
-ok "POST /v1/projects/provision -> 503 graceful body (not a 500)"
+ok "POST /v1/workspaces/provision -> 503 graceful body (not a 500)"
 
 section "Billing off: account-state stays 200, everything else 404 + billing_disabled (no 500)"
 ACCOUNT_STATE_CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "$AUTH_HEADER" "$API/v1/billing/account-state")

@@ -25,12 +25,12 @@ async function guestReady(ext: string): Promise<{ready:boolean, body:string}> {
   return { ready: parsed?.runtimeReady===true, body: out.slice(0,120) };
 }
 
-const prov:any = await (await fetch(`${BASE}/v1/projects/provision`, { method:'POST', headers:H, body: JSON.stringify({ name:`pr-${now()}`, seed_starter:true, account_id:ACC }) })).json();
+const prov:any = await (await fetch(`${BASE}/v1/workspaces/provision`, { method:'POST', headers:H, body: JSON.stringify({ name:`pr-${now()}`, seed_starter:true, account_id:ACC }) })).json();
 console.log('project', prov.project_id);
 const runs:number[]=[];
 for (let n=1;n<=N;n++){
   const t0 = now();
-  const ses:any = await (await fetch(`${BASE}/v1/projects/${prov.project_id}/sessions`, { method:'POST', headers:H, body: JSON.stringify({ provider:'platinum', branch_already_created:false }) })).json();
+  const ses:any = await (await fetch(`${BASE}/v1/workspaces/${prov.project_id}/sessions`, { method:'POST', headers:H, body: JSON.stringify({ provider:'platinum', branch_already_created:false }) })).json();
   if(!ses.session_id){ console.log(`[#${n}] session FAIL`); continue; }
   let ext=''; for(let i=0;i<80;i++){ const [r]=await db.select().from(sessionSandboxes).where(eq(sessionSandboxes.sessionId,ses.session_id)).limit(1); if((r as any)?.externalId){ext=(r as any).externalId;break;} await Bun.sleep(200); }
   if(!ext){ console.log(`[#${n}] no ext`); continue; }

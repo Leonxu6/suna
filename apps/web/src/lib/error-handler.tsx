@@ -103,7 +103,7 @@ const shouldShowError = (error: any, context?: ErrorContext): boolean => {
 };
 
 // Suppress duplicate toasts when the same error fires repeatedly — typically
-// a polling query (sessions list, project metadata) hitting a 403/5xx every
+// a polling query (sessions list, workspace metadata) hitting a 403/5xx every
 // few seconds. We keep one toast per (status, message) per dedupe window;
 // after the window passes, a fresh toast can fire as a reminder.
 const TOAST_DEDUPE_MS = 30_000;
@@ -242,7 +242,7 @@ export const handleApiError = (error: any, context?: ErrorContext): void => {
   const v2Code: string | undefined = v2Detail?.code ?? errAny?.code;
   const v2Message: string | undefined = v2Detail?.message ?? v2Detail?.error ?? errAny?.message;
   const v2Balance: number = typeof v2Detail?.balance === 'number' ? v2Detail.balance : 0;
-  // The blocked account (e.g. the project's team account), surfaced by the
+  // The blocked account (e.g. the workspace's team account), surfaced by the
   // billing 402s. Scopes the upgrade dialog so a non-billing member sees the
   // team's gated CTA, not their own primary account. Absent → primary account.
   const v2AccountId: string | undefined =

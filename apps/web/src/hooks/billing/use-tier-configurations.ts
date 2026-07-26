@@ -8,7 +8,7 @@ export interface TierConfiguration {
   display_name: string;
   monthly_credits: number;
   can_purchase_credits: boolean;
-  project_limit: number;
+  workspace_limit: number;
   price_ids: string[];  // Backend-only: kept for API response compatibility, frontend should use tier_key
 }
 

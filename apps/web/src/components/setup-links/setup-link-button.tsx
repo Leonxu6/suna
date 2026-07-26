@@ -69,7 +69,7 @@ export function SetupLinkButton({
         <ModalContent className="lg:max-w-md">
           <ModalHeader>
             <ModalTitle>
-              {kind === 'secret' ? 'Add a project secret' : 'Connect an app'}
+              {kind === 'secret' ? 'Add a workspace secret' : 'Connect an app'}
             </ModalTitle>
             <ModalDescription>
               {kind === 'secret'

@@ -236,7 +236,7 @@ const RUNS_ANYWHERE = [
 
 const KORTIX_YAML_EXAMPLE = `kortix_version: 2
 
-project:
+workspace:
   name: acme
 
 # the OpenCode runtime config dir
@@ -337,7 +337,7 @@ function Step({
 
 const KORTIX_YAML = `kortix_version: 2
 
-project:
+workspace:
   name: acme-ops
 
 sandbox:

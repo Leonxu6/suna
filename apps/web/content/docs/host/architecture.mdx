@@ -32,7 +32,7 @@ flowchart TB
     end
 
     subgraph box["One host: laptop, VPS, or cloud VM"]
-        subgraph compose["docker compose (one project per instance)"]
+        subgraph compose["docker compose (one workspace per instance)"]
             caddy["Caddy\n(only when KORTIX_DOMAIN is set)\nACME TLS on 80/443"]
             frontend["frontend"]
             api["kortix-api"]

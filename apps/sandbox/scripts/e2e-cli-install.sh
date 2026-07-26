@@ -7,17 +7,17 @@
 # This is the regression net for the failure where an in-sandbox agent could
 # not open a change request: the `kortix` binary wasn't installed, the only
 # token it tried (KORTIX_TOKEN) was the sandbox service key (rejected by the
-# project routes), and `git push` had no credential. See
+# workspace routes), and `git push` had no credential. See
 # apps/sandbox/Dockerfile, apps/cli/src/api/{config,client}.ts, and
 # apps/kortix-sandbox-agent-server/src/git.ts.
 #
 # What it checks:
 #   1. The CLI compiles into the image and runs (`kortix --version`).
 #   2. The sandbox service key (KORTIX_TOKEN, kortix_sb_…) is REJECTED on the
-#      project-scoped routes — i.e. it is the wrong token, exactly as in prod.
-#   3. The injected project PAT (KORTIX_CLI_TOKEN, kortix_pat_…) lets
+#      workspace-scoped routes — it is the wrong token, exactly as in prod.
+#   3. The injected workspace PAT (KORTIX_CLI_TOKEN, kortix_pat_…) lets
 #      `kortix cr open` / `kortix cr ls` succeed, hitting the correct
-#      `/v1/projects/…` path (no double `/v1`).
+#      `/v1/workspaces/…` path (no double `/v1`).
 #   4. The daemon's git credential helper hands `git` a fresh push-capable
 #      credential for the managed remote (`git credential fill`).
 #
@@ -30,8 +30,8 @@ cd "$REPO_ROOT"
 
 IMAGE="kortix-cli-e2e:test"
 PORT="${KORTIX_E2E_PORT:-17790}"
-PROJECT="proj-e2e-123"
-PAT="kortix_pat_e2e_executor"          # project-scoped PAT (KORTIX_CLI_TOKEN)
+WORKSPACE="workspace-e2e-123"
+PAT="kortix_pat_e2e_executor"          # workspace-scoped PAT (KORTIX_CLI_TOKEN)
 SBKEY="kortix_sb_e2e_service_key"       # sandbox service key (KORTIX_TOKEN)
 PUSH_TOKEN="FRESH-PUSH-TOKEN-e2e"
 
@@ -50,7 +50,7 @@ trap cleanup EXIT
 
 # ── Mock control plane ──────────────────────────────────────────────────────
 cat > "$MOCK_DIR/mock.ts" <<MOCK
-const PAT = "$PAT", SBKEY = "$SBKEY", PROJECT = "$PROJECT", PUSH = "$PUSH_TOKEN";
+const PAT = "$PAT", SBKEY = "$SBKEY", WORKSPACE = "$WORKSPACE", PUSH = "$PUSH_TOKEN";
 const crs: any[] = [];
 const bearer = (r: Request) => (r.headers.get("authorization") || "").replace(/^Bearer /, "");
 Bun.serve({
@@ -59,12 +59,12 @@ Bun.serve({
     const url = new URL(req.url);
     const p = url.pathname, tok = bearer(req);
     // clone-credential: accepts the SANDBOX key (matches prod auth).
-    if (p === \`/v1/projects/\${PROJECT}/git/clone-credential\`) {
+    if (p === \`/v1/workspaces/\${WORKSPACE}/git/clone-credential\`) {
       if (tok !== SBKEY) return Response.json({ error: "bad" }, { status: 401 });
       return Response.json({ repo_url: "https://git.example.test/repo", auth: { username: "x-access-token", token: PUSH, type: "basic" }, source: "managed" });
     }
-    // change-requests: require the PROJECT PAT; reject the sandbox key.
-    if (p === \`/v1/projects/\${PROJECT}/change-requests\`) {
+    // change-requests: require the workspace PAT; reject the sandbox key.
+    if (p === \`/v1/workspaces/\${WORKSPACE}/change-requests\`) {
       if (tok !== PAT) return Response.json({ error: true, message: "Invalid or expired token", status: 401 }, { status: 401 });
       if (req.method === "POST")
         return req.json().then((b: any) => { const cr = { cr_id: "cr-1", number: crs.length + 1, status: "open", title: b.title, description: b.description ?? "", head_ref: b.head_ref, base_ref: b.base_ref ?? "main", created_at: new Date(0).toISOString() }; crs.push(cr); return Response.json(cr, { status: 201 }); });
@@ -95,8 +95,8 @@ else
 fi
 
 echo
-echo "2. The sandbox service key (KORTIX_TOKEN) is rejected on project routes"
-OUT="$(drun -e KORTIX_CLI_TOKEN="$SBKEY" -e KORTIX_API_URL="$API_HOST" -e KORTIX_PROJECT_ID="$PROJECT" "$IMAGE" /cli/kortix cr ls 2>&1 || true)"
+echo "2. The sandbox service key (KORTIX_TOKEN) is rejected on workspace routes"
+OUT="$(drun -e KORTIX_CLI_TOKEN="$SBKEY" -e KORTIX_API_URL="$API_HOST" -e KORTIX_WORKSPACE_ID="$WORKSPACE" "$IMAGE" /cli/kortix cr ls 2>&1 || true)"
 if echo "$OUT" | grep -qi "Token rejected"; then
   pass "service key correctly rejected (the original misdiagnosis)"
 else
@@ -104,8 +104,8 @@ else
 fi
 
 echo
-echo "3. The injected project PAT (KORTIX_CLI_TOKEN) opens + lists a CR"
-OUT="$(drun -e KORTIX_CLI_TOKEN="$PAT" -e KORTIX_API_URL="$API_HOST" -e KORTIX_PROJECT_ID="$PROJECT" \
+echo "3. The injected workspace PAT (KORTIX_CLI_TOKEN) opens + lists a CR"
+OUT="$(drun -e KORTIX_CLI_TOKEN="$PAT" -e KORTIX_API_URL="$API_HOST" -e KORTIX_WORKSPACE_ID="$WORKSPACE" \
   -e KORTIX_BRANCH_NAME="session-e2e" -e KORTIX_SESSION_ID="session-e2e" \
   "$IMAGE" /cli/kortix cr open --title "Add portfolio site" --description "e2e" 2>&1 || true)"
 if echo "$OUT" | grep -q "Opened CR #1"; then
@@ -113,7 +113,7 @@ if echo "$OUT" | grep -q "Opened CR #1"; then
 else
   fail "cr open failed: $(echo "$OUT" | tail -2)"
 fi
-OUT="$(drun -e KORTIX_CLI_TOKEN="$PAT" -e KORTIX_API_URL="$API_HOST" -e KORTIX_PROJECT_ID="$PROJECT" "$IMAGE" /cli/kortix cr ls 2>&1 || true)"
+OUT="$(drun -e KORTIX_CLI_TOKEN="$PAT" -e KORTIX_API_URL="$API_HOST" -e KORTIX_WORKSPACE_ID="$WORKSPACE" "$IMAGE" /cli/kortix cr ls 2>&1 || true)"
 if echo "$OUT" | grep -q "Add portfolio site"; then
   pass "kortix cr ls shows the open CR"
 else
@@ -131,7 +131,7 @@ DAEMON="apps/kortix-sandbox-agent-server/src/main.ts"
 HOME_T="$(mktemp -d)"
 HOME="$HOME_T" git config --global --replace-all "credential.https://git.example.test.helper" "!bun '$REPO_ROOT/$DAEMON' git-credential"
 CRED="$(printf 'protocol=https\nhost=git.example.test\npath=repo\n\n' | \
-  HOME="$HOME_T" KORTIX_API_URL="http://127.0.0.1:$PORT/v1" KORTIX_PROJECT_ID="$PROJECT" KORTIX_TOKEN="$SBKEY" \
+  HOME="$HOME_T" KORTIX_API_URL="http://127.0.0.1:$PORT/v1" KORTIX_WORKSPACE_ID="$WORKSPACE" KORTIX_TOKEN="$SBKEY" \
   git credential fill 2>/dev/null || true)"
 rm -rf "$HOME_T"
 if echo "$CRED" | grep -q "password=$PUSH_TOKEN" && echo "$CRED" | grep -q "username=x-access-token"; then

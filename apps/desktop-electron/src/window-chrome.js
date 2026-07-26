@@ -3,7 +3,7 @@
 // Keep drag behavior on explicit web-app regions only. A previous fallback
 // inserted a 40px, full-width drag strip over the title-bar band. Chromium
 // treats app regions at the compositor level, so pointer-events:none did not
-// make the controls underneath clickable; Projects, workspace, Upgrade, and
+// make the controls underneath clickable; Workspaces, workspace, Upgrade, and
 // account actions could all become window-drag targets instead.
 const DESKTOP_CHROME_JS = `
 (function () {

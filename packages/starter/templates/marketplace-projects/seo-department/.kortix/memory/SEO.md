@@ -1,6 +1,6 @@
 # SEO Memory
 
-Durable SEO operating context for this project. Keep this concise and factual.
+Durable SEO operating context for this workspace. Keep this concise and factual.
 Agents should update it through the `memory` tool when a finding, decision, or
 backlog item will matter after the current session ends.
 

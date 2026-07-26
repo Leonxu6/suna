@@ -12,13 +12,13 @@ The CLI lets a user do **everything they can do in the dashboard**, but
 from a terminal or a local coding agent. Concretely:
 
 The mental model is a four-level hierarchy you drill DOWN:
-**Host → Account → Project → Session**. You sign into a *host* (a Kortix
+**Host → Account → Workspace → Session**. You sign into a *host* (a Kortix
 instance — auth lives here), pick an *account* (workspace) within it, pick a
-*project* within that account, and open *sessions* in the project. Exactly one
-host/account/project is "active" at a time; `use` is the verb that moves the
-active pointer at every level (`hosts use`, `accounts use`, `projects use`;
+*workspace* within that account, and open *sessions* in the workspace. Exactly one
+host/account/workspace is "active" at a time; `use` is the verb that moves the
+active pointer at every level (`hosts use`, `accounts use`, `workspaces use`;
 sessions are the ephemeral leaf, addressed by id). Every command acts on the
-current (host, account, project) unless overridden by `--host` or a directory
+current (host, account, workspace) unless overridden by `--host` or a directory
 `link.json`. The bare `kortix` screen renders this path as a breadcrumb with
 each unmet level made actionable.
 
@@ -26,14 +26,14 @@ each unmet level made actionable.
   sign out with `kortix hosts logout`, inspect with `kortix hosts whoami`.
   `kortix login`/`logout`/`whoami` are thin shortcuts that act on the
   active host.
-- **Projects** — list, show, link a local checkout to a remote project,
+- **Workspaces** — list, show, link a local checkout to a remote workspace,
   open the dashboard.
-- **Secrets** — list, set, unset env vars for a project.
+- **Secrets** — list, set, unset env vars for a workspace.
 - **Sessions** — list, create, connect / open the live URL, restart.
 - **Triggers** — list, fire, enable / disable. (These round-trip
   through `kortix.yaml` already; CLI is convenience over the existing
   API routes, not a new surface.)
-- **Project init** — already exists (`kortix init` scaffolds a repo).
+- **Workspace init** — already exists (`kortix init` scaffolds a repo).
 
 ### Out
 
@@ -122,8 +122,8 @@ Backend additions needed:
   - 429 `{ status: "slow_down" }`
 - Dashboard page `/cli/approve?user_code=...` to grant.
 
-Pattern can clone the project-level OAuth device flow already in
-`projects/index.ts:1874-1990` — same idea, different scope.
+Pattern can clone the workspace-level OAuth device flow already in
+`workspaces/index.ts:1874-1990` — same idea, different scope.
 
 ## 3. Command surface
 
@@ -134,42 +134,45 @@ Pattern can clone the project-level OAuth device flow already in
 | `kortix whoami`                                 | Print user + active account                                          | `GET /v1/account/me`                                                |
 | `kortix accounts ls`                            | List accounts this user belongs to                                   | `GET /v1/account/me` → `accounts[]`                                 |
 | `kortix accounts use <slug-or-id>`              | Switch active account stored in `auth.json`                          | `GET /v1/account/me` then write                                     |
-| `kortix projects ls`                            | List projects in active account                                      | `GET /v1/projects`                                                  |
-| `kortix projects info [<id-or-slug>]`           | Show one project (defaults to linked project)                        | `GET /v1/projects/:id`                                              |
-| `kortix projects link [<id-or-slug>]`           | Bind cwd to a remote project (writes `.kortix/link.json`)            | `GET /v1/projects/:id`                                              |
-| `kortix projects unlink`                        | Remove `.kortix/link.json`                                           | none                                                                |
-| `kortix projects open`                          | Open the dashboard URL for the linked project                        | none                                                                |
-| `kortix secrets ls`                             | List secret names + manifest `[env]` requirements                    | `GET /v1/projects/:id/secrets`                                      |
-| `kortix secrets set <NAME>=<VALUE>...`          | Upsert one or more secrets (read VALUE from stdin if `-`)            | `POST /v1/projects/:id/secrets` (per entry)                         |
-| `kortix secrets unset <NAME>...`                | Remove                                                               | `DELETE /v1/projects/:id/secrets/:name`                             |
-| `kortix sessions ls`                            | List sessions                                                        | `GET /v1/projects/:id/sessions`                                     |
-| `kortix sessions new [--prompt "..."]`          | Start a session                                                      | `POST /v1/projects/:id/sessions`                                    |
+| `kortix workspaces ls`                            | List workspaces in active account                                      | `GET /v1/workspaces`                                                  |
+| `kortix workspaces info [<id-or-slug>]`           | Show one workspace (defaults to linked workspace)                        | `GET /v1/workspaces/:id`                                              |
+| `kortix workspaces link [<id-or-slug>]`           | Bind cwd to a remote workspace (writes `.kortix/link.json`)            | `GET /v1/workspaces/:id`                                              |
+| `kortix workspaces unlink`                        | Remove `.kortix/link.json`                                           | none                                                                |
+| `kortix workspaces open`                          | Open the dashboard URL for the linked workspace                        | none                                                                |
+| `kortix secrets ls`                             | List secret names + manifest `[env]` requirements                    | `GET /v1/workspaces/:id/secrets`                                      |
+| `kortix secrets set <NAME>=<VALUE>...`          | Upsert one or more secrets (read VALUE from stdin if `-`)            | `POST /v1/workspaces/:id/secrets` (per entry)                         |
+| `kortix secrets unset <NAME>...`                | Remove                                                               | `DELETE /v1/workspaces/:id/secrets/:name`                             |
+| `kortix sessions ls`                            | List sessions                                                        | `GET /v1/workspaces/:id/sessions`                                     |
+| `kortix sessions new [--prompt "..."]`          | Start a session                                                      | `POST /v1/workspaces/:id/sessions`                                    |
 | `kortix sessions open <session-id>`             | Print / open the dashboard URL for one session                       | none                                                                |
-| `kortix sessions logs <session-id> [-f]`        | Stream session output                                                | `GET /v1/projects/:id/sessions/:sid/events` (SSE — exists)          |
-| `kortix sessions rm <session-id>`               | Stop + delete                                                        | `DELETE /v1/projects/:id/sessions/:sid`                             |
-| `kortix triggers ls`                            | List triggers                                                        | `GET /v1/projects/:id/triggers`                                     |
-| `kortix triggers fire <slug>`                   | Manually fire                                                        | `POST /v1/projects/:id/triggers/:slug/fire`                         |
-| `kortix triggers enable/disable <slug>`         | Flip `enabled` in manifest                                           | `PATCH /v1/projects/:id/triggers/:slug`                             |
+| `kortix sessions logs <session-id> [-f]`        | Stream session output                                                | `GET /v1/workspaces/:id/sessions/:sid/events` (SSE — exists)          |
+| `kortix sessions rm <session-id>`               | Stop + delete                                                        | `DELETE /v1/workspaces/:id/sessions/:sid`                             |
+| `kortix triggers ls`                            | List triggers                                                        | `GET /v1/workspaces/:id/triggers`                                     |
+| `kortix triggers fire <slug>`                   | Manually fire                                                        | `POST /v1/workspaces/:id/triggers/:slug/fire`                         |
+| `kortix triggers enable/disable <slug>`         | Flip `enabled` in manifest                                           | `PATCH /v1/workspaces/:id/triggers/:slug`                             |
 | `kortix env ls/pull/push`                       | Alias of `kortix secrets` plus dotenv import/export                  | same as secrets                                                     |
 
 Conventions:
-- All `<project>` arguments accept project-id (UUID) or slug
-  (slug-resolution happens client-side via `GET /v1/projects` with a
+- All `<workspace>` arguments accept workspace-id (UUID) or slug
+  (slug-resolution happens client-side via `GET /v1/workspaces` with a
   small cache).
-- Commands that operate on a project look up project-id in this order:
-  `--project <id>` flag → `KORTIX_PROJECT_ID` env → `.kortix/link.json`
+- Commands that operate on a workspace look up workspace-id in this order:
+  `--workspace <id>` flag → `KORTIX_WORKSPACE_ID` env → `.kortix/link.json`
   → error.
 
-## 4. Project linking
+`kortix projects`, `--project`, and `KORTIX_PROJECT_ID` are deprecated
+compatibility aliases. Canonical commands and documentation use Workspace names.
+
+## 4. Workspace linking
 
 Mirrors Vercel's `.vercel/project.json`. The first `kortix` command in
 a fresh checkout prompts:
 
 ```
 $ kortix secrets ls
-This directory isn't linked to a Kortix project.
+This directory isn't linked to a Kortix workspace.
 Link it now? [Y/n]
-Select project:
+Select workspace:
   ▸ kortix-agent / acme-bot        (uuid: 1a2b...)
     kortix-agent / marketing-site  (uuid: 9f8e...)
 ✓ Linked → .kortix/link.json
@@ -180,7 +183,7 @@ init starter):
 
 ```json
 {
-  "project_id": "1a2b-3c4d-...",
+  "workspace_id": "1a2b-3c4d-...",
   "account_id": "uuid",
   "linked_at": "2026-05-19T...Z"
 }
@@ -200,7 +203,7 @@ endpoints the dashboard uses.** Two implications:
 
 ### 5.1 Already shared (dashboard + CLI use as-is)
 
-All `/v1/projects/:id/...` routes for secrets, triggers, sessions,
+All `/v1/workspaces/:id/...` routes for secrets, triggers, sessions,
 and oauth credentials. The router is already auth-agnostic — it
 accepts Supabase JWT or `kortix_` API key via the same
 `Authorization: Bearer` header.
@@ -226,7 +229,7 @@ router pattern. The dashboard for the approve / tokens pages goes in
   read `kortix.yaml`, or does it fetch directly from GitHub?
   - If it fetches direct: move to API.
 - Does the trigger list in the dashboard hit
-  `/v1/projects/:id/triggers` or re-parse the manifest in JS?
+  `/v1/workspaces/:id/triggers` or re-parse the manifest in JS?
   - If the latter: nothing to do (parsing is cheap), but the CLI uses
     the API surface either way.
 
@@ -248,7 +251,7 @@ apps/cli/
       login.ts                     # NEW
       logout.ts                    # NEW
       whoami.ts                    # NEW
-      projects.ts                  # NEW
+      workspaces.ts                  # NEW
       secrets.ts                   # NEW
       sessions.ts                  # NEW
       triggers.ts                  # NEW
@@ -257,7 +260,7 @@ apps/cli/
       auth.ts                      # load/save ~/.config/kortix/auth.json
       types.ts                     # response shapes, generated from API
       device-flow.ts               # Phase B
-    project-link.ts                # .kortix/link.json read/write
+    workspace-link.ts                # .kortix/link.json read/write
 ```
 
 ### API client (`src/api/client.ts`) sketch
@@ -282,7 +285,7 @@ Behavior:
 ## 7. Error model
 
 - Auth missing → `kortix: not logged in. Run \`kortix login\`.` (exit 1).
-- No project linked → `kortix: no project linked. Run \`kortix projects link\`.` (exit 1).
+- No workspace linked → `kortix: no workspace linked. Run \`kortix workspaces link\`.` (exit 1).
 - API 4xx → print `kortix: <message from API>` (exit 1).
 - API 5xx → print `kortix: server error — try again.` (exit 2).
 - All errors use `status.err()` from `src/style.ts`.
@@ -292,7 +295,7 @@ Behavior:
 | Phase | Deliverable | Branch behavior |
 | ----- | ----------- | --------------- |
 | **1a — API: PAT** | `/v1/account/{me,tokens}` endpoints + dashboard tokens page | dashboard usable for tokens |
-| **1b — CLI: login/whoami/projects** | `kortix login --token`, `logout`, `whoami`, `projects ls/info/link/unlink/open` | useful but read-only |
+| **1b — CLI: login/whoami/workspaces** | `kortix login --token`, `logout`, `whoami`, `workspaces ls/info/link/unlink/open` | useful but read-only |
 | **2 — CLI: secrets + sessions** | `kortix secrets *`, `kortix sessions *` | feature parity with the dashboard's most-used screens |
 | **3 — CLI: triggers + env** | The rest of the surface | full coverage |
 | **4 — Device flow** | `/v1/cli/device/*` + dashboard approve page; `kortix login` opens browser by default | Vercel-style polish |
@@ -306,11 +309,11 @@ Behavior:
    switch. Confirm whether the API needs an explicit `X-Account-Id`
    header or whether `?account_id=` query is enough (it already
    accepts the latter — see middleware).
-2. **PAT scope** — single global token, or per-project tokens? Vercel
+2. **PAT scope** — single global token, or per-workspace tokens? Vercel
    does global with optional scopes. Recommendation: global, no scopes
    to start (matches dashboard auth).
-3. **Project slug** — does the API expose a stable human slug per
-   project, or only UUIDs? If only UUIDs, the CLI needs a `name`-based
+3. **Workspace slug** — does the API expose a stable human slug per
+   workspace, or only UUIDs? If only UUIDs, the CLI needs a `name`-based
    lookup fallback and we should add a `slug` column.
 4. **Session "connect"** — does the platform expose a public URL per
    running session that the CLI can `open` in the browser, or only the
@@ -328,5 +331,5 @@ In strict order; each row blocks the next.
    the API.
 3. Build dashboard `/account/tokens` page.
 4. Implement `src/api/{auth,client}.ts` + `src/commands/{login,logout,whoami}.ts`.
-5. Implement `src/commands/projects.ts` (`ls`, `info`, `link`, `unlink`, `open`).
+5. Implement `src/commands/workspaces.ts` (`ls`, `info`, `link`, `unlink`, `open`).
 6. Hand over for review; then continue Phase 2.

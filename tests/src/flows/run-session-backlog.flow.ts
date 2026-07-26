@@ -37,7 +37,7 @@ import type { FlowContext } from '../core/types';
 /** Poll the canonical unified session-open endpoint until the runtime is ready. */
 async function waitForSessionReady(
   ctx: FlowContext,
-  projectId: string,
+  workspaceId: string,
   sessionId: string,
   timeoutMs = 300_000,
 ): Promise<any> {
@@ -45,10 +45,10 @@ async function waitForSessionReady(
     return await waitFor(
       async () => {
         const r = await ctx.client.as(ctx.P.OWNER).post(
-          '/v1/projects/:projectId/sessions/:sessionId/start',
+          '/v1/workspaces/:workspaceId/sessions/:sessionId/start',
           {},
           {
-            params: { projectId, sessionId },
+            params: { workspaceId, sessionId },
             query: { wait_ms: '8000' },
             // The server may hold the request for the full 8s wait window, and
             // Cloudflare/ECS transit can add several more seconds under load.
@@ -80,14 +80,14 @@ async function waitForSessionReady(
 async function bootSandbox(
   ctx: FlowContext,
   opts?: { prompt?: string; readinessTimeoutMs?: number },
-): Promise<{ projectId: string; sessionId: string; sandboxId: string; sandbox: any }> {
-  const project = await ctx.fixtures.project({ seed: true });
+): Promise<{ workspaceId: string; sessionId: string; sandboxId: string; sandbox: any }> {
+  const project = await ctx.fixtures.workspace({ seed: true });
   const session = await ctx.fixtures.session(project, { prompt: opts?.prompt ?? 'say hello' });
   const started = await waitForSessionReady(ctx, project.id, session.id, opts?.readinessTimeoutMs);
 
   const sandbox = started.sandbox;
   const sandboxId = String(sandbox.external_id ?? sandbox.externalId);
-  return { projectId: project.id, sessionId: session.id, sandboxId, sandbox };
+  return { workspaceId: project.id, sessionId: session.id, sandboxId, sandbox };
 }
 
 /** The workspace directory the session's OpenCode root lives under (see
@@ -172,8 +172,8 @@ flow(
     // Only manifest-real routes are declared; the /p/<sbx>/8000/* proxy
     // catch-all is exercised at runtime but is not a coverage target.
     routes: [
-      'POST /v1/projects/:projectId/sessions',
-      'POST /v1/projects/:projectId/sessions/:sessionId/start',
+      'POST /v1/workspaces/:workspaceId/sessions',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/start',
     ],
   },
   async (ctx) => {
@@ -193,8 +193,8 @@ flow(
     requires: ['funded', 'daytona'],
     timeoutMs: 360_000,
     routes: [
-      'POST /v1/projects/:projectId/sessions',
-      'POST /v1/projects/:projectId/sessions/:sessionId/start',
+      'POST /v1/workspaces/:workspaceId/sessions',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/start',
     ],
   },
   async (ctx) => {
@@ -222,8 +222,8 @@ flow(
     requires: ['funded', 'daytona'],
     timeoutMs: 420_000,
     routes: [
-      'POST /v1/projects/:projectId/sessions',
-      'POST /v1/projects/:projectId/sessions/:sessionId/start',
+      'POST /v1/workspaces/:workspaceId/sessions',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/start',
     ],
   },
   async (ctx) => {
@@ -255,8 +255,8 @@ flow(
     requires: ['funded', 'daytona'],
     timeoutMs: 420_000,
     routes: [
-      'POST /v1/projects/:projectId/sessions',
-      'POST /v1/projects/:projectId/sessions/:sessionId/start',
+      'POST /v1/workspaces/:workspaceId/sessions',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/start',
     ],
   },
   async (ctx) => {
@@ -298,8 +298,8 @@ flow(
     requires: ['funded', 'daytona'],
     timeoutMs: 420_000,
     routes: [
-      'POST /v1/projects/:projectId/sessions',
-      'POST /v1/projects/:projectId/sessions/:sessionId/start',
+      'POST /v1/workspaces/:workspaceId/sessions',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/start',
     ],
   },
   async (ctx) => {
@@ -332,8 +332,8 @@ flow(
     requires: ['funded', 'daytona'],
     timeoutMs: 420_000,
     routes: [
-      'POST /v1/projects/:projectId/sessions',
-      'POST /v1/projects/:projectId/sessions/:sessionId/start',
+      'POST /v1/workspaces/:workspaceId/sessions',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/start',
     ],
   },
   async (ctx) => {
@@ -380,15 +380,15 @@ flow(
     requires: ['funded', 'daytona'],
     timeoutMs: 480_000,
     routes: [
-      'POST /v1/projects/:projectId/sessions',
-      'POST /v1/projects/:projectId/sessions/:sessionId/start',
+      'POST /v1/workspaces/:workspaceId/sessions',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/start',
       // The durable truth (commits on branch <sessionId>) is observed via the
       // project git API — a manifest-real route.
-      'GET /v1/projects/:projectId/commits',
+      'GET /v1/workspaces/:workspaceId/commits',
     ],
   },
   async (ctx) => {
-    const { projectId, sessionId, sandboxId } = await bootSandbox(ctx);
+    const { workspaceId, sessionId, sandboxId } = await bootSandbox(ctx);
     await ctx.step('ask the agent to create + commit a file', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
@@ -418,8 +418,8 @@ flow(
       // a specific commit count since timing of the agent commit is LLM-bound.
       await waitFor(
         async () => {
-          const r = await ctx.client.as(ctx.P.OWNER).get('/v1/projects/:projectId/commits', {
-            params: { projectId },
+          const r = await ctx.client.as(ctx.P.OWNER).get('/v1/workspaces/:workspaceId/commits', {
+            params: { workspaceId },
             query: { ref: sessionId },
           });
           return r.statusCode;
@@ -446,8 +446,8 @@ flow(
     timeoutMs: 360_000,
     retry: { attempts: 2 },
     routes: [
-      'POST /v1/projects/:projectId/sessions',
-      'POST /v1/projects/:projectId/sessions/:sessionId/start',
+      'POST /v1/workspaces/:workspaceId/sessions',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/start',
       'POST /v1/p/share',
       'DELETE /v1/p/share/:token',
     ],
@@ -507,7 +507,7 @@ flow(
     timeoutMs: 300_000,
     routes: [
       'POST /v1/admin/api/accounts/:id/session-limit',
-      'POST /v1/projects/:projectId/sessions',
+      'POST /v1/workspaces/:workspaceId/sessions',
     ],
   },
   async (ctx) => {
@@ -528,29 +528,29 @@ flow(
     });
 
     try {
-      const project = await ctx.fixtures.project({ seed: true });
+      const project = await ctx.fixtures.workspace({ seed: true });
       await ctx.step('first session at limit 1 → 201', async () => {
         const r = await ctx.client
           .as(ctx.P.OWNER)
           .post(
-            '/v1/projects/:projectId/sessions',
+            '/v1/workspaces/:workspaceId/sessions',
             { initial_prompt: 'noop' },
-            { params: { projectId: project.id } },
+            { params: { workspaceId: project.id } },
           );
         r.status(201);
         const body = r.json<{ session_id?: string; id?: string }>();
         const id = body.session_id ?? body.id;
         if (!id) throw new Error(`session create returned no id: ${r.text()}`);
-        ctx.track('session', id, { projectId: project.id });
+        ctx.track('session', id, { workspaceId: project.id });
       });
 
       await ctx.step('second session over limit 1 → 429 + X-RateLimit headers', async () => {
         const r = await ctx.client
           .as(ctx.P.OWNER)
           .post(
-            '/v1/projects/:projectId/sessions',
+            '/v1/workspaces/:workspaceId/sessions',
             { initial_prompt: 'noop' },
-            { params: { projectId: project.id } },
+            { params: { workspaceId: project.id } },
           );
         r.status(429).headerExists('x-ratelimit-limit').headerExists('x-ratelimit-remaining');
       });
@@ -580,27 +580,27 @@ flow(
     domain: 'sessions',
     requires: ['funded', 'daytona'],
     timeoutMs: 240_000,
-    routes: ['POST /v1/projects/:projectId/sessions'],
+    routes: ['POST /v1/workspaces/:workspaceId/sessions'],
   },
   async (ctx) => {
-    const project = await ctx.fixtures.project({ seed: true });
+    const project = await ctx.fixtures.workspace({ seed: true });
     const clientSessionId = crypto.randomUUID();
     await ctx.step(
       'create session with client-minted id + branch_already_created → 201',
       async () => {
         const r = await ctx.client.as(ctx.P.OWNER).post(
-          '/v1/projects/:projectId/sessions',
+          '/v1/workspaces/:workspaceId/sessions',
           {
             session_id: clientSessionId,
             branch_already_created: true,
             base_ref: 'main',
             initial_prompt: 'noop',
           },
-          { params: { projectId: project.id } },
+          { params: { workspaceId: project.id } },
         );
         r.status(201);
         const id = r.json<any>()?.session_id ?? r.json<any>()?.id;
-        if (id) ctx.track('session', id, { projectId: project.id });
+        if (id) ctx.track('session', id, { workspaceId: project.id });
         // The server should honor the client-supplied id (branch name = session id).
         if (id) r.body().has('$.session_id', clientSessionId);
       },
@@ -616,25 +616,25 @@ flow(
     requires: ['funded', 'daytona'],
     timeoutMs: 360_000,
     routes: [
-      'POST /v1/projects/:projectId/sessions',
-      'POST /v1/projects/:projectId/sessions/:sessionId/start',
-      'POST /v1/projects/:projectId/sessions/:sessionId/restart',
+      'POST /v1/workspaces/:workspaceId/sessions',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/start',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/restart',
     ],
   },
   async (ctx) => {
-    const { projectId, sessionId } = await bootSandbox(ctx);
+    const { workspaceId, sessionId } = await bootSandbox(ctx);
     await ctx.step('restart → 202 status provisioning', async () => {
       const r = await ctx.client.as(ctx.P.OWNER).post(
-        '/v1/projects/:projectId/sessions/:sessionId/restart',
+        '/v1/workspaces/:workspaceId/sessions/:sessionId/restart',
         {},
         {
-          params: { projectId, sessionId },
+          params: { workspaceId, sessionId },
         },
       );
       r.status(202).body().has('$.status', 'provisioning');
     });
     await ctx.step('sandbox re-provisions back to active (branch preserved)', async () => {
-      await waitForSessionReady(ctx, projectId, sessionId);
+      await waitForSessionReady(ctx, workspaceId, sessionId);
     });
   },
 );
@@ -647,36 +647,36 @@ flow(
     requires: ['funded', 'daytona'],
     timeoutMs: 360_000,
     routes: [
-      'POST /v1/projects/:projectId/sessions',
-      'POST /v1/projects/:projectId/sessions/:sessionId/start',
-      'POST /v1/projects/:projectId/sessions/:sessionId/stop',
-      'POST /v1/projects/:projectId/sessions/:sessionId/start',
+      'POST /v1/workspaces/:workspaceId/sessions',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/start',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/stop',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/start',
     ],
   },
   async (ctx) => {
-    const { projectId, sessionId } = await bootSandbox(ctx);
+    const { workspaceId, sessionId } = await bootSandbox(ctx);
     await ctx.step('stop → 200 status stopped', async () => {
       const r = await ctx.client.as(ctx.P.OWNER).post(
-        '/v1/projects/:projectId/sessions/:sessionId/stop',
+        '/v1/workspaces/:workspaceId/sessions/:sessionId/stop',
         {},
         {
-          params: { projectId, sessionId },
+          params: { workspaceId, sessionId },
         },
       );
       r.status(200).body().has('$.status', 'stopped');
     });
     await ctx.step('stopping an already-stopped session → 409', async () => {
       const r = await ctx.client.as(ctx.P.OWNER).withTransientGatewayRetries().post(
-        '/v1/projects/:projectId/sessions/:sessionId/stop',
+        '/v1/workspaces/:workspaceId/sessions/:sessionId/stop',
         {},
         {
-          params: { projectId, sessionId },
+          params: { workspaceId, sessionId },
         },
       );
       r.status(409);
     });
     await ctx.step('start resumes the stopped sandbox (disk preserved)', async () => {
-      await waitForSessionReady(ctx, projectId, sessionId);
+      await waitForSessionReady(ctx, workspaceId, sessionId);
     });
   },
 );
@@ -689,33 +689,33 @@ flow(
     requires: ['funded', 'daytona'],
     timeoutMs: 360_000,
     routes: [
-      'POST /v1/projects/:projectId/sessions',
-      'POST /v1/projects/:projectId/sessions/:sessionId/start',
-      'GET /v1/projects/:projectId/version-diff',
+      'POST /v1/workspaces/:workspaceId/sessions',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/start',
+      'GET /v1/workspaces/:workspaceId/version-diff',
     ],
   },
   async (ctx) => {
     // A booted session pushes a branch named <sessionId>; diffing it against main
     // exercises a REAL two-ref diff. (version-diff itself only needs `read`, but
     // we gate the whole flow so it runs where a session branch actually exists.)
-    const { projectId, sessionId } = await bootSandbox(ctx);
+    const { workspaceId, sessionId } = await bootSandbox(ctx);
     await ctx.step('version-diff main → <sessionId> → 200 summary', async () => {
-      const r = await ctx.client.as(ctx.P.OWNER).get('/v1/projects/:projectId/version-diff', {
-        params: { projectId },
+      const r = await ctx.client.as(ctx.P.OWNER).get('/v1/workspaces/:workspaceId/version-diff', {
+        params: { workspaceId },
         query: { from: sessionId, into: 'main' },
       });
       r.status(200).body().exists('$.files_changed').has('$.from', sessionId).has('$.into', 'main');
     });
     await ctx.step('the `head`/`base` aliases work identically', async () => {
-      const r = await ctx.client.as(ctx.P.OWNER).get('/v1/projects/:projectId/version-diff', {
-        params: { projectId },
+      const r = await ctx.client.as(ctx.P.OWNER).get('/v1/workspaces/:workspaceId/version-diff', {
+        params: { workspaceId },
         query: { head: sessionId, base: 'main' },
       });
       r.status(200).body().exists('$.files_changed');
     });
     await ctx.step('missing into/base → 400', async () => {
-      const r = await ctx.client.as(ctx.P.OWNER).get('/v1/projects/:projectId/version-diff', {
-        params: { projectId },
+      const r = await ctx.client.as(ctx.P.OWNER).get('/v1/workspaces/:workspaceId/version-diff', {
+        params: { workspaceId },
         query: { from: sessionId },
       });
       r.status(400);
@@ -734,8 +734,8 @@ flow(
     requires: ['funded', 'daytona'],
     timeoutMs: 600_000,
     routes: [
-      'POST /v1/projects/:projectId/sessions',
-      'POST /v1/projects/:projectId/sessions/:sessionId/start',
+      'POST /v1/workspaces/:workspaceId/sessions',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/start',
     ],
   },
   async (ctx) => {
@@ -795,25 +795,25 @@ flow(
     serial: true,
     timeoutMs: 600_000,
     routes: [
-      'POST /v1/projects/:projectId/sessions',
-      'POST /v1/projects/:projectId/sessions/:sessionId/start',
-      'POST /v1/projects/:projectId/sessions/:sessionId/commit-push',
-      'GET /v1/projects/:projectId/snapshots',
-      'POST /v1/projects/:projectId/change-requests',
-      'GET /v1/projects/:projectId/change-requests/:crId/merge-preview',
-      'POST /v1/projects/:projectId/change-requests/:crId/merge',
-      'DELETE /v1/projects/:projectId/sessions/:sessionId',
+      'POST /v1/workspaces/:workspaceId/sessions',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/start',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/commit-push',
+      'GET /v1/workspaces/:workspaceId/snapshots',
+      'POST /v1/workspaces/:workspaceId/change-requests',
+      'GET /v1/workspaces/:workspaceId/change-requests/:crId/merge-preview',
+      'POST /v1/workspaces/:workspaceId/change-requests/:crId/merge',
+      'DELETE /v1/workspaces/:workspaceId/sessions/:sessionId',
     ],
   },
   async (ctx) => {
-    const project = await ctx.fixtures.project({ seed: true });
+    const project = await ctx.fixtures.workspace({ seed: true });
 
     await ctx.step('a ready snapshot exists for the base ref', async () => {
       await waitFor(
         async () => {
           const r = await ctx.client
             .as(ctx.P.OWNER)
-            .get('/v1/projects/:projectId/snapshots', { params: { projectId: project.id } });
+            .get('/v1/workspaces/:workspaceId/snapshots', { params: { workspaceId: project.id } });
           return r.statusCode === 200 ? r.json<any>() : null;
         },
         {
@@ -879,9 +879,9 @@ flow(
       const committed = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          '/v1/projects/:projectId/sessions/:sessionId/commit-push',
+          '/v1/workspaces/:workspaceId/sessions/:sessionId/commit-push',
           { message: 'Add golden end-to-end fixture' },
-          { params: { projectId: project.id, sessionId: session.id } },
+          { params: { workspaceId: project.id, sessionId: session.id } },
         );
       committed.status(200).body().has('$.pushed', true);
     });
@@ -895,9 +895,9 @@ flow(
           const resp = await ctx.client
             .as(ctx.P.OWNER)
             .post(
-              '/v1/projects/:projectId/change-requests',
+              '/v1/workspaces/:workspaceId/change-requests',
               { head_ref: session.id, title: ctx.fixtures.name('golden-cr') },
-              { params: { projectId: project.id } },
+              { params: { workspaceId: project.id } },
             );
           // The branch can be unknown briefly (400), or exist without being
           // ahead of base yet (422 CR_HEAD_NOT_AHEAD). Both mean the async
@@ -915,24 +915,24 @@ flow(
       if (!r) throw new Error('change request did not become observable');
       r.status(201);
       crId = r.json<any>()?.change_request?.id ?? r.json<any>()?.cr_id ?? r.json<any>()?.id ?? '';
-      if (crId) ctx.track('change-request', crId, { projectId: project.id });
+      if (crId) ctx.track('change-request', crId, { workspaceId: project.id });
     });
 
     await ctx.step('merge-preview reports mergeable', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .get('/v1/projects/:projectId/change-requests/:crId/merge-preview', {
-          params: { projectId: project.id, crId },
+        .get('/v1/workspaces/:workspaceId/change-requests/:crId/merge-preview', {
+          params: { workspaceId: project.id, crId },
         });
       r.status(200);
     });
 
     await ctx.step('merge the CR → 200 merged', async () => {
       const r = await ctx.client.as(ctx.P.OWNER).post(
-        '/v1/projects/:projectId/change-requests/:crId/merge',
+        '/v1/workspaces/:workspaceId/change-requests/:crId/merge',
         {},
         {
-          params: { projectId: project.id, crId },
+          params: { workspaceId: project.id, crId },
         },
       );
       r.status(200).body().has('$.change_request.status', 'merged');
@@ -941,8 +941,8 @@ flow(
     await ctx.step('delete the session → 200 stopped (branch preserved)', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .del('/v1/projects/:projectId/sessions/:sessionId', {
-          params: { projectId: project.id, sessionId: session.id },
+        .del('/v1/workspaces/:workspaceId/sessions/:sessionId', {
+          params: { workspaceId: project.id, sessionId: session.id },
         });
       r.status(200);
     });
@@ -952,15 +952,15 @@ flow(
 // ─── CHN-6: Slack dispatch creates/continues a session ───────────────────────
 // app_mention/IM/threaded message → existing thread session (continue it via the
 // canonical projects/session-delivery `deliverPromptToSession`) else
-// createProjectSession(actor=owner, agent `default`) + record chat_threads.
+// createWorkspaceSession(actor=owner, agent `default`) + record chat_threads.
 //
 // BOUNDARY NOTE: the dispatch is reached via the BYO per-project webhook
-// (POST /v1/webhooks/slack/:projectId). It requires a stored per-project Slack
+// (POST /v1/webhooks/slack/:workspaceId). It requires a stored per-project Slack
 // signing secret (loadSlackSigningSecretForProject) — which is only persisted
 // via `channels/slack/connect`, and that route validates a REAL `xoxb-` token
 // through Slack's `auth.test`. Without a real Slack workspace+app (true even on
 // dev-api unless one is wired) the project has no install → the webhook returns
-// 404 BEFORE it can dispatch, so createProjectSession is unreachable in a
+// 404 BEFORE it can dispatch, so createWorkspaceSession is unreachable in a
 // black-box run. We therefore drive the real dispatch entry point and assert the
 // closest real boundary: a `event_callback`/`app_mention` POST is accepted and
 // (when an install + signature are present on the target) acknowledged 200
@@ -974,10 +974,10 @@ flow(
     requires: ['funded', 'daytona'],
     serial: true,
     timeoutMs: 240_000,
-    routes: ['POST /v1/webhooks/slack/:projectId', 'GET /v1/projects/:projectId/sessions'],
+    routes: ['POST /v1/webhooks/slack/:workspaceId', 'GET /v1/workspaces/:workspaceId/sessions'],
   },
   async (ctx) => {
-    const project = await ctx.fixtures.project();
+    const project = await ctx.fixtures.workspace();
     const event = {
       type: 'event_callback',
       event_id: `Ev${Date.now()}`,
@@ -998,11 +998,11 @@ flow(
       // target. Either proves we hit the real BYO dispatch route.
       const r = await ctx.client
         .as(ctx.P.ANON)
-        .post('/v1/webhooks/slack/:projectId', event, { params: { projectId: project.id } });
+        .post('/v1/webhooks/slack/:workspaceId', event, { params: { workspaceId: project.id } });
       r.status([200, 401, 404]);
       if (r.statusCode !== 200) {
         ctx.skip(
-          'no real Slack install on this target — dispatch (createProjectSession) ' +
+          'no real Slack install on this target — dispatch (createWorkspaceSession) ' +
             'requires a connected workspace; asserted the BYO webhook install gate instead',
         );
       }
@@ -1015,7 +1015,7 @@ flow(
         async () => {
           const r = await ctx.client
             .as(ctx.P.OWNER)
-            .get('/v1/projects/:projectId/sessions', { params: { projectId: project.id } });
+            .get('/v1/workspaces/:workspaceId/sessions', { params: { workspaceId: project.id } });
           return r.statusCode === 200 ? r.json<any>() : null;
         },
         {

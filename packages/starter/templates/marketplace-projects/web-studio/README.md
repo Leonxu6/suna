@@ -15,11 +15,11 @@ then makes every future change by email for a small fee — on a heartbeat.
   checks live sites, reconciles the ledger).
 - The skills it leans on, pulled in at clone time: `website-building`,
   `design-foundations`, `domain-research`.
-- The full Kortix runtime floor (tools, plugins, memory) — same as any project.
+- The full Kortix runtime floor (tools, plugins, memory) — same as any workspace.
 
 ## After cloning
 
-1. Open the project and read `.kortix/opencode/agents/studio.md` — that's the
+1. Open the workspace and read `.kortix/opencode/agents/studio.md` — that is the
    whole workflow and the guardrails.
 2. Connect the pieces (Customize → Connectors / Secrets): an **email** address
    the studio sends + receives from, **Stripe**, a **deploy** provider (Vercel),

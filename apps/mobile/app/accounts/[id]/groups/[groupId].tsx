@@ -1,6 +1,6 @@
 /**
  * Group detail (web parity: accounts/[id]/groups/[groupId]). Rename / delete the
- * group, manage its members (add / remove), and view + detach its project access
+ * group, manage its members (add / remove), and view + detach its workspace access
  * grants.
  */
 
@@ -25,10 +25,10 @@ import {
   updateGroup,
   deleteGroup,
   listGroupMembers,
-  listGroupProjectGrants,
+  listGroupWorkspaceGrants,
 } from '@/lib/accounts/groups-client';
 import { listAccountMembers, addGroupMembers } from '@/lib/accounts/accounts-client';
-import { detachGroupFromProject, removeGroupMember } from '@/lib/projects/projects-client';
+import { detachGroupFromWorkspace, removeGroupMember } from '@/lib/workspaces/workspaces-client';
 import { accountColors, InitialsAvatar, Pill, PrimaryButton } from '@/components/accounts/account-shared';
 
 function formatDate(input: string | null | undefined) {
@@ -51,7 +51,7 @@ export default function GroupDetailScreen() {
 
   const groupQuery = useQuery({ queryKey: ['account-group', accountId, groupId], queryFn: () => getGroup(accountId, groupId), staleTime: 30_000 });
   const membersQuery = useQuery({ queryKey: ['group-members', accountId, groupId], queryFn: () => listGroupMembers(accountId, groupId), staleTime: 20_000 });
-  const grantsQuery = useQuery({ queryKey: ['group-grants', accountId, groupId], queryFn: () => listGroupProjectGrants(accountId, groupId), staleTime: 20_000 });
+  const grantsQuery = useQuery({ queryKey: ['group-grants', accountId, groupId], queryFn: () => listGroupWorkspaceGrants(accountId, groupId), staleTime: 20_000 });
   const accountMembersQuery = useQuery({ queryKey: ['account-members', accountId], queryFn: () => listAccountMembers(accountId), staleTime: 30_000 });
 
   const group = groupQuery.data;
@@ -81,7 +81,7 @@ export default function GroupDetailScreen() {
     onError: (e: any) => Alert.alert('Failed', e?.message || 'Failed to remove member.'),
   });
   const detach = useMutation({
-    mutationFn: (projectId: string) => detachGroupFromProject(projectId, groupId),
+    mutationFn: (workspaceId: string) => detachGroupFromWorkspace(workspaceId, groupId),
     onSuccess: () => { haptics.success(); queryClient.invalidateQueries({ queryKey: ['group-grants', accountId, groupId] }); queryClient.invalidateQueries({ queryKey: ['account-groups', accountId] }); },
     onError: (e: any) => Alert.alert('Failed', e?.message || 'Failed to detach group.'),
   });
@@ -106,8 +106,8 @@ export default function GroupDetailScreen() {
   const confirmRemove = (userId: string) => Alert.alert('Remove from group', `Remove ${emailByUserId.get(userId) ?? userId} from this group?`, [
     { text: 'Cancel', style: 'cancel' }, { text: 'Remove', style: 'destructive', onPress: () => { haptics.medium(); removeMember.mutate(userId); } },
   ]);
-  const confirmDetach = (projectId: string, projectName: string) => Alert.alert('Detach from project', `Members lose their inherited access to "${projectName}" (unless granted another way).`, [
-    { text: 'Cancel', style: 'cancel' }, { text: 'Detach', style: 'destructive', onPress: () => { haptics.medium(); detach.mutate(projectId); } },
+  const confirmDetach = (workspaceId: string, workspaceName: string) => Alert.alert('Detach from workspace', `Members lose their inherited access to "${workspaceName}" (unless granted another way).`, [
+    { text: 'Cancel', style: 'cancel' }, { text: 'Detach', style: 'destructive', onPress: () => { haptics.medium(); detach.mutate(workspaceId); } },
   ]);
 
   return (
@@ -176,26 +176,26 @@ export default function GroupDetailScreen() {
 
           <View style={divider} />
 
-          {/* ── Project access ── */}
+          {/* ── Workspace access ── */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <FolderGit2 size={16} color={c.muted} />
-            <Text style={sectionTitle}>Project access</Text>
+            <Text style={sectionTitle}>Workspace access</Text>
             <View style={countBadge}><Text style={countText}>{grants.length}</Text></View>
           </View>
-          <Text style={{ fontSize: 12, color: c.muted, marginTop: 4 }}>Projects this group can access and at what role.</Text>
+          <Text style={{ fontSize: 12, color: c.muted, marginTop: 4 }}>Workspaces this group can access and at what role.</Text>
           <View style={{ marginTop: 6 }}>
             {grantsQuery.isLoading ? (
               <View style={{ paddingVertical: 14 }}><ActivityIndicator size="small" color={c.muted} /></View>
             ) : grants.length === 0 ? (
-              <Text style={{ fontSize: 12.5, color: c.muted, paddingVertical: 12 }}>Not attached to any project yet.</Text>
+              <Text style={{ fontSize: 12.5, color: c.muted, paddingVertical: 12 }}>Not attached to any workspace yet.</Text>
             ) : grants.map((g, i) => (
-              <View key={g.project_id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: c.border }}>
+              <View key={g.workspace_id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: c.border }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 13.5, fontFamily: 'Roobert-Medium', color: c.fg }} numberOfLines={1}>{g.project_name}</Text>
+                  <Text style={{ fontSize: 13.5, fontFamily: 'Roobert-Medium', color: c.fg }} numberOfLines={1}>{g.workspace_name}</Text>
                   <Text style={{ fontSize: 11, color: c.muted, marginTop: 1 }}>Attached {formatDate(g.created_at)}</Text>
                 </View>
                 <Pill label={g.role.charAt(0).toUpperCase() + g.role.slice(1)} isDark={isDark} />
-                <TouchableOpacity onPress={() => { haptics.tap(); confirmDetach(g.project_id, g.project_name); }} hitSlop={8} style={{ width: 32, height: 32, borderRadius: 9999, alignItems: 'center', justifyContent: 'center' }}><X size={15} color="#ef4444" /></TouchableOpacity>
+                <TouchableOpacity onPress={() => { haptics.tap(); confirmDetach(g.workspace_id, g.workspace_name); }} hitSlop={8} style={{ width: 32, height: 32, borderRadius: 9999, alignItems: 'center', justifyContent: 'center' }}><X size={15} color="#ef4444" /></TouchableOpacity>
               </View>
             ))}
           </View>

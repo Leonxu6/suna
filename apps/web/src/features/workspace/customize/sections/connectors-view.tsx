@@ -34,7 +34,7 @@ import Image from 'next/image';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 
-import { PoliciesPanel } from '@/components/projects/policies-panel';
+import { PoliciesPanel } from '@/components/workspaces/policies-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -91,10 +91,10 @@ import {
   useSlackMode,
   useUpdateEmailPolicy,
 } from '@/hooks/channels/use-channels-installations';
-import { useNewProjectSession } from '@/hooks/projects/use-new-project-session';
+import { useNewWorkspaceSession } from '@/hooks/workspaces/use-new-workspace-session';
 import { isConnectorsEnabled } from '@/lib/config';
-import { PROJECT_ACTIONS } from '@/lib/project-actions';
-import { useProjectCan } from '@/lib/use-project-can';
+import { WORKSPACE_ACTIONS } from '@/lib/workspace-actions';
+import { useWorkspaceCan } from '@/lib/use-workspace-can';
 import { cn } from '@/lib/utils';
 import {
   type AdminConnector,
@@ -109,11 +109,11 @@ import {
   deleteConnector,
   discoverConnectorAuth,
   discoverConnectionProfileOAuth2,
-  ensureProjectConnectorProfile,
+  ensureWorkspaceConnectorProfile,
   getConnectorConfig,
   getConnectorPolicies,
   getConnectStatus,
-  getProjectDetail,
+  getWorkspaceDetail,
   listConnectionProfiles,
   listConnectors,
   listPipedreamApps,
@@ -218,13 +218,13 @@ function withPipedreamOverlayEscape(): () => void {
   };
 }
 
-function usePipedreamConnect(projectId: string, slug: string, onConnected: () => void) {
+function usePipedreamConnect(workspaceId: string, slug: string, onConnected: () => void) {
   return useMutation({
     mutationFn: async () => {
-      const { token, app } = await pipedreamConnect(projectId, slug);
+      const { token, app } = await pipedreamConnect(workspaceId, slug);
       if (!token || !app) throw new Error('App connect is not configured');
       const pd = createFrontendClient({
-        externalUserId: `${projectId}:${slug}`,
+        externalUserId: `${workspaceId}:${slug}`,
         tokenCallback: async () => ({ token, connect_link_url: undefined, expires_at: '' }) as any,
       });
       const release = withPipedreamOverlayEscape();
@@ -244,7 +244,7 @@ function usePipedreamConnect(projectId: string, slug: string, onConnected: () =>
         release();
       }
       if (!connected) return { connected: false };
-      await pipedreamFinalize(projectId, slug);
+      await pipedreamFinalize(workspaceId, slug);
       return { connected: true };
     },
     onSuccess: (res) => {
@@ -262,17 +262,17 @@ function usePipedreamConnect(projectId: string, slug: string, onConnected: () =>
  * shared connect, then finalize. The result is usable ONLY in this user's own
  * private sessions and is never shared with the team. Mirrors usePipedreamConnect.
  */
-function usePipedreamConnectMember(projectId: string, slug: string, onConnected: () => void) {
+function usePipedreamConnectMember(workspaceId: string, slug: string, onConnected: () => void) {
   return useMutation({
     mutationFn: async () => {
-      const profile = await reconcileMemberConnectionProfile(projectId, {
+      const profile = await reconcileMemberConnectionProfile(workspaceId, {
         connector_alias: slug,
         label: 'Private connection',
       });
-      const { token, app } = await pipedreamConnectConnectionProfile(projectId, profile.profile_id);
+      const { token, app } = await pipedreamConnectConnectionProfile(workspaceId, profile.profile_id);
       if (!token || !app) throw new Error('App connect is not configured');
       const pd = createFrontendClient({
-        externalUserId: `${projectId}:${slug}:${profile.profile_id}`,
+        externalUserId: `${workspaceId}:${slug}:${profile.profile_id}`,
         tokenCallback: async () => ({ token, connect_link_url: undefined, expires_at: '' }) as any,
       });
       const release = withPipedreamOverlayEscape();
@@ -292,7 +292,7 @@ function usePipedreamConnectMember(projectId: string, slug: string, onConnected:
         release();
       }
       if (!connected) return { connected: false };
-      await pipedreamFinalizeConnectionProfile(projectId, profile.profile_id);
+      await pipedreamFinalizeConnectionProfile(workspaceId, profile.profile_id);
       return { connected: true };
     },
     onSuccess: (res) => {
@@ -306,41 +306,41 @@ function usePipedreamConnectMember(projectId: string, slug: string, onConnected:
 
 type Selection = { kind: 'connector'; slug: string } | { kind: 'global' } | { kind: 'add' };
 
-export function ConnectorsView({ projectId }: { projectId: string }) {
+export function ConnectorsView({ workspaceId }: { workspaceId: string }) {
   return (
     <div className="bg-background flex h-full min-h-0 flex-col">
-      <ConnectorsMasterDetail projectId={projectId} />
+      <ConnectorsMasterDetail workspaceId={workspaceId} />
     </div>
   );
 }
 
-function ConnectorsMasterDetail({ projectId }: { projectId: string }) {
+function ConnectorsMasterDetail({ workspaceId }: { workspaceId: string }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
-  const queryKey = useMemo(() => ['project-connectors', projectId], [projectId]);
+  const queryKey = useMemo(() => ['workspace-connectors', workspaceId], [workspaceId]);
   const invalidate = () => queryClient.invalidateQueries({ queryKey });
 
   const query = useQuery({
     queryKey,
-    queryFn: () => listConnectors(projectId),
+    queryFn: () => listConnectors(workspaceId),
     staleTime: 10_000,
   });
-  const projectQuery = useQuery({
-    queryKey: ['project-detail', projectId],
-    queryFn: () => getProjectDetail(projectId),
+  const workspaceQuery = useQuery({
+    queryKey: ['workspace-detail', workspaceId],
+    queryFn: () => getWorkspaceDetail(workspaceId),
     staleTime: 60_000,
   });
   const connectors = useMemo(() => query.data?.connectors ?? [], [query.data]);
-  const emailChannelEnabled = projectQuery.data?.project?.experimental?.agentmail_email === true;
+  const emailChannelEnabled = workspaceQuery.data?.workspace?.experimental?.agentmail_email === true;
   const discoverEnabled =
-    projectQuery.data?.project?.experimental?.connectors_api_discover === true;
+    workspaceQuery.data?.workspace?.experimental?.connectors_api_discover === true;
   const isForbidden = query.isError && /403|forbidden/i.test((query.error as Error)?.message ?? '');
-  // READ vs WRITE: the section is visible to project.connector.read, but every
+  // READ vs WRITE: the section is visible to workspace.connector.read, but every
   // mutating control (rename/remove/reconnect/credentials/permissions/channels/
-  // config) is gated on project.connector.write. Fails closed until the probe
-  // resolves, matching the backend's assertProjectCapability on those routes.
+  // config) is gated on workspace.connector.write. Fails closed until the probe
+  // resolves, matching the backend's assertWorkspaceCapability on those routes.
   const canWrite =
-    useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_CONNECTOR_WRITE).allowed === true;
+    useWorkspaceCan(workspaceId, WORKSPACE_ACTIONS.WORKSPACE_CONNECTOR_WRITE).allowed === true;
 
   // Selection persists in ?c= (slug | "global" | "add") for deep links.
   const search = useSearchParams();
@@ -354,13 +354,13 @@ function ConnectorsMasterDetail({ projectId }: { projectId: string }) {
     if (oauth2Result === 'connected') successToast('OAuth 2.0 connection completed');
     else errorToast(oauth2Error || 'OAuth 2.0 connection failed');
     void queryClient.invalidateQueries({ queryKey });
-    void queryClient.invalidateQueries({ queryKey: ['connector-profiles', projectId] });
+    void queryClient.invalidateQueries({ queryKey: ['connector-profiles', workspaceId] });
     const params = new URLSearchParams(search?.toString() ?? '');
     params.delete('oauth2');
     params.delete('oauth2_error');
     const suffix = params.toString();
     router.replace(suffix ? `${pathname}?${suffix}` : pathname, { scroll: false });
-  }, [oauth2Error, oauth2Result, pathname, projectId, queryClient, queryKey, router, search]);
+  }, [oauth2Error, oauth2Result, pathname, workspaceId, queryClient, queryKey, router, search]);
   const select = (sel: Selection) => {
     const key = sel.kind === 'connector' ? sel.slug : sel.kind;
     const params = new URLSearchParams(search?.toString() ?? '');
@@ -378,7 +378,7 @@ function ConnectorsMasterDetail({ projectId }: { projectId: string }) {
   }, [rawC, connectors]);
 
   const sync = useMutation({
-    mutationFn: () => syncConnectors(projectId),
+    mutationFn: () => syncConnectors(workspaceId),
     onSuccess: (res) => {
       invalidate();
       if (res.errors.length) warningToast(`Synced ${res.synced}, ${res.errors.length} with issues`);
@@ -395,11 +395,11 @@ function ConnectorsMasterDetail({ projectId }: { projectId: string }) {
           tone="warning"
           icon={ShieldAlert}
           title={tI18nHardcoded.raw(
-            'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleAdminb2173330',
+            'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitleAdminb2173330',
           )}
         >
           {tI18nHardcoded.raw(
-            'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextOnlyProject51266c7d',
+            'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextOnlyWorkspace51266c7d',
           )}
         </InfoBanner>
       </div>
@@ -411,7 +411,7 @@ function ConnectorsMasterDetail({ projectId }: { projectId: string }) {
         <InfoBanner
           tone="destructive"
           title={tI18nHardcoded.raw(
-            'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleFailed959d47d5',
+            'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitleFailed959d47d5',
           )}
           action={
             <Button variant="outline" size="sm" onClick={() => query.refetch()}>
@@ -445,7 +445,7 @@ function ConnectorsMasterDetail({ projectId }: { projectId: string }) {
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         {selection.kind === 'add' ? (
           <AddAppPanel
-            projectId={projectId}
+            workspaceId={workspaceId}
             emailChannelEnabled={emailChannelEnabled}
             discoverEnabled={discoverEnabled}
             canWrite={canWrite}
@@ -455,11 +455,11 @@ function ConnectorsMasterDetail({ projectId }: { projectId: string }) {
             }}
           />
         ) : selection.kind === 'global' ? (
-          <GlobalRulesPanel projectId={projectId} />
+          <GlobalRulesPanel workspaceId={workspaceId} />
         ) : active ? (
           <ConnectorDetail
             key={active.slug}
-            projectId={projectId}
+            workspaceId={workspaceId}
             connector={active}
             canWrite={canWrite}
             onChanged={invalidate}
@@ -473,10 +473,10 @@ function ConnectorsMasterDetail({ projectId }: { projectId: string }) {
             <EmptyState
               icon={Plug}
               title={tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitlePickd2faa3e2',
+                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitlePickd2faa3e2',
               )}
               description={tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrDescriptionChoose1df54e4e',
+                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrDescriptionChoose1df54e4e',
               )}
             />
           </div>
@@ -504,7 +504,7 @@ function ConnectorStatusBadge({ connector }: { connector: AdminConnector }) {
     return (
       <Badge variant="outline" size="sm">
         {tI18nHardcoded.raw(
-          'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextNoAuth45c43558',
+          'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextNoAuth45c43558',
         )}
       </Badge>
     );
@@ -512,7 +512,7 @@ function ConnectorStatusBadge({ connector }: { connector: AdminConnector }) {
     return (
       <Badge variant="warning" size="sm">
         {tI18nHardcoded.raw(
-          'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextNeedsSetupbefdbc49',
+          'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextNeedsSetupbefdbc49',
         )}
       </Badge>
     );
@@ -545,7 +545,7 @@ function SaveBar({
       <span className="text-muted-foreground mr-auto flex items-center gap-1.5 text-xs">
         <span className="bg-kortix-orange size-1.5 rounded-full" />
         {tI18nHardcoded.raw(
-          'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextUnsavedChanges4682b870',
+          'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextUnsavedChanges4682b870',
         )}
       </span>
       {onReset && (
@@ -600,7 +600,7 @@ function ConnectorRail({
           >
             <Plus className="h-4 w-4" />
             {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextAddAppb53818fa',
+              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextAddAppb53818fa',
             )}
           </Button>
         )}
@@ -610,7 +610,7 @@ function ConnectorRail({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder={tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrPlaceholderSearch833758cc',
+              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrPlaceholderSearch833758cc',
             )}
             className="h-8 pl-8 text-sm"
           />
@@ -621,10 +621,10 @@ function ConnectorRail({
         <RailItem
           icon={ShieldCheck}
           title={tI18nHardcoded.raw(
-            'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleGlobal199e18a1',
+            'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitleGlobal199e18a1',
           )}
           subtitle={tI18nHardcoded.raw(
-            'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrSubtitleApply5b0aa03c',
+            'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrSubtitleApply5b0aa03c',
           )}
           active={selection.kind === 'global'}
           onClick={() => onSelect({ kind: 'global' })}
@@ -633,7 +633,7 @@ function ConnectorRail({
         {connectors.length === 0 ? (
           <p className="text-muted-foreground px-3 py-6 text-center text-xs">
             {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextNoConnectors6d11de92',
+              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextNoConnectors6d11de92',
             )}
           </p>
         ) : (
@@ -653,7 +653,7 @@ function ConnectorRail({
             {needsSetup.length > 0 && (
               <RailGroupLabel>
                 {tI18nHardcoded.raw(
-                  'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextNeedsSetupbefdbc49',
+                  'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextNeedsSetupbefdbc49',
                 )}
               </RailGroupLabel>
             )}
@@ -663,7 +663,7 @@ function ConnectorRail({
                 leading={<ConnectorAppIcon connector={c} size="sm" />}
                 title={c.name || c.slug}
                 subtitle={tI18nHardcoded.raw(
-                  'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrSubtitleNot1feeff2e',
+                  'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrSubtitleNot1feeff2e',
                 )}
                 dot={statusDot(c)}
                 active={isSel(c.slug)}
@@ -673,7 +673,7 @@ function ConnectorRail({
             {filtered.length === 0 && (
               <p className="text-muted-foreground px-3 py-6 text-center text-xs">
                 {tI18nHardcoded.raw(
-                  'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextNoMatchf1f9a197',
+                  'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextNoMatchf1f9a197',
                 )}
                 {q}”.
               </p>
@@ -697,7 +697,7 @@ function ConnectorRail({
               <RefreshCw className="h-3.5 w-3.5" />
             )}
             {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextSyncFromb820661f',
+              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextSyncFromb820661f',
             )}
           </Button>
         </div>
@@ -884,7 +884,7 @@ function ConnectionIdField({ profileId }: { profileId: string }) {
 /**
  * A member's OWN private connection for a connector, shown alongside the shared
  * (team) connection. Connect/disconnect here affects only the current user, and
- * the connection resolves only in their own private sessions. Any project member
+ * the connection resolves only in their own private sessions. Any workspace member
  * can use it (no editor rights required — the profile is owned by their token).
  */
 function PrivateConnectionBanner({
@@ -952,13 +952,13 @@ function PrivateConnectionBanner({
 }
 
 function ConnectorDetail({
-  projectId,
+  workspaceId,
   connector,
   onChanged,
   onRemoved,
   canWrite = false,
 }: {
-  projectId: string;
+  workspaceId: string;
   connector: AdminConnector;
   onChanged: () => void;
   onRemoved: () => void;
@@ -975,16 +975,16 @@ function ConnectorDetail({
   const connected = connector.secretSet;
   // The connection's profile_id — the reference a backend (Kortix as a Backend)
   // passes in `connector_bindings` to run a session AS this connection. It isn't
-  // surfaced anywhere else, so we expose + copy it here. Project-default profile
-  // only (the account this connector is connected as for the whole project).
+  // surfaced anywhere else, so we expose + copy it here. Workspace-default profile
+  // only (the account this connector is connected as for the whole workspace).
   const profilesQuery = useQuery({
-    queryKey: ['connector-profiles', projectId],
-    queryFn: () => listConnectionProfiles(projectId),
+    queryKey: ['connector-profiles', workspaceId],
+    queryFn: () => listConnectionProfiles(workspaceId),
     staleTime: 30_000,
     enabled: !isChannel && !isComputer,
   });
   const connectionProfile = profilesQuery.data?.profiles.find(
-    (p) => p.connector_alias === connector.slug && p.owner_type === 'project' && p.is_default,
+    (p) => p.connector_alias === connector.slug && p.owner_type === 'workspace' && p.is_default,
   );
   // The CURRENT USER's own private (member-owned) connection for this connector,
   // if any — separate from the team's shared connection. The API scopes this
@@ -992,15 +992,15 @@ function ConnectorDetail({
   const myPrivateProfile = profilesQuery.data?.profiles.find(
     (p) => p.connector_alias === connector.slug && p.owner_type === 'member',
   );
-  const reconnect = usePipedreamConnect(projectId, connector.slug, onChanged);
-  const privateConnect = usePipedreamConnectMember(projectId, connector.slug, () => {
+  const reconnect = usePipedreamConnect(workspaceId, connector.slug, onChanged);
+  const privateConnect = usePipedreamConnectMember(workspaceId, connector.slug, () => {
     void profilesQuery.refetch();
     onChanged();
   });
   const disconnectPrivate = useMutation({
     mutationFn: async () => {
       if (!myPrivateProfile) throw new Error('No private connection');
-      return revokeConnectionProfile(projectId, myPrivateProfile.profile_id);
+      return revokeConnectionProfile(workspaceId, myPrivateProfile.profile_id);
     },
     onSuccess: () => {
       successToast('Disconnected your private connection');
@@ -1010,10 +1010,10 @@ function ConnectorDetail({
     onError: (e: Error) => errorToast(e.message || 'Failed to disconnect'),
   });
   // Start a new session that uses this member's OWN connection for this connector.
-  // `inherit_unbound` keeps the project default for every OTHER connector the agent
+  // `inherit_unbound` keeps the workspace default for every OTHER connector the agent
   // uses, so binding just this one doesn't null the rest. The session is private by
   // default, which is required for a member-owned binding to resolve.
-  const newSession = useNewProjectSession(projectId);
+  const newSession = useNewWorkspaceSession(workspaceId);
   const startPrivateSession = () => {
     if (!myPrivateProfile) return;
     newSession({
@@ -1035,7 +1035,7 @@ function ConnectorDetail({
   }, [connector.slug, displayName]);
 
   const rename = useMutation({
-    mutationFn: () => setConnectorName(projectId, connector.slug, nameDraft.trim()),
+    mutationFn: () => setConnectorName(workspaceId, connector.slug, nameDraft.trim()),
     onSuccess: () => {
       successToast('Renamed');
       setEditingName(false);
@@ -1045,7 +1045,7 @@ function ConnectorDetail({
   });
 
   const remove = useMutation({
-    mutationFn: () => deleteConnector(projectId, connector.slug),
+    mutationFn: () => deleteConnector(workspaceId, connector.slug),
     onSuccess: () => {
       successToast(`Removed ${displayName}`);
       onRemoved();
@@ -1083,7 +1083,7 @@ function ConnectorDetail({
                 className="h-9 w-9"
                 disabled={rename.isPending}
                 aria-label={tI18nHardcoded.raw(
-                  'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrAriaLabela08f6c74',
+                  'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrAriaLabela08f6c74',
                 )}
               >
                 {rename.isPending ? (
@@ -1251,7 +1251,7 @@ function ConnectorDetail({
             <TabsContent value="profile" className="space-y-5">
               {isChannel ? (
                 <ChannelConnectionSection
-                  projectId={projectId}
+                  workspaceId={workspaceId}
                   connector={connector}
                   onChanged={onChanged}
                   onRemoved={onRemoved}
@@ -1259,7 +1259,7 @@ function ConnectorDetail({
                 />
               ) : (
                 <ConnectionSection
-                  projectId={projectId}
+                  workspaceId={workspaceId}
                   connector={connector}
                   onChanged={onChanged}
                   canWrite={canWrite}
@@ -1270,7 +1270,7 @@ function ConnectorDetail({
           )}
           <TabsContent value="permissions" className="space-y-5">
             <PermissionsSection
-              projectId={projectId}
+              workspaceId={workspaceId}
               connector={connector}
               onChanged={onChanged}
               canWrite={canWrite}
@@ -1284,12 +1284,12 @@ function ConnectorDetail({
               <div className="min-w-0">
                 <p className="text-foreground text-sm font-medium">
                   {tI18nHardcoded.raw(
-                    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleRemove74be1411',
+                    'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitleRemove74be1411',
                   )}
                 </p>
                 <p className="text-muted-foreground mt-0.5 text-xs text-pretty">
                   {tI18nHardcoded.raw(
-                    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrDescriptionDeletes0a130396',
+                    'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrDescriptionDeletes0a130396',
                   )}
                 </p>
               </div>
@@ -1314,16 +1314,16 @@ function ConnectorDetail({
         description={
           <>
             {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextThisRemoves82d0b969',
+              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextThisRemoves82d0b969',
             )}
             <code className="font-mono">{connector.slug}</code>{' '}
             {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextFromKortixeb47b479',
+              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextFromKortixeb47b479',
             )}
           </>
         }
         confirmLabel={tI18nHardcoded.raw(
-          'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrConfirmLabelRemoved2120640',
+          'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrConfirmLabelRemoved2120640',
         )}
         confirmVariant="destructive"
         confirmIcon={<Trash2 className="h-4 w-4" />}
@@ -1331,7 +1331,7 @@ function ConnectorDetail({
         onConfirm={() => remove.mutate()}
       />
       <SetCredentialModal
-        projectId={projectId}
+        workspaceId={workspaceId}
         connector={credOpen ? connector : null}
         profileId={connectionProfile?.profile_id ?? null}
         open={credOpen}
@@ -1357,13 +1357,13 @@ function connectorPlatform(connector: AdminConnector): ChannelPlatform | null {
 }
 
 function ChannelConnectionSection({
-  projectId,
+  workspaceId,
   connector,
   onChanged,
   onRemoved,
   canWrite = false,
 }: {
-  projectId: string;
+  workspaceId: string;
   connector: AdminConnector;
   onChanged: () => void;
   onRemoved: () => void;
@@ -1373,7 +1373,7 @@ function ChannelConnectionSection({
   if (platform === 'email') {
     return (
       <EmailChannelProfile
-        projectId={projectId}
+        workspaceId={workspaceId}
         connector={connector}
         onChanged={onChanged}
         onRemoved={onRemoved}
@@ -1384,7 +1384,7 @@ function ChannelConnectionSection({
   if (platform === 'slack') {
     return (
       <SlackChannelProfile
-        projectId={projectId}
+        workspaceId={workspaceId}
         onChanged={onChanged}
         onRemoved={onRemoved}
         canWrite={canWrite}
@@ -1404,19 +1404,19 @@ function ChannelConnectionSection({
 }
 
 function EmailChannelProfile({
-  projectId,
+  workspaceId,
   connector,
   onChanged,
   onRemoved,
   canWrite = false,
 }: {
-  projectId: string;
+  workspaceId: string;
   connector: AdminConnector;
   onChanged: () => void;
   onRemoved: () => void;
   canWrite?: boolean;
 }) {
-  const install = useEmailInstall(projectId, connector.slug);
+  const install = useEmailInstall(workspaceId, connector.slug);
 
   return (
     <section className="space-y-4">
@@ -1429,7 +1429,7 @@ function EmailChannelProfile({
           <Skeleton className="h-24 w-full rounded-2xl" />
         ) : install.data ? (
           <ConnectedEmailProfile
-            projectId={projectId}
+            workspaceId={workspaceId}
             connectorSlug={connector.slug}
             installation={install.data}
             onRemoved={onRemoved}
@@ -1437,7 +1437,7 @@ function EmailChannelProfile({
           />
         ) : canWrite ? (
           <EmailConnectForm
-            projectId={projectId}
+            workspaceId={workspaceId}
             connectorSlug={connector.slug}
             onConnected={onChanged}
           />
@@ -1452,13 +1452,13 @@ function EmailChannelProfile({
 }
 
 function ConnectedEmailProfile({
-  projectId,
+  workspaceId,
   connectorSlug,
   installation,
   onRemoved,
   canWrite = false,
 }: {
-  projectId: string;
+  workspaceId: string;
   connectorSlug: string;
   installation: EmailInstallation;
   onRemoved: () => void;
@@ -1479,7 +1479,7 @@ function ConnectedEmailProfile({
         ) : null}
       </InfoBanner>
       <EmailSenderPolicyEditor
-        projectId={projectId}
+        workspaceId={workspaceId}
         connectorSlug={connectorSlug}
         policy={installation.senderPolicy}
         canWrite={canWrite}
@@ -1489,7 +1489,7 @@ function ConnectedEmailProfile({
           {confirming ? (
             <>
               <span className="text-muted-foreground mr-auto text-xs">
-                Removes the Email channel profile from this project.
+                Removes the Email channel profile from this workspace.
               </span>
               <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
                 Cancel
@@ -1500,7 +1500,7 @@ function ConnectedEmailProfile({
                 disabled={disconnect.isPending}
                 onClick={() =>
                   disconnect.mutate(
-                    { projectId, connectorSlug },
+                    { workspaceId, connectorSlug },
                     {
                       onSuccess: () => {
                         setConfirming(false);
@@ -1548,12 +1548,12 @@ function normalizeEmailSenderPolicy(
 }
 
 function EmailSenderPolicyEditor({
-  projectId,
+  workspaceId,
   connectorSlug,
   policy,
   canWrite = false,
 }: {
-  projectId: string;
+  workspaceId: string;
   connectorSlug: string;
   policy: EmailSenderPolicy | null | undefined;
   canWrite?: boolean;
@@ -1594,7 +1594,7 @@ function EmailSenderPolicyEditor({
       }
     }
     update.mutate(
-      { projectId, connectorSlug, sender_policy },
+      { workspaceId, connectorSlug, sender_policy },
       { onError: (e) => setError((e as Error).message) },
     );
   };
@@ -1676,15 +1676,15 @@ function EmailSenderPolicyEditor({
 }
 
 export function EmailConnectForm({
-  projectId,
+  workspaceId,
   connectorSlug,
   onConnected,
 }: {
-  projectId: string;
+  workspaceId: string;
   connectorSlug: string;
   onConnected: () => void;
 }) {
-  const mode = useEmailMode(projectId);
+  const mode = useEmailMode(workspaceId);
   const connect = useConnectEmail();
   const [displayName, setDisplayName] = useState('Kortix Agent');
   const [username, setUsername] = useState(() =>
@@ -1736,7 +1736,7 @@ export function EmailConnectForm({
     }
     connect.mutate(
       {
-        projectId,
+        workspaceId,
         connector_slug: connectorSlug,
         api_key: useCustomKey ? apiKey.trim() : undefined,
         display_name: displayName.trim() || undefined,
@@ -1761,7 +1761,7 @@ export function EmailConnectForm({
       >
         {managedAvailable
           ? 'Kortix will create and manage the AgentMail inbox for this profile.'
-          : 'This deployment needs a project-specific AgentMail key before it can create an inbox.'}
+          : 'This deployment needs a workspace-specific AgentMail key before it can create an inbox.'}
       </InfoBanner>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field>
@@ -1870,7 +1870,7 @@ export function EmailConnectForm({
               spellCheck={false}
             />
             <p className="text-muted-foreground text-xs">
-              Optional when managed Email is configured. Stored as an encrypted project secret.
+              Optional when managed Email is configured. Stored as an encrypted workspace secret.
             </p>
           </Field>
         ) : null}
@@ -1938,17 +1938,17 @@ export function EmailConnectForm({
 }
 
 function SlackChannelProfile({
-  projectId,
+  workspaceId,
   onChanged,
   onRemoved,
   canWrite = false,
 }: {
-  projectId: string;
+  workspaceId: string;
   onChanged: () => void;
   onRemoved: () => void;
   canWrite?: boolean;
 }) {
-  const install = useSlackInstall(projectId);
+  const install = useSlackInstall(workspaceId);
   return (
     <section className="space-y-4">
       <Label>Slack connection</Label>
@@ -1960,13 +1960,13 @@ function SlackChannelProfile({
           <Skeleton className="h-24 w-full rounded-2xl" />
         ) : install.data ? (
           <ConnectedSlackProfile
-            projectId={projectId}
+            workspaceId={workspaceId}
             installation={install.data}
             onRemoved={onRemoved}
             canWrite={canWrite}
           />
         ) : canWrite ? (
-          <SlackConnectForm projectId={projectId} onConnected={onChanged} />
+          <SlackConnectForm workspaceId={workspaceId} onConnected={onChanged} />
         ) : (
           <InfoBanner tone="neutral" icon={<SlackLogo />} title="Slack not connected">
             This channel profile has no Slack workspace yet.
@@ -1978,12 +1978,12 @@ function SlackChannelProfile({
 }
 
 function ConnectedSlackProfile({
-  projectId,
+  workspaceId,
   installation,
   onRemoved,
   canWrite = false,
 }: {
-  projectId: string;
+  workspaceId: string;
   installation: SlackInstallation;
   onRemoved: () => void;
   canWrite?: boolean;
@@ -2001,7 +2001,7 @@ function ConnectedSlackProfile({
           {confirming ? (
             <>
               <span className="text-muted-foreground mr-auto text-xs">
-                Removes the Slack channel profile from this project.
+                Removes the Slack channel profile from this workspace.
               </span>
               <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
                 Cancel
@@ -2011,7 +2011,7 @@ function ConnectedSlackProfile({
                 size="sm"
                 disabled={disconnect.isPending}
                 onClick={() =>
-                  disconnect.mutate(projectId, {
+                  disconnect.mutate(workspaceId, {
                     onSuccess: () => {
                       setConfirming(false);
                       onRemoved();
@@ -2035,14 +2035,14 @@ function ConnectedSlackProfile({
 }
 
 export function SlackConnectForm({
-  projectId,
+  workspaceId,
   onConnected,
 }: {
-  projectId: string;
+  workspaceId: string;
   onConnected: () => void;
 }) {
-  const mode = useSlackMode(projectId);
-  const manifest = useSlackManifest(projectId);
+  const mode = useSlackMode(workspaceId);
+  const manifest = useSlackManifest(workspaceId);
   const connect = useConnectSlack();
   const [botToken, setBotToken] = useState('');
   const [signingSecret, setSigningSecret] = useState('');
@@ -2055,7 +2055,7 @@ export function SlackConnectForm({
   const submit = () => {
     setError(null);
     connect.mutate(
-      { projectId, bot_token: botToken.trim(), signing_secret: signingSecret.trim() },
+      { workspaceId, bot_token: botToken.trim(), signing_secret: signingSecret.trim() },
       {
         onSuccess: onConnected,
         onError: (e) => setError((e as Error).message),
@@ -2284,13 +2284,13 @@ function connectionSig(d: ConnectorDraftInput): string {
 }
 
 function ConnectionSection({
-  projectId,
+  workspaceId,
   connector,
   onChanged,
   canWrite = false,
   onSetCredential,
 }: {
-  projectId: string;
+  workspaceId: string;
   connector: AdminConnector;
   onChanged: () => void;
   canWrite?: boolean;
@@ -2301,8 +2301,8 @@ function ConnectionSection({
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
   const configQuery = useQuery({
-    queryKey: ['connector-config', projectId, connector.slug],
-    queryFn: () => getConnectorConfig(projectId, connector.slug),
+    queryKey: ['connector-config', workspaceId, connector.slug],
+    queryFn: () => getConnectorConfig(workspaceId, connector.slug),
     staleTime: 5_000,
   });
 
@@ -2323,13 +2323,13 @@ function ConnectionSection({
 
   const save = useMutation({
     mutationFn: () =>
-      createConnector(projectId, {
+      createConnector(workspaceId, {
         ...draft!,
         slug: connector.slug,
       }),
     onSuccess: () => {
       successToast('Connection saved');
-      queryClient.invalidateQueries({ queryKey: ['connector-config', projectId, connector.slug] });
+      queryClient.invalidateQueries({ queryKey: ['connector-config', workspaceId, connector.slug] });
       onChanged();
     },
     onError: (e: Error) => errorToast(e.message || 'Failed to save connection'),
@@ -2340,7 +2340,7 @@ function ConnectionSection({
       <Label>Connection</Label>
       <p className="text-muted-foreground -mt-2 text-xs">
         {tI18nHardcoded.raw(
-          'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrDescriptionHowa31daf50',
+          'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrDescriptionHowa31daf50',
         )}
       </p>
       <div className="bg-popover rounded-md border px-4 py-5">
@@ -2348,7 +2348,7 @@ function ConnectionSection({
           <InfoBanner
             tone="destructive"
             title={tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleCouldn277b73a0',
+              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitleCouldn277b73a0',
             )}
             action={
               <Button size="sm" variant="outline" onClick={() => configQuery.refetch()}>
@@ -2404,7 +2404,7 @@ function ConnectionSection({
                 onSave={() => save.mutate()}
                 onReset={reset}
                 label={tI18nHardcoded.raw(
-                  'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrLabelSave8c6f945f',
+                  'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrLabelSave8c6f945f',
                 )}
               />
             )}
@@ -2535,12 +2535,12 @@ function tsSignature(slug: string, action: ConnectorAction): string {
 }
 
 function PermissionsSection({
-  projectId,
+  workspaceId,
   connector,
   onChanged,
   canWrite = false,
 }: {
-  projectId: string;
+  workspaceId: string;
   connector: AdminConnector;
   onChanged: () => void;
   canWrite?: boolean;
@@ -2551,7 +2551,7 @@ function PermissionsSection({
   const toolPaths = useMemo(() => new Set(tools.map((t) => t.path)), [tools]);
 
   const sensitiveMut = useMutation({
-    mutationFn: (next: boolean) => setConnectorSensitive(projectId, connector.slug, next),
+    mutationFn: (next: boolean) => setConnectorSensitive(workspaceId, connector.slug, next),
     onSuccess: (_r, next) => {
       successToast(next ? 'Marked sensitive — reads now ask' : 'No longer sensitive');
       onChanged();
@@ -2560,8 +2560,8 @@ function PermissionsSection({
   });
 
   const policiesQuery = useQuery({
-    queryKey: ['connector-policies', projectId, connector.slug],
-    queryFn: () => getConnectorPolicies(projectId, connector.slug),
+    queryKey: ['connector-policies', workspaceId, connector.slug],
+    queryFn: () => getConnectorPolicies(workspaceId, connector.slug),
     staleTime: 5_000,
   });
 
@@ -2608,12 +2608,12 @@ function PermissionsSection({
           .filter((r) => r.match.trim())
           .map((r) => ({ match: r.match.trim(), action: r.action })),
       ];
-      return setConnectorPolicies(projectId, connector.slug, policies);
+      return setConnectorPolicies(workspaceId, connector.slug, policies);
     },
     onSuccess: () => {
       successToast('Permissions saved');
       queryClient.invalidateQueries({
-        queryKey: ['connector-policies', projectId, connector.slug],
+        queryKey: ['connector-policies', workspaceId, connector.slug],
       });
     },
     onError: (e: Error) => errorToast(e.message || 'Failed to save permissions'),
@@ -2679,7 +2679,7 @@ function PermissionsSection({
           <h3 className="text-sm font-medium">Permissions</h3>
           <p className="text-muted-foreground mt-1 text-xs">
             {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrDescriptionWhat4e375237',
+              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrDescriptionWhat4e375237',
             )}
           </p>
         </div>
@@ -2690,7 +2690,7 @@ function PermissionsSection({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrPlaceholderFiltere5f64efb',
+                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrPlaceholderFiltere5f64efb',
               )}
               className="h-8 pl-8 text-sm"
             />
@@ -2739,11 +2739,11 @@ function PermissionsSection({
             <InfoBanner
               tone="neutral"
               title={tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleNo0e439be9',
+                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitleNo0e439be9',
               )}
             >
               {tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextConnectThec56fd30b',
+                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextConnectThec56fd30b',
               )}
             </InfoBanner>
           ) : (
@@ -2757,7 +2757,7 @@ function PermissionsSection({
                     }
                     onCheckedChange={toggleAllFiltered}
                     aria-label={tI18nHardcoded.raw(
-                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrAriaLabel924a321f',
+                      'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrAriaLabel924a321f',
                     )}
                     className="size-3.5"
                   />
@@ -2769,7 +2769,7 @@ function PermissionsSection({
                     </span>
                     <span className="text-muted-foreground text-xs">
                       {tI18nHardcoded.raw(
-                        'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextSetToff934ec7',
+                        'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextSetToff934ec7',
                       )}
                     </span>
                     {POLICY_CHOICES.map((c) => (
@@ -2799,7 +2799,7 @@ function PermissionsSection({
                   <span className="text-muted-foreground text-xs">
                     {filtered.length} {filtered.length === 1 ? 'tool' : 'tools'}{' '}
                     {tI18nHardcoded.raw(
-                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextTapA9c38f324',
+                      'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextTapA9c38f324',
                     )}
                   </span>
                 )}
@@ -2856,7 +2856,7 @@ function PermissionsSection({
                           >
                             {POLICY_LABEL[ruled.action].label}{' '}
                             {tI18nHardcoded.raw(
-                              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextRulebbcba279',
+                              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextRulebbcba279',
                             )}
                           </span>
                         )}
@@ -2905,7 +2905,7 @@ function PermissionsSection({
                 {filtered.length === 0 && (
                   <p className="text-muted-foreground px-3 py-6 text-center text-xs">
                     {tI18nHardcoded.raw(
-                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextNoTools69d22076',
+                      'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextNoTools69d22076',
                     )}
                     {search}”.
                   </p>
@@ -2929,7 +2929,7 @@ function PermissionsSection({
                   )}
                 />
                 {tI18nHardcoded.raw(
-                  'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextPatternRules6a07e5a7',
+                  'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextPatternRules6a07e5a7',
                 )}
                 {rules.length > 0 && (
                   <Badge variant="secondary" size="sm">
@@ -2938,7 +2938,7 @@ function PermissionsSection({
                 )}
                 <span className="text-muted-foreground ml-auto text-xs font-normal">
                   {tI18nHardcoded.raw(
-                    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextCoverMany170203ce',
+                    'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextCoverMany170203ce',
                   )}
                 </span>
               </button>
@@ -2946,23 +2946,23 @@ function PermissionsSection({
                 <div className="border-border/60 space-y-2 border-t px-3 py-3">
                   <p className="text-muted-foreground text-xs">
                     {tI18nHardcoded.raw(
-                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextMatchBy60561318',
+                      'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextMatchBy60561318',
                     )}
                     <code className="bg-muted rounded px-1 font-mono">
                       {tI18nHardcoded.raw(
-                        'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextSend0110e0d9',
+                        'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextSend0110e0d9',
                       )}
                     </code>
                     {tI18nHardcoded.raw(
-                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextOrRegexf5a26a27',
+                      'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextOrRegexf5a26a27',
                     )}
                     <code className="bg-muted rounded px-1 font-mono">
                       {tI18nHardcoded.raw(
-                        'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextDelete37c77402',
+                        'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextDelete37c77402',
                       )}
                     </code>
                     {tI18nHardcoded.raw(
-                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextPerTool4d0d7e9f',
+                      'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextPerTool4d0d7e9f',
                     )}
                   </p>
                   {rules.map((r) => (
@@ -2975,7 +2975,7 @@ function PermissionsSection({
                           )
                         }
                         placeholder={tI18nHardcoded.raw(
-                          'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrPlaceholderSend3b0a4ee1',
+                          'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrPlaceholderSend3b0a4ee1',
                         )}
                         className="h-8 flex-1 font-mono text-xs"
                         disabled={!canWrite}
@@ -3011,7 +3011,7 @@ function PermissionsSection({
                           className="hover:text-destructive h-8 w-8 shrink-0"
                           onClick={() => setRules((rs) => rs.filter((x) => x.id !== r.id))}
                           aria-label={tI18nHardcoded.raw(
-                            'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrAriaLabeld2296c34',
+                            'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrAriaLabeld2296c34',
                           )}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -3033,7 +3033,7 @@ function PermissionsSection({
                     >
                       <Plus className="h-3.5 w-3.5" />
                       {tI18nHardcoded.raw(
-                        'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextAddRule873a093f',
+                        'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextAddRule873a093f',
                       )}
                     </Button>
                   )}
@@ -3050,7 +3050,7 @@ function PermissionsSection({
             onSave={() => save.mutate()}
             onReset={reset}
             label={tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrLabelSave783950c7',
+              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrLabelSave783950c7',
             )}
           />
         )}
@@ -3059,7 +3059,7 @@ function PermissionsSection({
   );
 }
 
-function GlobalRulesPanel({ projectId }: { projectId: string }) {
+function GlobalRulesPanel({ workspaceId }: { workspaceId: string }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-7">
@@ -3068,29 +3068,29 @@ function GlobalRulesPanel({ projectId }: { projectId: string }) {
         <div>
           <h2 className="text-foreground text-lg font-semibold">
             {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextGlobalRules436bcada',
+              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextGlobalRules436bcada',
             )}
           </h2>
           <p className="text-muted-foreground mt-1 text-sm">
             {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextPermissionsThat70379f46',
+              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextPermissionsThat70379f46',
             )}
           </p>
         </div>
       </div>
-      <PoliciesPanel projectId={projectId} />
+      <PoliciesPanel workspaceId={workspaceId} />
     </div>
   );
 }
 
 function AddAppPanel({
-  projectId,
+  workspaceId,
   emailChannelEnabled,
   discoverEnabled,
   onAdded,
   canWrite = false,
 }: {
-  projectId: string;
+  workspaceId: string;
   emailChannelEnabled: boolean;
   discoverEnabled: boolean;
   onAdded: (slug?: string) => void;
@@ -3112,7 +3112,7 @@ function AddAppPanel({
         <EmptyState
           icon={Plug}
           title="No connectors yet"
-          description="You have read-only access to this project's connectors. Ask a project manager to add one."
+          description="You have read-only access to this workspace's connectors. Ask a workspace manager to add one."
         />
       </div>
     );
@@ -3120,7 +3120,7 @@ function AddAppPanel({
   const easyConnectHidden = !connectorsEnabled;
   const easyConnectDisabled = easyConnectHidden || connectStatus.data?.configured === false;
   const easyConnectLabel = tI18nHardcoded.raw(
-    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextEasyConnect19ca1c01',
+    'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextEasyConnect19ca1c01',
   );
   const defaultTab = !easyConnectDisabled ? 'apps' : discoverEnabled ? 'discover' : 'channels';
   return (
@@ -3133,7 +3133,7 @@ function AddAppPanel({
           {easyConnectHidden ? null : easyConnectDisabled ? (
             <Hint
               label={tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextEasyConnectc07266e0',
+                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextEasyConnectc07266e0',
               )}
             >
               <TabsTrigger value="apps" disabled>
@@ -3149,24 +3149,24 @@ function AddAppPanel({
         </TabsList>
         {!easyConnectDisabled && (
           <TabsContent value="apps" className="mt-4">
-            <AppCatalogue projectId={projectId} onAdded={onAdded} />
+            <AppCatalogue workspaceId={workspaceId} onAdded={onAdded} />
           </TabsContent>
         )}
         {discoverEnabled && (
           <TabsContent value="discover" className="mt-4">
-            <DiscoverCatalogue projectId={projectId} onAdded={onAdded} />
+            <DiscoverCatalogue workspaceId={workspaceId} onAdded={onAdded} />
           </TabsContent>
         )}
         <TabsContent value="channels" className="mt-4">
           <ChannelCatalogue
-            projectId={projectId}
+            workspaceId={workspaceId}
             emailChannelEnabled={emailChannelEnabled}
             onAdded={onAdded}
           />
         </TabsContent>
         <TabsContent value="custom" className="mt-4">
           <CustomConnectorForm
-            projectId={projectId}
+            workspaceId={workspaceId}
             emailChannelEnabled={emailChannelEnabled}
             onAdded={onAdded}
           />
@@ -3177,18 +3177,18 @@ function AddAppPanel({
 }
 
 function ChannelCatalogue({
-  projectId,
+  workspaceId,
   emailChannelEnabled,
   onAdded,
 }: {
-  projectId: string;
+  workspaceId: string;
   emailChannelEnabled: boolean;
   onAdded: (slug?: string) => void;
 }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      {emailChannelEnabled && <AddEmailProfileCard projectId={projectId} onAdded={onAdded} />}
-      <AddSlackProfileCard projectId={projectId} onAdded={onAdded} />
+      {emailChannelEnabled && <AddEmailProfileCard workspaceId={workspaceId} onAdded={onAdded} />}
+      <AddSlackProfileCard workspaceId={workspaceId} onAdded={onAdded} />
     </div>
   );
 }
@@ -3237,10 +3237,10 @@ function slugifyConnector(input: string): string {
 }
 
 function AddEmailProfileCard({
-  projectId,
+  workspaceId,
   onAdded,
 }: {
-  projectId: string;
+  workspaceId: string;
   onAdded: (slug?: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -3250,7 +3250,7 @@ function AddEmailProfileCard({
     mutationFn: () => {
       const base = slugifyConnector(username || name);
       const slug = `email_${base}_${Date.now().toString(36).slice(-4)}`;
-      return createConnector(projectId, {
+      return createConnector(workspaceId, {
         slug,
         name: name.trim() || 'Email inbox',
         provider: 'channel',
@@ -3333,10 +3333,10 @@ function AddEmailProfileCard({
 }
 
 function AddSlackProfileCard({
-  projectId,
+  workspaceId,
   onAdded,
 }: {
-  projectId: string;
+  workspaceId: string;
   onAdded: (slug?: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -3370,7 +3370,7 @@ function AddSlackProfileCard({
             </ModalDescription>
           </ModalHeader>
           <ModalBody className="max-h-[60vh] overflow-y-auto">
-            <SlackConnectForm projectId={projectId} onConnected={handleConnected} />
+            <SlackConnectForm workspaceId={workspaceId} onConnected={handleConnected} />
           </ModalBody>
         </ModalContent>
       </Modal>
@@ -3380,18 +3380,18 @@ function AddSlackProfileCard({
 
 /** Easy-connect app catalogue — searchable card grid with "Load more". */
 function AppCatalogue({
-  projectId,
+  workspaceId,
   onAdded,
 }: {
-  projectId: string;
+  workspaceId: string;
   onAdded: (slug?: string) => void;
 }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const [q, setQ] = useState('');
   const appsQuery = useInfiniteQuery({
-    queryKey: ['easy-connect-apps', projectId, q],
+    queryKey: ['easy-connect-apps', workspaceId, q],
     queryFn: ({ pageParam }) =>
-      listPipedreamApps(projectId, q || undefined, pageParam as string | undefined),
+      listPipedreamApps(workspaceId, q || undefined, pageParam as string | undefined),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => (last.hasMore ? last.nextCursor : undefined),
     staleTime: 60_000,
@@ -3402,7 +3402,7 @@ function AppCatalogue({
     appsQuery.isError && /501|not configured/i.test((appsQuery.error as Error)?.message ?? '');
   const addApp = useMutation({
     mutationFn: (app: { slug: string; name: string }) =>
-      createConnector(projectId, {
+      createConnector(workspaceId, {
         slug: app.slug,
         provider: 'pipedream',
         app: app.slug,
@@ -3423,7 +3423,7 @@ function AppCatalogue({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={tI18nHardcoded.raw(
-            'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrPlaceholderSearch9d26aaaa',
+            'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrPlaceholderSearch9d26aaaa',
           )}
           variant="popover"
           className="pl-9"
@@ -3434,11 +3434,11 @@ function AppCatalogue({
           <InfoBanner
             tone="neutral"
             title={tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleEasy58e9c7b1',
+              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitleEasy58e9c7b1',
             )}
           >
             {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextEasyConnectc07266e0',
+              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextEasyConnectc07266e0',
             )}
           </InfoBanner>
         ) : appsQuery.isLoading ? (
@@ -3451,7 +3451,7 @@ function AppCatalogue({
           <EmptyState
             icon={Search}
             title={tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleNof8067eda',
+              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitleNof8067eda',
             )}
             description={q ? `Nothing matches "${q}".` : 'Try a search.'}
           />
@@ -3509,7 +3509,7 @@ function AppCatalogue({
                     <>
                       <Loading className="size-4 shrink-0" />
                       {tI18nHardcoded.raw(
-                        'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextLoading7131cc18',
+                        'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextLoading7131cc18',
                       )}
                     </>
                   ) : (
@@ -3790,7 +3790,7 @@ function ConnectorConfigFields({
             {p === 'postman'
               ? 'Collection, repository, or workspace'
               : tI18nHardcoded.raw(
-                  'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrLabelSpec4235864d',
+                  'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrLabelSpec4235864d',
                 )}
           </FieldLabel>
           <Input
@@ -3829,7 +3829,7 @@ function ConnectorConfigFields({
           <Field>
             <FieldLabel htmlFor="connector-sdl">
               {tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrLabelSDL2325b707',
+                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrLabelSDL2325b707',
               )}
             </FieldLabel>
             <Input
@@ -3880,7 +3880,7 @@ function ConnectorConfigFields({
           <Field>
             <FieldLabel htmlFor="connector-base-url">
               {tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrLabelBase744ecef9',
+                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrLabelBase744ecef9',
               )}
             </FieldLabel>
             <Input
@@ -3896,7 +3896,7 @@ function ConnectorConfigFields({
           <Field>
             <FieldLabel htmlFor="connector-routes">
               {tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrLabelRoutes38b14436',
+                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrLabelRoutes38b14436',
               )}
             </FieldLabel>
             <Input
@@ -3946,7 +3946,7 @@ function ConnectorConfigFields({
                 <SelectItem value="mtls">Mutual TLS</SelectItem>
                 <SelectItem value="custom">
                   {tI18nHardcoded.raw(
-                    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextCustomHeader1e0e82ed',
+                    'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextCustomHeader1e0e82ed',
                   )}
                 </SelectItem>
               </SelectContent>
@@ -4058,11 +4058,11 @@ function connectionValid(d: ConnectorDraftInput, emailChannelEnabled = true): bo
 }
 
 export function CustomConnectorForm({
-  projectId,
+  workspaceId,
   emailChannelEnabled,
   onAdded,
 }: {
-  projectId: string;
+  workspaceId: string;
   emailChannelEnabled: boolean;
   onAdded: (slug?: string) => void;
 }) {
@@ -4091,7 +4091,7 @@ export function CustomConnectorForm({
 
   const save = useMutation({
     mutationFn: () =>
-      createConnectorWithOptionalOAuth2(projectId, draft, oauth2Selected ? oauth2 : null, {
+      createConnectorWithOptionalOAuth2(workspaceId, draft, oauth2Selected ? oauth2 : null, {
         createConnector,
         deleteConnector,
         setConnectorCredential,
@@ -4103,8 +4103,8 @@ export function CustomConnectorForm({
     onError: (err: Error) => errorToast(err.message || 'Failed to add connector'),
   });
   const discovery = useQuery<ConnectorAuthDiscovery>({
-    queryKey: ['connector-auth-discovery', projectId, discoveryDraft],
-    queryFn: () => discoverConnectorAuth(projectId, discoveryDraft),
+    queryKey: ['connector-auth-discovery', workspaceId, discoveryDraft],
+    queryFn: () => discoverConnectorAuth(workspaceId, discoveryDraft),
     enabled:
       discoveryDraft.auth === undefined &&
       connectionValid(discoveryDraft, emailChannelEnabled) &&
@@ -4175,7 +4175,7 @@ export function CustomConnectorForm({
           {authActive && !oauth2Selected && (
             <InfoBanner tone="info">
               {tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextYouLle5def626',
+                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextYouLle5def626',
               )}
             </InfoBanner>
           )}
@@ -4193,7 +4193,7 @@ export function CustomConnectorForm({
             >
               {save.isPending && <Loading className="size-4 shrink-0" />}
               {tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextAddConnectore01e22fc',
+                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextAddConnectore01e22fc',
               )}
             </Button>
           </div>
@@ -4204,14 +4204,14 @@ export function CustomConnectorForm({
 }
 
 function SetCredentialModal({
-  projectId,
+  workspaceId,
   connector,
   profileId,
   open,
   onOpenChange,
   onSaved,
 }: {
-  projectId: string;
+  workspaceId: string;
   connector: AdminConnector | null;
   profileId: string | null;
   open: boolean;
@@ -4226,8 +4226,8 @@ function SetCredentialModal({
     EMPTY_OAUTH2_APPLICATION_FORM,
   );
   const configQuery = useQuery({
-    queryKey: ['connector-config', projectId, connector?.slug],
-    queryFn: () => getConnectorConfig(projectId, connector!.slug),
+    queryKey: ['connector-config', workspaceId, connector?.slug],
+    queryFn: () => getConnectorConfig(workspaceId, connector!.slug),
     enabled: open && Boolean(connector),
     staleTime: 30_000,
   });
@@ -4276,7 +4276,7 @@ function SetCredentialModal({
     const poll = async () => {
       try {
         const status = await pollConnectionProfileOAuth2DeviceAuthorization(
-          projectId,
+          workspaceId,
           deviceProfileId,
           device.session_id,
         );
@@ -4307,33 +4307,33 @@ function SetCredentialModal({
       window.clearInterval(timer);
       window.clearTimeout(expiryTimer);
     };
-  }, [device, deviceProfileId, onOpenChange, onSaved, projectId]);
+  }, [device, deviceProfileId, onOpenChange, onSaved, workspaceId]);
   const save = useMutation({
     mutationFn: async () => {
       if (credentialType === 'static') {
-        return setConnectorCredential(projectId, connector!.slug, value);
+        return setConnectorCredential(workspaceId, connector!.slug, value);
       }
       if (application.grant === 'client_credentials') {
         return setConnectorCredential(
-          projectId,
+          workspaceId,
           connector!.slug,
           buildOAuth2CredentialInput(oauth2),
         );
       }
       const activeProfileId =
-        profileId ?? (await ensureProjectConnectorProfile(projectId, connector!.slug)).profile_id;
+        profileId ?? (await ensureWorkspaceConnectorProfile(workspaceId, connector!.slug)).profile_id;
       const resolvedApplication = application.discoveryUrl
         ? mergeOAuth2DiscoveryMetadata(
             application,
             (
-              await discoverConnectionProfileOAuth2(projectId, activeProfileId, {
+              await discoverConnectionProfileOAuth2(workspaceId, activeProfileId, {
                 discovery_url: application.discoveryUrl,
               })
             ).metadata,
           )
         : application;
       await putConnectionProfileOAuth2Application(
-        projectId,
+        workspaceId,
         activeProfileId,
         buildOAuth2ApplicationInput(resolvedApplication),
       );
@@ -4342,7 +4342,7 @@ function SetCredentialModal({
         const redirect = new URL(window.location.href);
         redirect.searchParams.delete('oauth2');
         redirect.searchParams.delete('oauth2_error');
-        const result = await startConnectionProfileOAuth2Authorization(projectId, activeProfileId, {
+        const result = await startConnectionProfileOAuth2Authorization(workspaceId, activeProfileId, {
           scopes: scopes.length ? scopes : undefined,
           success_redirect_uri: redirect.toString(),
           error_redirect_uri: redirect.toString(),
@@ -4351,7 +4351,7 @@ function SetCredentialModal({
         return result;
       }
       const result = await startConnectionProfileOAuth2DeviceAuthorization(
-        projectId,
+        workspaceId,
         activeProfileId,
         {
           scopes: scopes.length ? scopes : undefined,
@@ -4383,7 +4383,7 @@ function SetCredentialModal({
         <ModalHeader>
           <ModalTitle>
             {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextSetCredential5e9704a8',
+              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextSetCredential5e9704a8',
             )}
             {connector?.slug}
           </ModalTitle>

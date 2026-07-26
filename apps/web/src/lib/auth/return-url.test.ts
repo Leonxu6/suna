@@ -7,14 +7,14 @@ describe('sanitizeAuthReturnUrl', () => {
     expect(sanitizeAuthReturnUrl('/invites/abc-123')).toBe('/invites/abc-123');
   });
 
-  test('falls back to /projects when no value is given', () => {
-    expect(sanitizeAuthReturnUrl(undefined)).toBe('/projects');
-    expect(sanitizeAuthReturnUrl(null)).toBe('/projects');
+  test('falls back to /workspaces when no value is given', () => {
+    expect(sanitizeAuthReturnUrl(undefined)).toBe('/workspaces');
+    expect(sanitizeAuthReturnUrl(null)).toBe('/workspaces');
   });
 
   test('rejects an absolute/off-origin URL', () => {
-    expect(sanitizeAuthReturnUrl('https://evil.example.com')).toBe('/projects');
-    expect(sanitizeAuthReturnUrl('//evil.example.com')).toBe('/projects');
+    expect(sanitizeAuthReturnUrl('https://evil.example.com')).toBe('/workspaces');
+    expect(sanitizeAuthReturnUrl('//evil.example.com')).toBe('/workspaces');
   });
 });
 
@@ -25,7 +25,7 @@ describe('isInviteReturnUrl', () => {
   });
 
   test('false for non-invite destinations', () => {
-    expect(isInviteReturnUrl('/projects')).toBe(false);
+    expect(isInviteReturnUrl('/workspaces')).toBe(false);
     expect(isInviteReturnUrl('/accounts')).toBe(false);
     // Must be the /invites/ segment, not just a prefix match.
     expect(isInviteReturnUrl('/invitesomething')).toBe(false);

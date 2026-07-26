@@ -81,7 +81,7 @@ const PERMISSION_TOOLS = [
   { key: 'list', label: 'List directory contents' },
   { key: 'webfetch', label: 'Fetch from web' },
   { key: 'task', label: 'Run sub-agent tasks' },
-  { key: 'external_directory', label: 'Access outside project' },
+  { key: 'external_directory', label: 'Access outside workspace' },
   { key: 'doom_loop', label: 'Re-prompt on failure' },
 ];
 

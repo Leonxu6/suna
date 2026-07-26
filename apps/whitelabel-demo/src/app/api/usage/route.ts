@@ -1,7 +1,7 @@
 /**
- * Cost pass-through: aggregate `GET {upstream}/projects/:id/gateway/sessions`
- * across every project the caller owns (via the SDK's
- * `kortix.project(id).gateway.sessions()`), apply `COST_MARKUP`, and return
+ * Cost pass-through: aggregate `GET {upstream}/workspaces/:id/gateway/sessions`
+ * across every workspace the caller owns (via the SDK's
+ * `kortix.workspace(id).gateway.sessions()`), apply `COST_MARKUP`, and return
  * both the raw Kortix cost and the marked-up "your price" per session — the
  * re-billing surface a real wrapper would show its own users. Rendered by
  * `src/app/usage/page.tsx`. `createScopedKortix` (`@kortix/sdk/server`) is
@@ -14,7 +14,7 @@ import type { GatewaySessionStat } from '@kortix/sdk';
 import { createScopedKortix } from '@kortix/sdk/server';
 import { getRequestSession } from '@/server/auth';
 import { consumeRateLimit } from '@/server/rate-limit';
-import { isValidProjectId, listOwnedProjects } from '@/server/users';
+import { isValidWorkspaceId, listOwnedWorkspaces } from '@/server/users';
 import type { NextRequest } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -47,25 +47,25 @@ export async function GET(req: NextRequest) {
 
   const markup = markupMultiplier();
   const upstream = upstreamBase();
-  // listOwnedProjects already UUID-filters, but re-assert at the call site:
+  // listOwnedWorkspaces already UUID-filters, but re-assert at the call site:
   // these ids come from a file and are interpolated into upstream URLs.
-  const projectIds = listOwnedProjects(session.userId).filter(isValidProjectId);
+  const workspaceIds = listOwnedWorkspaces(session.userId).filter(isValidWorkspaceId);
 
   const kortix = createScopedKortix({ backendUrl: upstream, getToken: async () => apiKey });
 
-  const projects = await Promise.all(
-    projectIds.map(async (projectId) => {
+  const workspaces = await Promise.all(
+    workspaceIds.map(async (workspaceId) => {
       // Explicit per-item barrier right before the call — the list is already
       // UUID-filtered above, but static analysis needs the guard on the same
       // control path as the request.
-      if (!isValidProjectId(projectId)) {
-        return { projectId, sessions: [], error: 'invalid project id' };
+      if (!isValidWorkspaceId(workspaceId)) {
+        return { workspaceId, sessions: [], error: 'invalid workspace id' };
       }
       try {
-        const data = await kortix.project(projectId).gateway.sessions();
+        const data = await kortix.workspace(workspaceId).gateway.sessions();
         const sessions: GatewaySessionStat[] = Array.isArray(data?.sessions) ? data.sessions : [];
         return {
-          projectId,
+          workspaceId,
           sessions: sessions.map((s) => ({
             ...s,
             billed_cost: round2((s.total_cost ?? 0) * markup),
@@ -73,12 +73,12 @@ export async function GET(req: NextRequest) {
         };
       } catch (err) {
         const message = err instanceof Error ? err.message : 'request failed';
-        return { projectId, sessions: [], error: message };
+        return { workspaceId, sessions: [], error: message };
       }
     }),
   );
 
-  const totals = projects.reduce(
+  const totals = workspaces.reduce(
     (acc, p) => {
       for (const s of p.sessions) {
         acc.raw += s.total_cost ?? 0;
@@ -92,6 +92,6 @@ export async function GET(req: NextRequest) {
   return Response.json({
     markup,
     totals: { raw: round2(totals.raw), billed: round2(totals.billed) },
-    projects,
+    workspaces,
   });
 }

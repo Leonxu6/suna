@@ -111,7 +111,7 @@ async function waitSandbox(projectId: string, sessionId: string, label: string):
   let ext = '', status = '';
   const end = Date.now() + 6 * 60_000;
   while (Date.now() < end) {
-    const sb = await api('GET', `/projects/${projectId}/sessions/${sessionId}/sandbox`);
+    const sb = await api('GET', `/workspaces/${projectId}/sessions/${sessionId}/sandbox`);
     if (sb.status === 404) { await sleep(4000); continue; }
     status = sb.json?.status ?? '';
     ext = sb.json?.external_id || '';
@@ -166,16 +166,16 @@ async function main() {
   const accountId = Array.isArray(accts.json) ? (accts.json.find((a: any) => a.personal_account)?.account_id ?? accts.json[0]?.account_id) : null;
   if (!ok('account', !!accountId)) return finish();
 
-  const prov = await api('POST', '/projects/provision', { account_id: accountId, name: `e2e multistream ${Date.now().toString().slice(-6)}`, seed_starter: true });
+  const prov = await api('POST', '/workspaces/provision', { account_id: accountId, name: `e2e multistream ${Date.now().toString().slice(-6)}`, seed_starter: true });
   const projectId = prov.json?.project_id || prov.json?.id;
   if (!ok('provision project', !!projectId, `${prov.status}`)) return finish();
-  await api('POST', `/projects/${projectId}/secrets`, { name: 'OPENROUTER_API_KEY', value: OPENROUTER });
+  await api('POST', `/workspaces/${projectId}/secrets`, { name: 'OPENROUTER_API_KEY', value: OPENROUTER });
 
   log('Polling snapshot...');
   let snapReady = false;
   const snapEnd = Date.now() + 9 * 60_000;
   while (Date.now() < snapEnd) {
-    const s = await api('GET', `/projects/${projectId}/snapshots`);
+    const s = await api('GET', `/workspaces/${projectId}/snapshots`);
     const list = s.json?.items ?? s.json?.snapshots ?? (Array.isArray(s.json) ? s.json : []);
     if (list.some((x: any) => x.status === 'ready')) { snapReady = true; break; }
     if (list.length && list.every((x: any) => x.status === 'failed')) break;
@@ -184,8 +184,8 @@ async function main() {
   if (!ok('snapshot ready', snapReady)) return finish({ projectId });
 
   // Two sessions in parallel.
-  const s1 = await api('POST', `/projects/${projectId}/sessions`, { name: 'session A' });
-  const s2 = await api('POST', `/projects/${projectId}/sessions`, { name: 'session B' });
+  const s1 = await api('POST', `/workspaces/${projectId}/sessions`, { name: 'session A' });
+  const s2 = await api('POST', `/workspaces/${projectId}/sessions`, { name: 'session B' });
   const sid1 = s1.json?.session_id || s1.json?.id;
   const sid2 = s2.json?.session_id || s2.json?.id;
   if (!ok('two sessions created', !!sid1 && !!sid2, `${sid1} / ${sid2}`)) return finish({ projectId });
@@ -231,9 +231,9 @@ async function main() {
 async function finish(cleanup?: { projectId?: string; sessionIds?: string[] }) {
   try {
     for (const sid of cleanup?.sessionIds ?? []) {
-      if (sid) await api('DELETE', `/projects/${cleanup!.projectId}/sessions/${sid}`);
+      if (sid) await api('DELETE', `/workspaces/${cleanup!.projectId}/sessions/${sid}`);
     }
-    if (cleanup?.projectId) await api('DELETE', `/projects/${cleanup.projectId}`);
+    if (cleanup?.projectId) await api('DELETE', `/workspaces/${cleanup.projectId}`);
   } catch { /* best effort */ }
   log('==============================');
   log(`RESULT: ${PASS} passed, ${FAIL} failed`);

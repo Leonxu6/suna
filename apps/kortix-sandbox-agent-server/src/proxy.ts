@@ -17,7 +17,7 @@ import { createPresentationRouter } from './routes/presentation'
 import { createAcpRouter } from './routes/acp'
 import webProxyRouter from './routes/web-proxy'
 import { createPtyRegistry, createPtyRouter, type PtyAttachHandle, type PtyRegistry } from './routes/pty'
-import type { ProjectEnvStore } from './project-env'
+import type { WorkspaceEnvStore } from './workspace-env'
 import {
   KORTIX_USER_CONTEXT_HEADER,
   verifyKortixUserContext,
@@ -107,7 +107,7 @@ export function buildOpencodeApp(
   opencode: Opencode,
   bootTime: number,
   bootState: SandboxBootState = { repoMaterializationError: null, timeline: [] },
-  projectEnv?: ProjectEnvStore,
+  workspaceEnv?: WorkspaceEnvStore,
   staticWebPort: number | null = null,
   ptyRegistry?: PtyRegistry,
 ): Hono {
@@ -121,7 +121,7 @@ export function buildOpencodeApp(
   const healthRouter = createHealthRouter(cfg, opencode, bootTime, bootState, staticWebPort)
   const refreshRouter = createRefreshRouter(cfg, opencode)
   const abortRouter = createAbortRouter(cfg)
-  const envRouter = projectEnv ? createEnvRouter(cfg, opencode, projectEnv) : null
+  const envRouter = workspaceEnv ? createEnvRouter(cfg, opencode, workspaceEnv) : null
   // NOTE: /kortix/git is currently unused by the product (the agent commits +
   // opens change requests from a chat prompt). Kept as a host-driven primitive.
   const gitRouter = createGitRouter(cfg)
@@ -226,7 +226,7 @@ export function buildOpencodeApp(
       )
     }
 
-    if (cfg.autoClone && !(await isRepoMaterialized(cfg.projectTarget))) {
+    if (cfg.autoClone && !(await isRepoMaterialized(cfg.workspaceTarget))) {
       return c.json(
         {
           error: 'sandbox runtime not ready',
@@ -340,7 +340,7 @@ export function startProxy(
   opencode: Opencode,
   bootTime: number,
   bootState: SandboxBootState = { repoMaterializationError: null, timeline: [] },
-  projectEnv?: ProjectEnvStore,
+  workspaceEnv?: WorkspaceEnvStore,
   staticWebPort: number | null = null,
 ): ProxyServer {
   // Mutable so restore-time reload() can hot-swap the handler in place; the
@@ -349,7 +349,7 @@ export function startProxy(
   // Constructed once, outside reload() — pty state must survive a config
   // hot-swap (warm-snapshot restore) exactly like `opencode`/`bootState` do.
   const ptyRegistry = createPtyRegistry(cfg)
-  let app = buildOpencodeApp(cfg, opencode, bootTime, bootState, projectEnv, staticWebPort, ptyRegistry)
+  let app = buildOpencodeApp(cfg, opencode, bootTime, bootState, workspaceEnv, staticWebPort, ptyRegistry)
 
   const server = Bun.serve<OpencodeWsData>({
     port: cfg.servicePort,
@@ -425,8 +425,8 @@ export function startProxy(
     port: boundPort,
     reload(next: Config) {
       currentCfg = next
-      app = buildOpencodeApp(next, opencode, bootTime, bootState, projectEnv, staticWebPort, ptyRegistry)
-      logger.info('[proxy] reloaded with session config', { projectId: next.projectId })
+      app = buildOpencodeApp(next, opencode, bootTime, bootState, workspaceEnv, staticWebPort, ptyRegistry)
+      logger.info('[proxy] reloaded with session config', { workspaceId: next.workspaceId })
     },
     async stop() {
       server.stop(true)

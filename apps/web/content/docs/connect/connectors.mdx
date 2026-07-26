@@ -5,9 +5,9 @@ description: How connectors give agents scoped access to external tools.
 
 import { Steps, Step } from 'fumadocs-ui/components/steps';
 
-A connector links your project to an external tool or service, such as Gmail, Stripe, a database, or any HTTP API. The agent calls it as a tool. Kortix brokers every call, so the sandbox never holds the connector's credential. The dashboard may label this area **Connections** — it is the same feature.
+A connector links your workspace to an external tool or service, such as Gmail, Stripe, a database, or any HTTP API. The agent calls it as a tool. Kortix brokers every call, so the sandbox never holds the connector's credential. The dashboard may label this area **Connections** — it is the same feature.
 
-You declare most connectors in the project manifest, `kortix.yaml`. See the [manifest reference](/docs/project/manifest) for every field. Kortix declares channel and computer connectors for you, when you connect a chat platform or a machine.
+You declare most connectors in the workspace manifest, `kortix.yaml`. See the [manifest reference](/docs/workspace/manifest) for every field. Kortix declares channel and computer connectors for you, when you connect a chat platform or a machine.
 
 ## Providers
 
@@ -24,7 +24,7 @@ A connector uses one provider type:
 A connector authenticates one of two ways:
 
 - **OAuth** — through Pipedream, through a channel install, or through native OAuth2 client credentials for direct API connectors.
-- **API key or token** — you declare the connector in `kortix.yaml` and enter the credential yourself, or reference it from a project [secret](/docs/project/secrets) (legacy).
+- **API key or token** — you declare the connector in `kortix.yaml` and enter the credential yourself, or reference it from a workspace [secret](/docs/workspace/secrets) (legacy).
 
 Kortix never gives a connector's credential to the sandbox. It stores the credential encrypted and resolves it server-side, at call time. The agent requests the action. Kortix attaches the credential, calls the external API, and returns the result.
 
@@ -34,9 +34,9 @@ By default, a connector action runs without approval. Set `policy.default_mode: 
 
 <Steps>
 <Step>
-### Open the project's Connectors page
+### Open the workspace's Connectors page
 
-From the dashboard, open the project's Connectors page and search for the app.
+From the dashboard, open the workspace's Connectors page and search for the app.
 </Step>
 <Step>
 ### Connect the app
@@ -140,7 +140,7 @@ Merge the change request. Kortix reads the manifest only from the default branch
 <Step>
 ### Set the credential
 
-Open the connector on the project's Connectors page and enter the credential value. Kortix stores it encrypted and never writes it to the manifest.
+Open the connector on the workspace's Connectors page and enter the credential value. Kortix stores it encrypted and never writes it to the manifest.
 </Step>
 </Steps>
 

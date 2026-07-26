@@ -1,5 +1,6 @@
 import {
   type accountGithubInstallations,
+  accounts,
   workspaceGitConnections,
   workspaceGitCredentials,
   workspaceMembers,
@@ -8,6 +9,7 @@ import {
 
 import { invalidateIamCacheForUser } from '../../iam/cache-invalidation';
 import { db } from '../../shared/db';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { GitHubRepo } from '../github';
 import { encryptWorkspaceSecret } from '../secrets';
 import { type WorkspaceRow, clampWorkspaceName, deriveWorkspaceName } from './serializers';
@@ -74,6 +76,13 @@ async function registerLinkedWorkspace(input: RegistrationInput): Promise<Worksp
       })
       .returning();
     if (!workspace) throw new Error('Workspace registration did not return the inserted workspace');
+
+    await tx
+      .update(accounts)
+      .set({ defaultWorkspaceId: workspace.workspaceId })
+      .where(
+        and(eq(accounts.accountId, input.accountId), isNull(accounts.defaultWorkspaceId)),
+      );
 
     let credentialRef: string | null = null;
     if (input.auth.kind === 'workspace_credential') {

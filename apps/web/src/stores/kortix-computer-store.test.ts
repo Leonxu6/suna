@@ -54,7 +54,7 @@ describe('ready chip state (W1)', () => {
   });
 
   test('an explicit session id works when no active session is set — the standalone-route case', () => {
-    // On /projects/:id/sessions/:id the session is not in the tab system, so
+    // On /workspaces/:id/sessions/:id the session is not in the tab system, so
     // `_activeSessionId` stays null; without the explicit id the pending view
     // was silently dropped (panel opened, terminal never came).
     const s = useKortixComputerStore.getState();

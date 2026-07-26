@@ -14,7 +14,7 @@ export type {
   FindMatch,
   LssHit,
   LssSearchResult,
-  RuntimeProjectInfo,
+  RuntimeWorkspaceInfo,
   ServerHealth,
   GitCommit,
   FileHistoryResult,
@@ -27,7 +27,7 @@ export {
   readFile,
   findFiles,
   findText,
-  getCurrentProject,
+  getCurrentWorkspace,
   getServerHealth,
   isServerReachable,
   // binary helpers
@@ -57,7 +57,7 @@ export {
   useInvalidateFileContent,
   useFileSearch,
   useServerHealth,
-  useCurrentProject,
+  useCurrentWorkspace,
   useFileEventInvalidation,
   useFileUpload,
   useFileDelete,
@@ -92,5 +92,5 @@ export {
   type FilesStoreApi,
 } from '@/features/file-browser/store/files-store';
 
-// Explorer source (the shared Drive explorer UI lives in features/project-files)
+// Explorer source (the shared Drive explorer UI lives in features/workspace-files)
 export { sandboxExplorerSource } from './sandbox-explorer-source';

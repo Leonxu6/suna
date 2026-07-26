@@ -129,9 +129,9 @@ export default function AccountsPage() {
           void queryClient.invalidateQueries({ queryKey: ['accounts'] });
           setSelectedAccountId(account.account_id);
           void queryClient.invalidateQueries({
-            queryKey: ['projects', account.account_id],
+            queryKey: ['workspaces', account.account_id],
           });
-          router.replace('/projects');
+          router.replace('/workspaces');
         }}
       />
     </>

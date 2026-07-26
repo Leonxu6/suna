@@ -22,7 +22,7 @@ export interface CapturedResponse {
 }
 
 export interface Captured {
-  /** Path template the client was given (normalized), for coverage aggregation. e.g. GET /v1/projects/:id */
+  /** Path template the client was given (normalized), for coverage aggregation. e.g. GET /v1/workspaces/:id */
   routeTemplate: string;
   req: CapturedRequest;
   res: CapturedResponse;

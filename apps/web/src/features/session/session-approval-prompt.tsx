@@ -12,10 +12,10 @@
  *    rest of this session)
  *  - per session: "Allow everything" — a `*` wildcard session grant, so no
  *    gated action asks again this session
- *  - persistent (footer, gated on `project.connector.write`): prepend an
- *    `always_run` project policy for this tool — future sessions stop asking.
+ *  - persistent (footer, gated on `workspace.connector.write`): prepend an
+ *    `always_run` workspace policy for this tool — future sessions stop asking.
  *
- * Self-contained: reads projectId + the (Kortix) session id from the route and
+ * Self-contained: reads workspaceId + the (Kortix) session id from the route and
  * shares the session-audit query with the header nudge + Audit panel, so all
  * three stay in lockstep.
  */
@@ -31,19 +31,19 @@ import {
   useResolveApproval,
   useSessionAudit,
 } from '@/features/session/session-audit-shared';
-import { PROJECT_ACTIONS } from '@/lib/project-actions';
-import { useProjectCan } from '@/lib/use-project-can';
+import { WORKSPACE_ACTIONS } from '@/lib/workspace-actions';
+import { useWorkspaceCan } from '@/lib/use-workspace-can';
 import { cn } from '@/lib/utils';
 import {
   type SessionAuditAction,
-  listProjectPolicies,
-  setProjectPolicies,
+  listWorkspacePolicies,
+  setWorkspacePolicies,
 } from '@kortix/sdk';
 import { ShieldAlert } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
 
-/** The fully-qualified tool path project policies match (`slug.path`). The
+/** The fully-qualified tool path workspace policies match (`slug.path`). The
  *  audit trail already stores the qualified form in `action`; the slug is only
  *  prepended defensively if a row ever carries the relative form. */
 function qualifiedAction(a: SessionAuditAction): string | null {
@@ -52,15 +52,15 @@ function qualifiedAction(a: SessionAuditAction): string | null {
 }
 
 export function SessionApprovalPrompt() {
-  const { id: projectId, sessionId: projectSessionId } = useParams<{
+  const { id: workspaceId, sessionId: workspaceSessionId } = useParams<{
     id: string;
     sessionId: string;
   }>();
   // Poll a touch faster than the panel/nudge — this is the blocking gate the
   // user is actively waiting on.
-  const { data } = useSessionAudit(projectId, projectSessionId, { refetchInterval: 5_000 });
-  const resolve = useResolveApproval(projectId, projectSessionId);
-  const canWritePolicies = useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_CONNECTOR_WRITE);
+  const { data } = useSessionAudit(workspaceId, workspaceSessionId, { refetchInterval: 5_000 });
+  const resolve = useResolveApproval(workspaceId, workspaceSessionId);
+  const canWritePolicies = useWorkspaceCan(workspaceId, WORKSPACE_ACTIONS.WORKSPACE_CONNECTOR_WRITE);
   // Which button is loading: `${executionId}:deny|once|session`, 'session-all',
   // or `policy:${qualifiedAction}`.
   const [busy, setBusy] = useState<string | null>(null);
@@ -117,19 +117,19 @@ export function SessionApprovalPrompt() {
     }
   };
 
-  // Persist "always run this tool" into the project's policies (kortix.yaml
+  // Persist "always run this tool" into the workspace's policies (kortix.yaml
   // connectors[].policies — the same list the Policies panel edits), then
   // release the pending rows it covers. PREPENDED: policy resolution is
   // first-match-wins, so the new allow must outrank an existing
   // require_approval pattern.
   const alwaysRunInPolicy = async (qualified: string) => {
-    if (!projectId) return;
+    if (!workspaceId) return;
     setBusy(`policy:${qualified}`);
     try {
-      const current = await listProjectPolicies(projectId);
+      const current = await listWorkspacePolicies(workspaceId);
       const withoutDup = (current.policies ?? []).filter((p) => p.match !== qualified);
-      await setProjectPolicies(
-        projectId,
+      await setWorkspacePolicies(
+        workspaceId,
         [{ match: qualified, action: 'always_run' }, ...withoutDup],
         current.defaultMode ?? 'risk',
       );
@@ -139,9 +139,9 @@ export function SessionApprovalPrompt() {
           resolve.mutateAsync({ executionId: a.execution_id, decision: 'approve', scope: 'once' }),
         ),
       );
-      successToast(`Saved — "${qualified}" always runs in this project now`);
+      successToast(`Saved — "${qualified}" always runs in this workspace now`);
     } catch (e) {
-      errorToast(e instanceof Error ? e.message : 'Failed to update project policies');
+      errorToast(e instanceof Error ? e.message : 'Failed to update workspace policies');
     } finally {
       setBusy(null);
     }
@@ -236,10 +236,10 @@ export function SessionApprovalPrompt() {
       </div>
       {canWritePolicies.allowed && qualifiedActions.length > 0 ? (
         // Deliberately set apart from the one-off buttons above: these WRITE the
-        // project's policy config — every future session stops asking.
+        // workspace's policy config — every future session stops asking.
         <div className="bg-muted/40 border-border/40 flex flex-wrap items-center gap-2 border-t px-3 py-1.5">
           <span className="text-muted-foreground text-[11px]">
-            Project policy <span className="opacity-70">(applies to future sessions)</span>:
+            Workspace policy <span className="opacity-70">(applies to future sessions)</span>:
           </span>
           {qualifiedActions.map((qualified) => (
             <Button

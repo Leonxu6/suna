@@ -1,19 +1,19 @@
 /**
- * 10 — list the project's slash commands.
+ * 10 — list the workspace's slash commands.
  *
  * Commands are markdown prompt templates the runtime accepts at
  * `<opencode>/commands/<slug>.md` (`.kortix/opencode/commands/` here). The
- * platform surfaces repo-registered ones via `projects.detail().config`.
+ * platform surfaces repo-registered ones via `workspaces.detail().config`.
  *
- * Run (from packages/sdk):  bun run playground/commands/10-list-commands.ts [projectId]
+ * Run (from packages/sdk):  bun run playground/commands/10-list-commands.ts [workspaceId]
  */
-import { makeKortix, pickProjectId, run } from "../_shared";
+import { makeKortix, pickWorkspaceId, run } from "../_shared";
 
 run("list-commands", async () => {
   const kortix = makeKortix();
-  const projectId = await pickProjectId(kortix, process.argv[2]);
+  const workspaceId = await pickWorkspaceId(kortix, process.argv[2]);
 
-  const detail = await kortix.projects.detail(projectId);
+  const detail = await kortix.workspaces.detail(workspaceId);
   const commands = detail.config.commands;
 
   console.log(`✓ ${commands.length} command(s):\n`);

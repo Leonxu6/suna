@@ -14,7 +14,7 @@ if [ -n "${BUN_COMPILE_TARGET:-}" ]; then
   target="$BUN_COMPILE_TARGET"
 else
   # Default to bun-linux-x64: Daytona's standard runners are x86_64 and the
-  # snapshot builder COPYs this binary verbatim into the per-project image.
+  # snapshot builder COPYs this binary verbatim into the per-workspace image.
   # Override with BUN_COMPILE_TARGET for a different arch (e.g. local docker
   # on Apple Silicon, or a darwin host binary).
   target="bun-linux-x64"

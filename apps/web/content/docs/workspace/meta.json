@@ -1,0 +1,4 @@
+{
+  "title": "Your workspace",
+  "pages": ["index", "manifest", "agents", "models", "secrets", "legacy-toml"]
+}

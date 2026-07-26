@@ -5,7 +5,7 @@ import type { IconType } from 'react-icons/lib';
 
 export type PageId =
   | 'home'
-  | 'projects'
+  | 'workspaces'
   | 'chat'
   | 'agents'
   | 'skills'
@@ -19,13 +19,13 @@ export type Nav = (id: PageId) => void;
 
 /* ─── CLI-driven demo state ──────────────────────────────────────────────── */
 
-/** Lifecycle a project card moves through as the CLI drives it:
+/** Lifecycle a workspace card moves through as the CLI drives it:
  *  `kortix init` creates a `draft`, `kortix ship` flips it `shipping` → `live`. */
-export type ProjectStatus = 'draft' | 'shipping' | 'live';
+export type WorkspaceStatus = 'draft' | 'shipping' | 'live';
 
-export type ProjectCard = {
+export type WorkspaceCard = {
   name: string;
-  status: ProjectStatus;
+  status: WorkspaceStatus;
   files?: number;
   branch?: string;
   repo?: string;

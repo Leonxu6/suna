@@ -251,7 +251,7 @@ flow(
   'IAM-14',
   {
     domain: 'iam',
-    routes: ['GET /v1/accounts/:accountId/iam/groups/:groupId/project-grants'],
+    routes: ['GET /v1/accounts/:accountId/iam/groups/:groupId/workspace-grants'],
   },
   async (ctx) => {
     const team = await ctx.fixtures.team();
@@ -283,7 +283,7 @@ flow(
     await ctx.step('list project-grants (empty) → 200', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .get('/v1/accounts/:accountId/iam/groups/:groupId/project-grants', {
+        .get('/v1/accounts/:accountId/iam/groups/:groupId/workspace-grants', {
           params: { accountId: team.id, groupId },
         });
       r.status(200).body().exists('$.grants');
@@ -291,7 +291,7 @@ flow(
     await ctx.step('unknown group → 404', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .get('/v1/accounts/:accountId/iam/groups/:groupId/project-grants', {
+        .get('/v1/accounts/:accountId/iam/groups/:groupId/workspace-grants', {
           params: { accountId: team.id, groupId: '00000000-0000-0000-0000-000000000000' },
         });
       r.status(404);
@@ -299,7 +299,7 @@ flow(
     await ctx.step('NONMEMBER → 403', async () => {
       const r = await ctx.client
         .as(ctx.P.NONMEMBER)
-        .get('/v1/accounts/:accountId/iam/groups/:groupId/project-grants', {
+        .get('/v1/accounts/:accountId/iam/groups/:groupId/workspace-grants', {
           params: { accountId: team.id, groupId },
         });
       r.status(403);
@@ -457,7 +457,7 @@ flow(
   'IAM-16',
   {
     domain: 'iam',
-    routes: ['GET /v1/accounts/:accountId/iam/members/:userId/project-access'],
+    routes: ['GET /v1/accounts/:accountId/iam/members/:userId/workspace-access'],
   },
   async (ctx) => {
     const team = await ctx.fixtures.team();
@@ -465,7 +465,7 @@ flow(
     await ctx.step('OWNER reads member project-access → 200', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .get('/v1/accounts/:accountId/iam/members/:userId/project-access', {
+        .get('/v1/accounts/:accountId/iam/members/:userId/workspace-access', {
           params: { accountId: team.id, userId: member.userId! },
         });
       r.status(200).body().exists('$.projects');
@@ -473,7 +473,7 @@ flow(
     await ctx.step('NONMEMBER → 403', async () => {
       const r = await ctx.client
         .as(ctx.P.NONMEMBER)
-        .get('/v1/accounts/:accountId/iam/members/:userId/project-access', {
+        .get('/v1/accounts/:accountId/iam/members/:userId/workspace-access', {
           params: { accountId: team.id, userId: member.userId! },
         });
       r.status(403);
@@ -1117,7 +1117,7 @@ flow(
       r.status(200).body().exists('$.roles');
     });
 
-    await ctx.step('OWNER creates a project-scoped custom review role → 201', async () => {
+    await ctx.step('OWNER creates a workspace-scoped custom review role → 201', async () => {
       const r = await ctx.client.as(ctx.P.OWNER).post(
         '/v1/accounts/:accountId/iam/roles',
         {
@@ -1226,7 +1226,7 @@ flow(
   async (ctx) => {
     const team = await ctx.fixtures.team();
     const member = await team.addMember('member');
-    const project = await team.project();
+    const project = await team.workspace();
     const roleKey = `triage_${team.id.replace(/-/g, '').slice(0, 10)}`;
     let roleId = '';
     let policyId = '';

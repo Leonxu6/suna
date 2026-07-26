@@ -1,5 +1,5 @@
 /**
- * Project provisioning throttle. Each provision creates a REAL managed GitHub
+ * Workspace provisioning throttle. Each provision creates a REAL managed GitHub
  * repo; firing many concurrently trips GitHub's secondary rate limit (403). So we
  * cap concurrent provisions with a semaphore and retry on rate-limit with backoff.
  * Everything else in the suite stays fully parallel.
@@ -37,12 +37,12 @@ function retryDelayMs(attempt: number): number {
 }
 
 /**
- * Provision a project via /v1/projects/provision.
+ * Provision a workspace via /v1/workspaces/provision.
  *
  * The retry policy accepts only transient network failures, HTTP 5xx responses,
  * and explicit rate-limit responses. Other HTTP 4xx responses fail immediately.
  */
-export async function provisionProject(
+export async function provisionWorkspace(
   client: Client,
   body: Record<string, unknown>,
 ): Promise<string> {
@@ -54,7 +54,7 @@ export async function provisionProject(
       attempts = attempt + 1;
       let r: Awaited<ReturnType<Client['post']>>;
       try {
-        r = await client.post('/v1/projects/provision', body, {
+        r = await client.post('/v1/workspaces/provision', body, {
           timeoutMs: PROVISION_REQUEST_TIMEOUT_MS,
         });
       } catch (error) {
@@ -65,7 +65,7 @@ export async function provisionProject(
         continue;
       }
 
-      const id = r.json<{ project_id?: unknown }>()?.project_id;
+      const id = r.json<{ workspace_id?: unknown }>()?.workspace_id;
       if (typeof id === 'string' && id.length > 0) return id;
       const responseText = r.text();
       lastFailure = `HTTP ${r.statusCode}: ${responseText}`;
@@ -75,7 +75,7 @@ export async function provisionProject(
       await sleep(retryDelayMs(attempt));
     }
     throw new Error(
-      `project provision returned no id after ${attempts} attempt(s): ${lastFailure}`,
+      `workspace provision returned no id after ${attempts} attempt(s): ${lastFailure}`,
     );
   } finally {
     release();

@@ -10,7 +10,7 @@
  *
  * Gating note: we drive everything off `getSessionAudit` (gated on session
  * VISIBILITY — the launcher can see their own session) rather than the
- * project-wide `listPendingApprovals` (account owner/admin only). That's
+ * workspace-wide `listPendingApprovals` (account owner/admin only). That's
  * deliberate: the per-session surface is for the launcher, who may not be an
  * account owner/admin. The resolve endpoint itself allows an account
  * owner/admin OR the launcher.
@@ -38,27 +38,27 @@ import { useMemo } from 'react';
  * Kortix session ids, so a caller can look up whichever id it holds. Polls
  * quietly (no error toast) since it's an ambient indicator.
  */
-export function useSessionsNeedingInput(projectId: string | undefined) {
+export function useSessionsNeedingInput(workspaceId: string | undefined) {
   return useQuery({
-    queryKey: ['sessions-needing-input', projectId ?? ''],
+    queryKey: ['sessions-needing-input', workspaceId ?? ''],
     // `enabled` guards presence, so the `?? ''` fallback is never exercised.
-    queryFn: () => listSessionsNeedingInput(projectId ?? '', { showErrors: false }),
-    enabled: !!projectId,
+    queryFn: () => listSessionsNeedingInput(workspaceId ?? '', { showErrors: false }),
+    enabled: !!workspaceId,
     staleTime: 5_000,
     refetchInterval: 15_000,
   });
 }
 
 /**
- * Route-independent variant for the sidebar: query needs-input for EACH project
- * the visible sessions belong to (their `projectID`), then merge. Avoids relying
- * on a route projectId — the sidebar renders on routes (e.g. /sessions/:id) where
- * the route param isn't a project. Returns `{ sessions, total }` where `sessions`
+ * Route-independent variant for the sidebar: query needs-input for EACH workspace
+ * the visible sessions belong to (their `workspaceID`), then merge. Avoids relying
+ * on a route workspaceId — the sidebar renders on routes (e.g. /sessions/:id) where
+ * the route param isn't a workspace. Returns `{ sessions, total }` where `sessions`
  * is keyed by both OpenCode + Kortix session ids.
  */
-export function useSessionsNeedingInputForProjects(projectIds: string[]) {
+export function useSessionsNeedingInputForWorkspaces(workspaceIds: string[]) {
   const results = useQueries({
-    queries: projectIds.map((pid) => ({
+    queries: workspaceIds.map((pid) => ({
       queryKey: ['sessions-needing-input', pid],
       queryFn: () => listSessionsNeedingInput(pid, { showErrors: false }),
       enabled: !!pid,
@@ -85,8 +85,8 @@ export function useSessionsNeedingInputForProjects(projectIds: string[]) {
  *  tabs (react-query's refetchIntervalInBackground defaults to false). */
 export const SESSION_AUDIT_REFETCH_MS = 15_000;
 
-export function sessionAuditKey(projectId: string | undefined, sessionId: string | undefined) {
-  return ['session-audit', projectId ?? '', sessionId ?? ''] as const;
+export function sessionAuditKey(workspaceId: string | undefined, sessionId: string | undefined) {
+  return ['session-audit', workspaceId ?? '', sessionId ?? ''] as const;
 }
 
 /** A gated action still awaiting a human decision (unresolved `pending_approval`). */
@@ -104,16 +104,16 @@ interface UseSessionAuditOptions {
 }
 
 export function useSessionAudit(
-  projectId: string | undefined,
+  workspaceId: string | undefined,
   sessionId: string | undefined,
   options?: UseSessionAuditOptions,
 ) {
-  const enabled = !!projectId && !!sessionId && (options?.enabled ?? true);
+  const enabled = !!workspaceId && !!sessionId && (options?.enabled ?? true);
   return useQuery<SessionAudit>({
-    queryKey: sessionAuditKey(projectId, sessionId),
+    queryKey: sessionAuditKey(workspaceId, sessionId),
     // `enabled` guards presence, so the `?? ''` fallbacks are never exercised.
     queryFn: () =>
-      getSessionAudit(projectId ?? '', sessionId ?? '', undefined, {
+      getSessionAudit(workspaceId ?? '', sessionId ?? '', undefined, {
         showErrors: !options?.silent,
       }),
     enabled,
@@ -144,7 +144,7 @@ export function useSessionAudit(
  * `useAbortRuntimeSession` — every consumer already owns its own error UX.
  */
 export function resolveApprovalMutationOptions(
-  projectId: string | undefined,
+  workspaceId: string | undefined,
   sessionId: string | undefined,
   queryClient: QueryClient,
 ) {
@@ -158,15 +158,15 @@ export function resolveApprovalMutationOptions(
       decision: 'approve' | 'deny';
       scope?: 'once' | 'session' | 'session_all';
     }) => {
-      if (!projectId) throw new Error('No project in context');
-      return resolveApproval(projectId, executionId, decision, scope);
+      if (!workspaceId) throw new Error('No workspace in context');
+      return resolveApproval(workspaceId, executionId, decision, scope);
     },
     // See the jsdoc above `useResolveApproval` — opts out of the global
     // default mutation `onError` so it doesn't double-toast alongside each
     // call site's own, more specific error handling.
     onError: () => {},
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: sessionAuditKey(projectId, sessionId) });
+      queryClient.invalidateQueries({ queryKey: sessionAuditKey(workspaceId, sessionId) });
     },
   };
 }
@@ -174,9 +174,9 @@ export function resolveApprovalMutationOptions(
 /** Approve/deny mutation that invalidates the shared audit query on settle —
  *  see `resolveApprovalMutationOptions` above for why it opts out of the
  *  global default mutation `onError`. */
-export function useResolveApproval(projectId: string | undefined, sessionId: string | undefined) {
+export function useResolveApproval(workspaceId: string | undefined, sessionId: string | undefined) {
   const queryClient = useQueryClient();
-  return useMutation(resolveApprovalMutationOptions(projectId, sessionId, queryClient));
+  return useMutation(resolveApprovalMutationOptions(workspaceId, sessionId, queryClient));
 }
 
 export function riskTone(risk: string | null): 'destructive' | 'warning' | 'muted' {

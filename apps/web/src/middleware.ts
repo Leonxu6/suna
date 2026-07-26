@@ -119,17 +119,18 @@ function supportsMarkdownNegotiation(pathname: string): boolean {
 const BILLING_ROUTES: string[] = [];
 
 // Routes that require authentication and active subscription
-const PROTECTED_ROUTES = ['/projects', '/accounts', '/invites', '/admin'];
+const PROTECTED_ROUTES = ['/workspaces', '/projects', '/accounts', '/invites', '/admin'];
 
 // Desktop app (KortixDesktop UA) is a pure logged-in product surface. ONLY
 // these route prefixes — plus /auth/* for sign-in — are allowed to render
 // inside the desktop window. Every other route (the marketing homepage, blog,
 // pricing, careers, contact, legal, help, docs, share, design-system, … which
-// all live at root-level slugs) is bounced to /projects. Docs and external
+// all live at root-level slugs) is bounced to /workspaces. Docs and external
 // links are opened in the user's real browser by the Tauri shell, never shown
 // in-app. Keep this an allowlist, not a blocklist — new marketing slugs must
 // stay blocked by default.
 const DESKTOP_ALLOWED_ROUTES = [
+  '/workspaces',
   '/projects',
   '/accounts',
   '/invites',
@@ -192,7 +193,7 @@ export async function middleware(request: NextRequest) {
   // visitors can still reach kortix.com, the blog, pricing, docs, etc.
   // So we bypass the redirect for every public route (which already includes
   // /, /auth, /maintenance, marketing pages, docs, …) plus the admin panel
-  // (so admins can disable the lockdown). Everything else — /projects,
+  // (so admins can disable the lockdown). Everything else — /workspaces,
   // /accounts, /invites and the other authed product routes — still gets the
   // maintenance takeover.
   const isPublicMaintenanceRoute = PUBLIC_ROUTES.some(
@@ -252,7 +253,7 @@ export async function middleware(request: NextRequest) {
   // ── Desktop app: logged-in product surface only ─────────────────────────
   // The desktop shell (KortixDesktop UA) must never render marketing/docs/
   // public pages. Allow only product + auth routes; bounce everything else to
-  // /projects. Runs AFTER the Supabase-at-root handling (so OAuth callbacks
+  // /workspaces. Runs AFTER the Supabase-at-root handling (so OAuth callbacks
   // still work) and BEFORE the locale/marketing logic (irrelevant for desktop).
   // This is the authoritative gate — it catches initial loads, SSR, and
   // Next.js client/RSC navigations alike. The Tauri shell separately opens
@@ -265,7 +266,7 @@ export async function middleware(request: NextRequest) {
         (route) => pathname === route || pathname.startsWith(route + '/'),
       );
     if (!isAllowed) {
-      return NextResponse.redirect(new URL('/projects', request.url));
+      return NextResponse.redirect(new URL('/workspaces', request.url));
     }
   }
 
@@ -403,20 +404,20 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // FAST PATH: authenticated users hitting the homepage go straight to /projects.
+  // FAST PATH: authenticated users hitting the homepage go straight to /workspaces.
   if (pathname === '/' && user) {
-    return redirectPreservingSession(new URL('/projects', request.url));
+    return redirectPreservingSession(new URL('/workspaces', request.url));
   }
 
-  // Desktop shell never shows the marketing homepage — bounce to /projects.
+  // Desktop shell never shows the marketing homepage — bounce to /workspaces.
   if (pathname === '/' && request.headers.get('user-agent')?.includes('KortixDesktop')) {
-    return redirectPreservingSession(new URL('/projects', request.url));
+    return redirectPreservingSession(new URL('/workspaces', request.url));
   }
 
   // Self-host: when the landing/marketing site is disabled
   // (KORTIX_PUBLIC_DISABLE_LANDING_PAGE — default ON for self-host), the WHOLE
   // marketing surface is deactivated: the homepage and every marketing route
-  // bounce straight to the app — authenticated users to /projects, everyone
+  // bounce straight to the app — authenticated users to /workspaces, everyone
   // else to /auth. Functional public routes (/docs, /help, /legal, /support,
   // /marketplace, /share, …) are unaffected. Read via process.env directly —
   // NEXT_PUBLIC_ vars are inlined at build time, so in Docker containers they'd
@@ -430,7 +431,7 @@ export async function middleware(request: NextRequest) {
       pathname === '/' ||
       SELF_HOST_MARKETING_ONLY.some((route) => pathname === route || pathname.startsWith(`${route}/`));
     if (isMarketingContent) {
-      return redirectPreservingSession(new URL(user ? '/projects' : '/auth', request.url));
+      return redirectPreservingSession(new URL(user ? '/workspaces' : '/auth', request.url));
     }
   }
 

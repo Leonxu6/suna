@@ -1,5 +1,5 @@
 import { accountHasAppAccess } from '@/lib/auth/account-access';
-import { resolveFirstProjectPathForNewUser } from '@/lib/auth/bootstrap-first-project';
+import { resolveFirstWorkspacePathForNewUser } from '@/lib/auth/bootstrap-first-workspace';
 import { buildDesktopBounceHtml, buildMobileBounceHtml } from '@/lib/auth/desktop-bounce';
 import { isInviteReturnUrl, resolveAuthRedirectBaseUrl, sanitizeAuthReturnUrl } from '@/lib/auth/return-url';
 import { ACTIVE_INSTANCE_COOKIE } from '@kortix/sdk/instance-routes';
@@ -204,7 +204,7 @@ export async function GET(request: NextRequest) {
         // Skip the billing-aware landing for invited users: a returnUrl pointing
         // at /invites/:id must be honored verbatim so they reach the accept/decline
         // dialog, instead of being bounced to the billing page or a freshly
-        // provisioned first project (either of which skips the dialog and leaves
+        // provisioned first workspace (either of which skips the dialog and leaves
         // the invite unaccepted).
         if (billingEnabled && backendUrl && accessToken && !isInviteReturnUrl(next)) {
           try {
@@ -218,12 +218,12 @@ export async function GET(request: NextRequest) {
               if (!accountHasAppAccess(accountState)) {
                 finalDestination = '/accounts';
               } else if (isNewUser) {
-                const projectPath = await resolveFirstProjectPathForNewUser({
+                const workspacePath = await resolveFirstWorkspacePathForNewUser({
                   backendUrl,
                   accessToken,
                   isNewUser: true,
                 });
-                if (projectPath) finalDestination = projectPath;
+                if (workspacePath) finalDestination = workspacePath;
               }
             }
           } catch (err) {

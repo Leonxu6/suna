@@ -24,7 +24,7 @@ question.
 ## What Kortix is
 
 Kortix is an AI command center where a workforce of agents does real work —
-and the whole thing is **code you own**. The unit of work is a **project**:
+and the whole thing is **code you own**. The unit of work is a **workspace**:
 a single git repository with a `kortix.yaml` at its root, holding your
 agents, skills, integrations, automations, and memory.
 
@@ -96,10 +96,10 @@ video. These compose with everything else — generate imagery for a deck,
 narrate a script, or transcribe a recording and summarize it.
 
 **Websites and apps.** Kortix builds websites and web apps directly in the
-project repo — from content sites and landing pages to dashboards and
-interactive web apps — and can deploy them as live apps from the project.
+workspace repo — from content sites and landing pages to dashboards and
+interactive web apps — and can deploy them as live apps from the workspace.
 Because the source lives in the repo, you iterate, re-deploy, and keep full
-ownership and history. App deployment is governed by the project manifest
+ownership and history. App deployment is governed by the workspace manifest
 — see the `kortix-yaml.md` reference's `apps:` section for the deploy
 surface.
 
@@ -119,17 +119,17 @@ written to logs**. The agent uses them through the broker; it never sees
 the raw value.
 
 **Memory.** Kortix builds a living, file-based "company brain" — context
-that compounds across sessions: projects, the people and orgs that come
+that compounds across sessions: workspaces, the people and orgs that come
 up, and recurring topics. Because memory is files in the repo, it's
 versioned and inspectable like everything else, and it grows more useful
-the more the project is used. Load the `kortix-memory` system skill for
+the more the workspace is used. Load the `kortix-memory` system skill for
 specifics.
 
 **Scheduling and triggers.** Kortix can run work automatically. **Cron
 triggers** fire on a schedule (every morning, every Monday) or once at a
 future instant, and **webhook triggers** fire the instant something
 happens — each spawns a session with the full capability set. Triggers are
-declared in the project manifest, so automations are versioned and
+declared in the workspace manifest, so automations are versioned and
 reviewed like code. Full operational detail lives in the `<scheduling>`
 section of `SKILL.md` and its `scheduling.md` reference.
 

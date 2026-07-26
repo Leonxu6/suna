@@ -123,7 +123,7 @@ async function measureBoot(target: Target, round: number): Promise<Boot> {
   const at = () => Math.round(performance.now() - t0);
 
   try {
-    const res = await api(`/v1/projects/${target.projectId}/sessions`, {
+    const res = await api(`/v1/workspaces/${target.projectId}/sessions`, {
       method: 'POST',
       body: JSON.stringify({}),
     });
@@ -189,7 +189,7 @@ async function measureBoot(target: Target, round: number): Promise<Boot> {
     boot.error = err instanceof Error ? err.message : String(err);
   } finally {
     if (boot.sessionId && !KEEP) {
-      await api(`/v1/projects/${target.projectId}/sessions/${boot.sessionId}`, { method: 'DELETE' }).catch(() => {});
+      await api(`/v1/workspaces/${target.projectId}/sessions/${boot.sessionId}`, { method: 'DELETE' }).catch(() => {});
     }
   }
   return boot;

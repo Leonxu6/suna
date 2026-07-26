@@ -1,7 +1,7 @@
 /**
  * SessionConnecting — the middle-pane "starting a session" state.
  *
- * Shown while a project session provisions its sandbox + resolves its OpenCode
+ * Shown while a workspace session provisions its sandbox + resolves its OpenCode
  * root. Uses the brand Lottie loader (KortixLoader) and a shimmering status
  * label (ShimmerText) so the wait reads as alive and on-brand, matching the
  * provisioning screen's aesthetic rather than a bare ActivityIndicator.

@@ -4,7 +4,7 @@
  * enterprise-demo preview toggle, and self-serve SSO metadata import. Maps
  * to spec §5 (IAM-27..IAM-33).
  *
- * These live under /v1/projects/:id/* and /v1/accounts/:id/iam/* but are
+ * These live under /v1/workspaces/:id/* and /v1/accounts/:id/iam/* but are
  * grouped here as the "approval control plane" — the human-in-the-loop
  * surface an agent's write/destructive tool calls gate on, plus its adjacent
  * per-agent scoping and enterprise-preview toggle. Per PR #4117 (a prior 402
@@ -24,13 +24,13 @@ flow(
   {
     domain: 'iam',
     routes: [
-      'POST /v1/projects/:projectId/access-requests',
-      'GET /v1/projects/:projectId/access-requests',
+      'POST /v1/workspaces/:workspaceId/access-requests',
+      'GET /v1/workspaces/:workspaceId/access-requests',
     ],
   },
   async (ctx) => {
     const team = await ctx.fixtures.team();
-    const project = await team.project();
+    const project = await team.workspace();
 
     await ctx.step(
       'an outsider (no account membership) requests access → 201 created',
@@ -38,9 +38,9 @@ flow(
         const r = await ctx.client
           .as(ctx.P.NONMEMBER)
           .post(
-            '/v1/projects/:projectId/access-requests',
+            '/v1/workspaces/:workspaceId/access-requests',
             { message: 'please add me' },
-            { params: { projectId: project.id } },
+            { params: { workspaceId: project.id } },
           );
         r.status(201).body().has('$.status', 'created').exists('$.request.request_id');
       },
@@ -49,14 +49,14 @@ flow(
     await ctx.step('re-requesting while pending is idempotent → 200 pending', async () => {
       const r = await ctx.client
         .as(ctx.P.NONMEMBER)
-        .post('/v1/projects/:projectId/access-requests', {}, { params: { projectId: project.id } });
+        .post('/v1/workspaces/:workspaceId/access-requests', {}, { params: { workspaceId: project.id } });
       r.status(200).body().has('$.status', 'pending');
     });
 
     await ctx.step('a project manager lists pending access requests → 200', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .get('/v1/projects/:projectId/access-requests', { params: { projectId: project.id } });
+        .get('/v1/workspaces/:workspaceId/access-requests', { params: { workspaceId: project.id } });
       r.status(200).body().exists('$.requests').exists('$.requests[0].request_id');
     });
 
@@ -66,7 +66,7 @@ flow(
         const bare = await team.addMember('member');
         const r = await ctx.client
           .as(bare)
-          .get('/v1/projects/:projectId/access-requests', { params: { projectId: project.id } });
+          .get('/v1/workspaces/:workspaceId/access-requests', { params: { workspaceId: project.id } });
         r.status(403);
       },
     );
@@ -75,9 +75,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          '/v1/projects/:projectId/access-requests',
+          '/v1/workspaces/:workspaceId/access-requests',
           {},
-          { params: { projectId: UNKNOWN_UUID } },
+          { params: { workspaceId: UNKNOWN_UUID } },
         );
       r.status(404);
     });
@@ -89,13 +89,13 @@ flow(
   {
     domain: 'iam',
     routes: [
-      'POST /v1/projects/:projectId/access-requests/:requestId/approve',
-      'POST /v1/projects/:projectId/access-requests/:requestId/reject',
+      'POST /v1/workspaces/:workspaceId/access-requests/:requestId/approve',
+      'POST /v1/workspaces/:workspaceId/access-requests/:requestId/reject',
     ],
   },
   async (ctx) => {
     const team = await ctx.fixtures.team();
-    const project = await team.project();
+    const project = await team.workspace();
     const requesterA = await team.addMember('member');
     const requesterB = await team.addMember('member');
     let approveRequestId = '';
@@ -104,13 +104,13 @@ flow(
     await ctx.step('seed two pending access requests', async () => {
       const a = await ctx.client
         .as(requesterA)
-        .post('/v1/projects/:projectId/access-requests', {}, { params: { projectId: project.id } });
+        .post('/v1/workspaces/:workspaceId/access-requests', {}, { params: { workspaceId: project.id } });
       a.status(201);
       approveRequestId = a.json<any>().request.request_id;
 
       const b = await ctx.client
         .as(requesterB)
-        .post('/v1/projects/:projectId/access-requests', {}, { params: { projectId: project.id } });
+        .post('/v1/workspaces/:workspaceId/access-requests', {}, { params: { workspaceId: project.id } });
       b.status(201);
       rejectRequestId = b.json<any>().request.request_id;
     });
@@ -121,14 +121,14 @@ flow(
         const r = await ctx.client
           .as(ctx.P.OWNER)
           .post(
-            '/v1/projects/:projectId/access-requests/:requestId/approve',
+            '/v1/workspaces/:workspaceId/access-requests/:requestId/approve',
             { role: 'editor' },
-            { params: { projectId: project.id, requestId: approveRequestId } },
+            { params: { workspaceId: project.id, requestId: approveRequestId } },
           );
         r.status(200)
           .body()
           .has('$.request.status', 'approved')
-          .has('$.member.project_role', 'editor');
+          .has('$.member.workspace_role', 'editor');
       },
     );
 
@@ -136,9 +136,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          '/v1/projects/:projectId/access-requests/:requestId/approve',
+          '/v1/workspaces/:workspaceId/access-requests/:requestId/approve',
           {},
-          { params: { projectId: project.id, requestId: approveRequestId } },
+          { params: { workspaceId: project.id, requestId: approveRequestId } },
         );
       r.status(409);
     });
@@ -147,9 +147,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          '/v1/projects/:projectId/access-requests/:requestId/approve',
+          '/v1/workspaces/:workspaceId/access-requests/:requestId/approve',
           { role: 'wizard' },
-          { params: { projectId: project.id, requestId: rejectRequestId } },
+          { params: { workspaceId: project.id, requestId: rejectRequestId } },
         );
       r.status(400);
     });
@@ -158,9 +158,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          '/v1/projects/:projectId/access-requests/:requestId/reject',
+          '/v1/workspaces/:workspaceId/access-requests/:requestId/reject',
           {},
-          { params: { projectId: project.id, requestId: rejectRequestId } },
+          { params: { workspaceId: project.id, requestId: rejectRequestId } },
         );
       r.status(200).body().has('$.request.status', 'rejected');
     });
@@ -169,9 +169,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          '/v1/projects/:projectId/access-requests/:requestId/reject',
+          '/v1/workspaces/:workspaceId/access-requests/:requestId/reject',
           {},
-          { params: { projectId: project.id, requestId: rejectRequestId } },
+          { params: { workspaceId: project.id, requestId: rejectRequestId } },
         );
       r.status(409);
     });
@@ -180,9 +180,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          '/v1/projects/:projectId/access-requests/:requestId/approve',
+          '/v1/workspaces/:workspaceId/access-requests/:requestId/approve',
           {},
-          { params: { projectId: project.id, requestId: UNKNOWN_UUID } },
+          { params: { workspaceId: project.id, requestId: UNKNOWN_UUID } },
         );
       r.status(404);
     });
@@ -191,23 +191,23 @@ flow(
       'an editor (project.write but not members.manage) cannot approve → 403',
       async () => {
         const editorOnly = await team.addMember('member');
-        await team.grantProjectRole(project.id, editorOnly.userId!, 'editor');
+        await team.grantWorkspaceRole(project.id, editorOnly.userId!, 'editor');
         const requesterC = await team.addMember('member');
         const seeded = await ctx.client
           .as(requesterC)
           .post(
-            '/v1/projects/:projectId/access-requests',
+            '/v1/workspaces/:workspaceId/access-requests',
             {},
-            { params: { projectId: project.id } },
+            { params: { workspaceId: project.id } },
           );
         seeded.status(201);
 
         const r = await ctx.client
           .as(editorOnly)
           .post(
-            '/v1/projects/:projectId/access-requests/:requestId/approve',
+            '/v1/workspaces/:workspaceId/access-requests/:requestId/approve',
             {},
-            { params: { projectId: project.id, requestId: seeded.json<any>().request.request_id } },
+            { params: { workspaceId: project.id, requestId: seeded.json<any>().request.request_id } },
           );
         r.status(403);
       },
@@ -222,27 +222,27 @@ flow(
   {
     domain: 'iam',
     routes: [
-      'GET /v1/projects/:projectId/approvals',
-      'GET /v1/projects/:projectId/approvals/needs-input',
+      'GET /v1/workspaces/:workspaceId/approvals',
+      'GET /v1/workspaces/:workspaceId/approvals/needs-input',
     ],
   },
   async (ctx) => {
     const team = await ctx.fixtures.team();
-    const project = await team.project();
+    const project = await team.workspace();
     const viewer = await team.addMember('member');
-    await team.grantProjectRole(project.id, viewer.userId!, 'user');
+    await team.grantWorkspaceRole(project.id, viewer.userId!, 'user');
 
     await ctx.step('a project manager reads the (empty) approval inbox → 200', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .get('/v1/projects/:projectId/approvals', { params: { projectId: project.id } });
+        .get('/v1/workspaces/:workspaceId/approvals', { params: { workspaceId: project.id } });
       r.status(200).body().has('$.count', 0).exists('$.approvals');
     });
 
     await ctx.step('out-of-range limit → 400', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .get('/v1/projects/:projectId/approvals?limit=0', { params: { projectId: project.id } });
+        .get('/v1/workspaces/:workspaceId/approvals?limit=0', { params: { workspaceId: project.id } });
       r.status(400);
     });
 
@@ -252,7 +252,7 @@ flow(
         const bare = await team.addMember('member');
         const r = await ctx.client
           .as(bare)
-          .get('/v1/projects/:projectId/approvals', { params: { projectId: project.id } });
+          .get('/v1/workspaces/:workspaceId/approvals', { params: { workspaceId: project.id } });
         r.status(403);
       },
     );
@@ -260,8 +260,8 @@ flow(
     await ctx.step(
       'a granted (non-manager) project member sees their own needs-input → 200',
       async () => {
-        const r = await ctx.client.as(viewer).get('/v1/projects/:projectId/approvals/needs-input', {
-          params: { projectId: project.id },
+        const r = await ctx.client.as(viewer).get('/v1/workspaces/:workspaceId/approvals/needs-input', {
+          params: { workspaceId: project.id },
         });
         r.status(200).body().has('$.total', 0).exists('$.sessions');
       },
@@ -270,8 +270,8 @@ flow(
     await ctx.step('a project manager sees needs-input project-wide → 200', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .get('/v1/projects/:projectId/approvals/needs-input', {
-          params: { projectId: project.id },
+        .get('/v1/workspaces/:workspaceId/approvals/needs-input', {
+          params: { workspaceId: project.id },
         });
       r.status(200).body().has('$.total', 0);
     });
@@ -279,8 +279,8 @@ flow(
     await ctx.step('a non-project-member has no visibility into needs-input → 403', async () => {
       const r = await ctx.client
         .as(ctx.P.NONMEMBER)
-        .get('/v1/projects/:projectId/approvals/needs-input', {
-          params: { projectId: project.id },
+        .get('/v1/workspaces/:workspaceId/approvals/needs-input', {
+          params: { workspaceId: project.id },
         });
       r.status(403);
     });
@@ -291,7 +291,7 @@ flow(
   'IAM-30',
   {
     domain: 'iam',
-    routes: ['POST /v1/projects/:projectId/approvals/:executionId'],
+    routes: ['POST /v1/workspaces/:workspaceId/approvals/:executionId'],
   },
   async (ctx) => {
     // The happy-path resolve (approve/deny a REAL pending_approval execution)
@@ -300,15 +300,15 @@ flow(
     // sub-routes). This flow pins the validation + authz boundary, which is
     // exactly what a policy or gate regression breaks first.
     const team = await ctx.fixtures.team();
-    const project = await team.project();
+    const project = await team.workspace();
 
     await ctx.step('malformed execution id → 400', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          '/v1/projects/:projectId/approvals/:executionId',
+          '/v1/workspaces/:workspaceId/approvals/:executionId',
           { decision: 'approve' },
-          { params: { projectId: project.id, executionId: 'not-a-uuid' } },
+          { params: { workspaceId: project.id, executionId: 'not-a-uuid' } },
         );
       r.status(400);
     });
@@ -317,9 +317,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          '/v1/projects/:projectId/approvals/:executionId',
+          '/v1/workspaces/:workspaceId/approvals/:executionId',
           { decision: 'maybe' },
-          { params: { projectId: project.id, executionId: UNKNOWN_UUID } },
+          { params: { workspaceId: project.id, executionId: UNKNOWN_UUID } },
         );
       r.status(400);
     });
@@ -328,9 +328,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          '/v1/projects/:projectId/approvals/:executionId',
+          '/v1/workspaces/:workspaceId/approvals/:executionId',
           { decision: 'approve' },
-          { params: { projectId: project.id, executionId: UNKNOWN_UUID } },
+          { params: { workspaceId: project.id, executionId: UNKNOWN_UUID } },
         );
       r.status(404);
     });
@@ -341,9 +341,9 @@ flow(
         const r = await ctx.client
           .as(ctx.P.NONMEMBER)
           .post(
-            '/v1/projects/:projectId/approvals/:executionId',
+            '/v1/workspaces/:workspaceId/approvals/:executionId',
             { decision: 'approve' },
-            { params: { projectId: project.id, executionId: UNKNOWN_UUID } },
+            { params: { workspaceId: project.id, executionId: UNKNOWN_UUID } },
           );
         r.status(403);
       },
@@ -357,7 +357,7 @@ flow(
   'IAM-31',
   {
     domain: 'iam',
-    routes: ['PUT /v1/projects/:projectId/agents/:agentName/scope'],
+    routes: ['PUT /v1/workspaces/:workspaceId/agents/:agentName/scope'],
   },
   async (ctx) => {
     // The happy path (scoping a REAL declared agents: entry) needs a
@@ -365,15 +365,15 @@ flow(
     // a bare provisioned repo here. This flow pins the manifest-edit
     // validation + manager-only gate, which is what regresses first.
     const team = await ctx.fixtures.team();
-    const project = await team.project();
+    const project = await team.workspace();
 
     await ctx.step('empty body (neither env nor connectors) → 400', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .put(
-          '/v1/projects/:projectId/agents/:agentName/scope',
+          '/v1/workspaces/:workspaceId/agents/:agentName/scope',
           {},
-          { params: { projectId: project.id, agentName: 'nope' } },
+          { params: { workspaceId: project.id, agentName: 'nope' } },
         );
       r.status(400);
     });
@@ -382,9 +382,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .put(
-          '/v1/projects/:projectId/agents/:agentName/scope',
+          '/v1/workspaces/:workspaceId/agents/:agentName/scope',
           { env: 123 },
-          { params: { projectId: project.id, agentName: 'nope' } },
+          { params: { workspaceId: project.id, agentName: 'nope' } },
         );
       r.status(400);
     });
@@ -393,9 +393,9 @@ flow(
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .put(
-          '/v1/projects/:projectId/agents/:agentName/scope',
+          '/v1/workspaces/:workspaceId/agents/:agentName/scope',
           { env: [] },
-          { params: { projectId: project.id, agentName: 'does-not-exist' } },
+          { params: { workspaceId: project.id, agentName: 'does-not-exist' } },
         );
       r.status(404);
     });
@@ -405,9 +405,9 @@ flow(
       const r = await ctx.client
         .as(bare)
         .put(
-          '/v1/projects/:projectId/agents/:agentName/scope',
+          '/v1/workspaces/:workspaceId/agents/:agentName/scope',
           { env: [] },
-          { params: { projectId: project.id, agentName: 'does-not-exist' } },
+          { params: { workspaceId: project.id, agentName: 'does-not-exist' } },
         );
       r.status(403);
     });

@@ -65,12 +65,12 @@ describe('mode bootstrap', () => {
 
   test('wrapper mode: the SDK reaches the enabled BFF and receives its auth gate', async () => {
     const kortix = createTestKortix(wrapperApp, 'invalid-wrapper-session');
-    await expect(kortix.projects.list()).rejects.toMatchObject({ status: 401 });
+    await expect(kortix.workspaces.list()).rejects.toMatchObject({ status: 401 });
   });
 
   test('direct mode: the SDK reports that the wrapper BFF is disabled', async () => {
     const kortix = createTestKortix(directApp, 'direct-mode-key');
-    await expect(kortix.projects.list()).rejects.toMatchObject({
+    await expect(kortix.workspaces.list()).rejects.toMatchObject({
       status: 500,
       details: {
         error: 'Wrapper mode is not enabled on this server (KORTIX_API_KEY is unset).',

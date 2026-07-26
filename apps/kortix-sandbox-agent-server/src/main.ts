@@ -9,7 +9,7 @@ import {
   configureRepoCredentialHelper,
   materializeRepo,
   materializeScaffoldSeed,
-  materializeProjectSeed,
+  materializeWorkspaceSeed,
   runGitCredentialHelper,
   scheduleHistoryBackfill,
 } from './git'
@@ -29,7 +29,7 @@ import { ensureOpencodeConfigDeps } from './opencode-config-deps'
 import { ensureInjectedManagedSkills } from './injected-skills'
 import { isSharedSeedBakedRoot, OPENCODE_SEED_BAKED_PIN_PATH } from './opencode-fork-root'
 import { startOpencodeEventLoop, flattenOpencodeError, type QuestionRequest, type OpencodeTurnError } from './opencode-events'
-import { createProjectEnvStore } from './project-env'
+import { createWorkspaceEnvStore } from './workspace-env'
 import { startProxy } from './proxy'
 import {
   startLlmProxy,
@@ -131,11 +131,11 @@ async function main() {
   // is fixed at spawn time, so the dir has to be known up front. The clone is
   // the boot long-pole; the opencode spawn (binary launch + port bind) is fast
   // and opencode doesn't touch the workspace until its first request anyway.
-  const projectEnv = createProjectEnvStore()
+  const workspaceEnv = createWorkspaceEnvStore()
   if (!agentEnvDirIsTmpfs()) {
     logger.error('[boot] /dev/shm is not tmpfs — agent secret file would persist to disk; check the sandbox runtime mount')
   }
-  if (!writeAgentEnvFile(projectEnv)) {
+  if (!writeAgentEnvFile(workspaceEnv)) {
     logger.error('[boot] failed to write agent secret env file; agent shells will lack project secrets')
   }
   // ── Serve BEFORE doing any slow work ────────────────────────────────────
@@ -152,10 +152,10 @@ async function main() {
   // reconfigured with the resolved dir below, before the process is ever
   // spawned. `reconfigure` only rewrites state read at spawn time, so this is
   // exactly equivalent to constructing it late.
-  const opencode = createOpencodeSupervisor(cfg, cfg.defaultOpencodeConfigDir, projectEnv, {
+  const opencode = createOpencodeSupervisor(cfg, cfg.defaultOpencodeConfigDir, workspaceEnv, {
     getCanonicalAcpSessionId: readPinnedOpencodeSessionId,
   })
-  const server = startProxy(cfg, opencode, bootTime, bootState, projectEnv, staticWeb.port)
+  const server = startProxy(cfg, opencode, bootTime, bootState, workspaceEnv, staticWeb.port)
   installShutdownHandlers(opencode, server, staticWeb)
   bootMark('proxy-up')
 
@@ -176,13 +176,13 @@ async function main() {
   // workspace is usable, so `git log`/`blame`/`diff` work without ever having
   // been on the critical path.
   if (cfg.autoClone && !bootState.repoMaterializationError) {
-    scheduleHistoryBackfill(cfg, cfg.projectTarget)
+    scheduleHistoryBackfill(cfg, cfg.workspaceTarget)
   }
 
   const opencodeConfigDir = await resolveOpencodeConfigDir(cfg)
   logger.info('[boot] resolved opencode config dir', {
     opencodeConfigDir,
-    usingProjectConfig: opencodeConfigDir !== cfg.defaultOpencodeConfigDir,
+    usingWorkspaceConfig: opencodeConfigDir !== cfg.defaultOpencodeConfigDir,
   })
 
   // Satisfy the config dir's npm deps offline before opencode boots, so its
@@ -196,7 +196,7 @@ async function main() {
   bootMark('config-deps')
 
   // Bind the resolved (possibly project-owned) config dir before the first spawn.
-  opencode.reconfigure(cfg, opencodeConfigDir, projectEnv)
+  opencode.reconfigure(cfg, opencodeConfigDir, workspaceEnv)
 
   if (bootState.repoMaterializationError) {
     logger.warn('[boot] skipping opencode readiness because repo materialization failed')
@@ -204,7 +204,7 @@ async function main() {
     // Now that the repo exists, pin the credential helper repo-locally too, so
     // `git push` authenticates regardless of the invoking shell's HOME (the
     // global config above only applies under HOME=<opencode home>).
-    await configureRepoCredentialHelper(cfg, cfg.projectTarget).catch((err) => {
+    await configureRepoCredentialHelper(cfg, cfg.workspaceTarget).catch((err) => {
       logger.warn('[boot] repo-local git credential helper setup failed', {
         err: err instanceof Error ? err.message : String(err),
       })
@@ -250,7 +250,7 @@ async function main() {
       } catch {}
       const out = openSync(logPath, 'a')
       const child = spawn('bash', ['-lc', onBoot], {
-        cwd: cfg.projectTarget,
+        cwd: cfg.workspaceTarget,
         env: process.env,
         detached: true,
         stdio: ['ignore', out, out],
@@ -280,7 +280,7 @@ async function main() {
       const deadline = Date.now() + 5 * 60_000
       let ok = false
       while (!ok && Date.now() < deadline) {
-        ok = await waitForOpencodeReady(opencode, cfg.projectTarget)
+        ok = await waitForOpencodeReady(opencode, cfg.workspaceTarget)
       }
       if (!ok) {
         logger.warn('[seed] opencode never became ready; capture will not trigger')
@@ -356,8 +356,8 @@ function armSeedAdoption(
         })
         bootMark('seed-repo-adopted')
         if (!bootState.repoMaterializationError) {
-          scheduleHistoryBackfill(cfg2, cfg2.projectTarget)
-          await configureRepoCredentialHelper(cfg2, cfg2.projectTarget).catch(() => {})
+          scheduleHistoryBackfill(cfg2, cfg2.workspaceTarget)
+          await configureRepoCredentialHelper(cfg2, cfg2.workspaceTarget).catch(() => {})
         }
       }
       await startSessionRuntime(opencode, cfg2, bootState, bootMark)
@@ -447,7 +447,11 @@ async function startSessionRuntime(
       return
     }
   }
-  const ready = await waitForOpencodeReady(opencode, cfg.projectTarget, () => bootMark('opencode-listening'))
+  const ready = await waitForOpencodeReady(
+    opencode,
+    cfg.workspaceTarget,
+    () => bootMark('opencode-listening'),
+  )
   if (ready) {
     bootMark('opencode-ready')
     logger.info('[boot] opencode ready', { opencodePid: opencode.getPid(), timeline: bootState.timeline })
@@ -534,8 +538,8 @@ async function runWarmSeedMode(
   bootMark: (label: string) => void,
   staticWeb: ReturnType<typeof startStaticWebServer>,
 ): Promise<void> {
-  const projectEnv = createProjectEnvStore()
-  writeAgentEnvFile(projectEnv)
+  const workspaceEnv = createWorkspaceEnvStore()
+  writeAgentEnvFile(workspaceEnv)
 
   // Scaffold-warm the seed: materialize the image-baked scaffold at /workspace
   // (zero-network) so opencode pays its per-directory project init (git scan +
@@ -548,11 +552,17 @@ async function runWarmSeedMode(
   // baked-checkout fast path (no in-box clone). Otherwise use the shared
   // scaffold seed. A failed project clone returns false and degrades to the
   // scaffold seed.
-  const projectSeed = !!cfg.repoUrl && (process.env.KORTIX_WARM_SEED_PROJECT_CLONE ?? '').trim() === '1'
-  const materialized = projectSeed
-    ? await materializeProjectSeed(cfg)
-    : await materializeScaffoldSeed(cfg.projectTarget, cfg.defaultBranch)
-  bootMark(projectSeed ? 'seed-project-materialized' : 'seed-scaffold-materialized')
+  const workspaceSeed =
+    !!cfg.repoUrl &&
+    (
+      process.env.KORTIX_WARM_SEED_WORKSPACE_CLONE ??
+      process.env.KORTIX_WARM_SEED_PROJECT_CLONE ??
+      ''
+    ).trim() === '1'
+  const materialized = workspaceSeed
+    ? await materializeWorkspaceSeed(cfg)
+    : await materializeScaffoldSeed(cfg.workspaceTarget, cfg.defaultBranch)
+  bootMark(workspaceSeed ? 'seed-workspace-materialized' : 'seed-scaffold-materialized')
   const opencodeConfigDir = materialized
     ? await resolveOpencodeConfigDir(cfg)
     : cfg.defaultOpencodeConfigDir
@@ -596,12 +606,12 @@ async function runWarmSeedMode(
     )
   }
 
-  const opencode = createOpencodeSupervisor(cfg, opencodeConfigDir, projectEnv, {
+  const opencode = createOpencodeSupervisor(cfg, opencodeConfigDir, workspaceEnv, {
     getCanonicalAcpSessionId: readPinnedOpencodeSessionId,
   })
   await opencode.start().catch((err) => logger.warn('[seed] opencode.start() rejected', { err: err instanceof Error ? err.message : String(err) }))
   bootMark('seed-opencode-spawned')
-  const server = startProxy(cfg, opencode, bootTime, bootState, projectEnv, staticWeb.port)
+  const server = startProxy(cfg, opencode, bootTime, bootState, workspaceEnv, staticWeb.port)
   installShutdownHandlers(opencode, server, staticWeb)
   bootMark('seed-proxy-ready')
 
@@ -616,11 +626,13 @@ async function runWarmSeedMode(
     void (async () => {
       const deadline = Date.now() + 5 * 60_000
       let ok = false
-      while (!ok && Date.now() < deadline) ok = await waitForOpencodeReady(opencode, cfg.projectTarget)
+      while (!ok && Date.now() < deadline) {
+        ok = await waitForOpencodeReady(opencode, cfg.workspaceTarget)
+      }
       if (!ok) { logger.warn('[seed] opencode never warmed; capture will not trigger'); return }
       bootMark('seed-opencode-ready')
       try {
-        const session = await createInitialOpenCodeSession(opencode, cfg.projectTarget)
+        const session = await createInitialOpenCodeSession(opencode, cfg.workspaceTarget)
         if (session.id) {
           // Marker BEFORE the pin: the snapshot capture gates on the pin file
           // existing, so writing the marker first guarantees every fork that
@@ -647,7 +659,7 @@ async function runWarmSeedMode(
     void (async () => {
       const t0 = Date.now()
       reloadSessionEnv()
-      writeAgentEnvFile(createProjectEnvStore())
+      writeAgentEnvFile(createWorkspaceEnvStore())
       const cfg2 = loadConfig()
       // Rebuild the proxy/control surface with the fork's cfg; the seed booted
       // tokenless or with seed-only credentials.
@@ -655,7 +667,11 @@ async function runWarmSeedMode(
       bootState.initialOpenCodeSessionRequired =
         (process.env.KORTIX_INITIAL_PROMPT ?? '').trim().length > 0 ||
         (process.env.KORTIX_BOOTSTRAP_OPENCODE_SESSION ?? '').trim() === '1'
-      logger.info('[seed] adopting forked session', { trigger, projectId: cfg2.projectId, autoClone: cfg2.autoClone })
+      logger.info('[seed] adopting forked session', {
+        trigger,
+        workspaceId: cfg2.workspaceId,
+        autoClone: cfg2.autoClone,
+      })
       try { await configureGlobalGitIdentity(cfg2, OPENCODE_HOME) } catch {}
       try { await configureGitCredentialHelper(cfg2, OPENCODE_HOME) } catch {}
       if (cfg2.autoClone) {
@@ -670,8 +686,8 @@ async function runWarmSeedMode(
         })
         bootMark('adopt-repo-materialized')
         if (!bootState.repoMaterializationError) {
-          scheduleHistoryBackfill(cfg2, cfg2.projectTarget)
-          await configureRepoCredentialHelper(cfg2, cfg2.projectTarget).catch(() => {})
+          scheduleHistoryBackfill(cfg2, cfg2.workspaceTarget)
+          await configureRepoCredentialHelper(cfg2, cfg2.workspaceTarget).catch(() => {})
         }
       }
 
@@ -747,7 +763,7 @@ async function runWarmSeedMode(
         }
       }
       if (!hotSwapped) {
-        opencode.reconfigure(cfg2, adoptedOpencodeConfigDir, projectEnv)
+        opencode.reconfigure(cfg2, adoptedOpencodeConfigDir, workspaceEnv)
         await opencode.restart().catch((err) =>
           logger.warn('[seed] adoption opencode restart failed', { err: (err as Error).message }),
         )
@@ -1069,7 +1085,10 @@ async function abortOpencodeTurn(baseUrl: string, workspace: string, sessionId: 
  * still heals the pin on the first /ensure-opencode. Never blocks boot.
  */
 async function relayBootstrapPinToApi(opencodeSessionId: string): Promise<void> {
-  const projectId = process.env.KORTIX_PROJECT_ID?.trim()
+  const workspaceId = (
+    process.env.KORTIX_WORKSPACE_ID ??
+    process.env.KORTIX_PROJECT_ID
+  )?.trim()
   const sessionId = process.env.KORTIX_SESSION_ID?.trim()
   // /turn-stream accepts EITHER the session token or the sandbox credential
   // (it's a sandbox-identity route). Prefer the session token; fall back to the
@@ -1081,9 +1100,9 @@ async function relayBootstrapPinToApi(opencodeSessionId: string): Promise<void> 
     ''
   ).trim()
   const apiUrl = process.env.KORTIX_API_URL?.replace(/\/$/, '')
-  if (!projectId || !sessionId || !token || !apiUrl) return
+  if (!workspaceId || !sessionId || !token || !apiUrl) return
   const apiRoot = apiUrl.endsWith('/v1') ? apiUrl : `${apiUrl}/v1`
-  const url = `${apiRoot}/projects/${encodeURIComponent(projectId)}/turn-stream`
+  const url = `${apiRoot}/workspaces/${encodeURIComponent(workspaceId)}/turn-stream`
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -1267,9 +1286,17 @@ export async function waitForInitialSessionCreate(baseUrl: string, workspace: st
 // the opencode event is handled natively. Shared by the question + turn-end
 // relays so BOTH gate on Slack identically — the question relay used to skip
 // this gate, which auto-answered the `question` tool in non-Slack sessions.
-function slackRelayContext(): { projectId: string; sessionId: string; token: string; apiRoot: string } | null {
+function slackRelayContext(): {
+  workspaceId: string
+  sessionId: string
+  token: string
+  apiRoot: string
+} | null {
   if (!(process.env.SLACK_THREAD_TS || process.env.SLACK_CHANNEL_ID)) return null
-  const projectId = process.env.KORTIX_PROJECT_ID?.trim()
+  const workspaceId = (
+    process.env.KORTIX_WORKSPACE_ID ??
+    process.env.KORTIX_PROJECT_ID
+  )?.trim()
   const sessionId = process.env.KORTIX_SESSION_ID?.trim()
   // /turn-stream accepts EITHER the session token or the sandbox credential
   // (it's a sandbox-identity route). Prefer the session token; fall back to the
@@ -1281,14 +1308,17 @@ function slackRelayContext(): { projectId: string; sessionId: string; token: str
     ''
   ).trim()
   const apiUrl = process.env.KORTIX_API_URL?.replace(/\/$/, '')
-  if (!projectId || !sessionId || !token || !apiUrl) {
+  if (!workspaceId || !sessionId || !token || !apiUrl) {
     logger.warn('[opencode-events] missing env to relay to apps/api', {
-      hasProject: !!projectId, hasSession: !!sessionId, hasToken: !!token, hasApi: !!apiUrl,
+      hasWorkspace: !!workspaceId,
+      hasSession: !!sessionId,
+      hasToken: !!token,
+      hasApi: !!apiUrl,
     })
     return null
   }
   const apiRoot = apiUrl.endsWith('/v1') ? apiUrl : `${apiUrl}/v1`
-  return { projectId, sessionId, token, apiRoot }
+  return { workspaceId, sessionId, token, apiRoot }
 }
 
 // Relay an opencode `question.asked` event for a SLACK session: post the
@@ -1333,8 +1363,8 @@ async function relayQuestion(
 async function relayQuestionToApi(req: QuestionRequest, cfg: Config): Promise<void> {
   const ctx = slackRelayContext()
   if (!ctx) return
-  const { projectId, sessionId, token, apiRoot } = ctx
-  const url = `${apiRoot}/projects/${encodeURIComponent(projectId)}/turn-question`
+  const { workspaceId, sessionId, token, apiRoot } = ctx
+  const url = `${apiRoot}/workspaces/${encodeURIComponent(workspaceId)}/turn-question`
   logger.info('[opencode-events] relaying question.asked', {
     requestId: req.id, questions: req.questions.length,
   })
@@ -1448,8 +1478,8 @@ export async function relayTurnEndToApi(
     return
   }
 
-  const { projectId, sessionId, token, apiRoot } = ctx
-  const url = `${apiRoot}/projects/${encodeURIComponent(projectId)}/turn-stream`
+  const { workspaceId, sessionId, token, apiRoot } = ctx
+  const url = `${apiRoot}/workspaces/${encodeURIComponent(workspaceId)}/turn-stream`
   const payload = JSON.stringify({
     session_id: sessionId,
     kind: 'end',

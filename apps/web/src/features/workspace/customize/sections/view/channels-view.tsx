@@ -68,10 +68,10 @@ import {
   useRuntimeProviders,
   useVisibleAgents,
 } from '@kortix/sdk/react';
-import { PROJECT_ACTIONS } from '@/lib/project-actions';
-import { useProjectCan } from '@/lib/use-project-can';
+import { WORKSPACE_ACTIONS } from '@/lib/workspace-actions';
+import { useWorkspaceCan } from '@/lib/use-workspace-can';
 import { cn } from '@/lib/utils';
-import { getProject, listProjectAccess } from '@kortix/sdk';
+import { getWorkspace, listWorkspaceAccess } from '@kortix/sdk';
 import { Check, CheckCircleSolid, ExternalLinkSolid } from '@mynaui/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { Copy, Mail, MessageSquare, X } from 'lucide-react';
@@ -88,42 +88,42 @@ const SLACK_MANIFEST_STEPS = [
   'Copy the Bot User OAuth Token (xoxb-…) and Signing Secret.',
 ];
 
-export function ChannelsView({ projectId }: { projectId: string | null }) {
+export function ChannelsView({ workspaceId }: { workspaceId: string | null }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
-  const projectQuery = useQuery({
-    queryKey: ['project', projectId],
-    queryFn: () => getProject(projectId ?? ''),
-    enabled: Boolean(projectId),
+  const workspaceQuery = useQuery({
+    queryKey: ['workspace', workspaceId],
+    queryFn: () => getWorkspace(workspaceId ?? ''),
+    enabled: Boolean(workspaceId),
     staleTime: 10_000,
   });
-  const emailChannelEnabled = projectQuery.data?.experimental?.agentmail_email === true;
-  const { data: install, isLoading: loadingInstall } = useSlackInstall(projectId);
-  const { data: mode, isLoading: loadingMode } = useSlackMode(projectId);
+  const emailChannelEnabled = workspaceQuery.data?.experimental?.agentmail_email === true;
+  const { data: install, isLoading: loadingInstall } = useSlackInstall(workspaceId);
+  const { data: mode, isLoading: loadingMode } = useSlackMode(workspaceId);
   const { data: emailInstall, isLoading: loadingEmail } = useEmailInstall(
-    emailChannelEnabled ? projectId : null,
+    emailChannelEnabled ? workspaceId : null,
     EMAIL_CONNECTOR_SLUG,
   );
   const loading =
     loadingInstall ||
     loadingMode ||
-    projectQuery.isLoading ||
+    workspaceQuery.isLoading ||
     (emailChannelEnabled && loadingEmail);
   const oauthInstallUrl = mode?.oauth_available ? mode.install_url : null;
   const canWrite =
-    useProjectCan(projectId ?? undefined, PROJECT_ACTIONS.PROJECT_CONNECTOR_WRITE).allowed === true;
+    useWorkspaceCan(workspaceId ?? undefined, WORKSPACE_ACTIONS.WORKSPACE_CONNECTOR_WRITE).allowed === true;
 
   return (
     <CustomizeSectionWrapper
       title="Channels"
       description={tI18nHardcoded.raw(
-        'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextRunThisb83f74db',
+        'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextRunThisb83f74db',
       )}
       action={
-        canWrite && projectId && !loading && !install && oauthInstallUrl ? (
+        canWrite && workspaceId && !loading && !install && oauthInstallUrl ? (
           <Button size="sm" variant="secondary" asChild>
             <Link href={oauthInstallUrl} target="_blank" rel="noopener noreferrer">
               {tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextAddTo1729c1b6',
+                'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextAddTo1729c1b6',
               )}
             </Link>
           </Button>
@@ -131,10 +131,10 @@ export function ChannelsView({ projectId }: { projectId: string | null }) {
       }
     >
       <div className="space-y-4">
-        {!projectId ? (
+        {!workspaceId ? (
           <InfoBanner tone="neutral">
             {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextOpenA4ae69220',
+              'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextOpenA4ae69220',
             )}
           </InfoBanner>
         ) : loading ? (
@@ -149,13 +149,13 @@ export function ChannelsView({ projectId }: { projectId: string | null }) {
               icon={MessageSquare}
               size="sm"
               title={tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsChannelsViewJsxAttrTitleBringbd0857f4',
+                'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxAttrTitleBringbd0857f4',
               )}
               description={tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsChannelsViewJsxAttrDescriptionSelf7c5e4adb',
+                'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxAttrDescriptionSelf7c5e4adb',
               )}
             />
-            <BringYourOwnPanel projectId={projectId} inline />
+            <BringYourOwnPanel workspaceId={workspaceId} inline />
           </div>
         ) : (
           <>
@@ -183,19 +183,19 @@ export function ChannelsView({ projectId }: { projectId: string | null }) {
               </TableHeader>
               <TableBody>
                 <SlackChannelRow
-                  projectId={projectId}
+                  workspaceId={workspaceId}
                   installation={install ?? null}
                   oauthInstallUrl={oauthInstallUrl}
                   canWrite={canWrite}
                 />
                 {emailChannelEnabled ? (
                   <EmailChannelRow
-                    projectId={projectId}
+                    workspaceId={workspaceId}
                     installation={emailInstall ?? null}
                     canWrite={canWrite}
                   />
                 ) : null}
-                <TeamsChannelRow projectId={projectId} canWrite={canWrite} />
+                <TeamsChannelRow workspaceId={workspaceId} canWrite={canWrite} />
               </TableBody>
             </Table>
 
@@ -203,28 +203,28 @@ export function ChannelsView({ projectId }: { projectId: string | null }) {
               <InfoBanner tone="neutral" icon={CheckCircleSolid}>
                 <p className="text-sm">
                   {tI18nHardcoded.raw(
-                    'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextInviteThe94db1964',
+                    'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextInviteThe94db1964',
                   )}{' '}
                   <span className="text-foreground font-medium">
                     {tI18nHardcoded.raw(
-                      'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextMention67ed74a7',
+                      'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextMention67ed74a7',
                     )}
                   </span>{' '}
                   {tI18nHardcoded.raw(
-                    'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextItA7139ed4f',
+                    'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextItA7139ed4f',
                   )}{' '}
                   <span className="text-foreground font-medium">Slack CLI</span>.
                 </p>
               </InfoBanner>
             ) : oauthInstallUrl ? (
-              <BringYourOwnPanel projectId={projectId} />
+              <BringYourOwnPanel workspaceId={workspaceId} />
             ) : null}
 
             <div className="border-border/60 border-t pt-6">
-              <TeamsChannelPanel projectId={projectId} />
+              <TeamsChannelPanel workspaceId={workspaceId} />
             </div>
 
-            {install ? <ChannelBindingsSection projectId={projectId} canWrite={canWrite} /> : null}
+            {install ? <ChannelBindingsSection workspaceId={workspaceId} canWrite={canWrite} /> : null}
           </>
         )}
       </div>
@@ -239,13 +239,13 @@ export function ChannelsView({ projectId }: { projectId: string | null }) {
  * commands; this edits the same row through `PATCH …/channels/bindings/:id`.
  */
 function ChannelBindingsSection({
-  projectId,
+  workspaceId,
   canWrite,
 }: {
-  projectId: string;
+  workspaceId: string;
   canWrite: boolean;
 }) {
-  const bindingsQuery = useChannelBindings(projectId);
+  const bindingsQuery = useChannelBindings(workspaceId);
   const bindings = bindingsQuery.data?.bindings ?? [];
 
   if (bindingsQuery.isLoading) {
@@ -263,7 +263,7 @@ function ChannelBindingsSection({
       <Label>Channel bindings</Label>
       <p className="text-muted-foreground text-xs">
         Which agent, model, and join policy each connected channel uses. A channel with no override
-        follows the project default.
+        follows the workspace default.
       </p>
       <Table>
         <TableHeader>
@@ -278,9 +278,9 @@ function ChannelBindingsSection({
           {bindings.map((b) => (
             <ChannelBindingTableRow
               key={b.bindingId}
-              projectId={projectId}
+              workspaceId={workspaceId}
               binding={b}
-              projectDefaultAgent={bindingsQuery.data?.projectDefaultAgent ?? null}
+              workspaceDefaultAgent={bindingsQuery.data?.workspaceDefaultAgent ?? null}
               canWrite={canWrite}
             />
           ))}
@@ -292,14 +292,14 @@ function ChannelBindingsSection({
 
 const CONVERSATION_POLICIES: Array<{ value: ChannelBinding['conversationPolicy']; label: string }> =
   [
-    { value: 'project_open', label: 'Project members can join' },
+    { value: 'workspace_open', label: 'Workspace members can join' },
     { value: 'owner_only', label: 'Owner only' },
     { value: 'owner_approval', label: 'Owner approval' },
   ];
 
-/** Label for the synthetic agent-picker entry meaning "inherit the project's default agent". */
-function agentDefaultLabel(projectDefaultAgent: string | null): string {
-  return projectDefaultAgent ? `Project default (${projectDefaultAgent})` : 'Project default';
+/** Label for the synthetic agent-picker entry meaning "inherit the workspace's default agent". */
+function agentDefaultLabel(workspaceDefaultAgent: string | null): string {
+  return workspaceDefaultAgent ? `Workspace default (${workspaceDefaultAgent})` : 'Workspace default';
 }
 
 /** Bare model id → the compact form callers below already assume (`kortix/x` → `x`). */
@@ -321,39 +321,39 @@ function describeEffectiveModel(binding: ChannelBinding): string {
       : `${label} (unavailable — using default)`;
   }
   const resolved = binding.effectiveModel.model;
-  return resolved ? `Project default (${stripOpencodeNamespace(resolved)})` : 'Project default';
+  return resolved ? `Workspace default (${stripOpencodeNamespace(resolved)})` : 'Workspace default';
 }
 
 function ChannelBindingTableRow({
-  projectId,
+  workspaceId,
   binding,
-  projectDefaultAgent,
+  workspaceDefaultAgent,
   canWrite,
 }: {
-  projectId: string;
+  workspaceId: string;
   binding: ChannelBinding;
-  projectDefaultAgent: string | null;
+  workspaceDefaultAgent: string | null;
   canWrite: boolean;
 }) {
   const accessQuery = useQuery({
-    queryKey: ['project-access', projectId],
-    queryFn: () => listProjectAccess(projectId),
+    queryKey: ['workspace-access', workspaceId],
+    queryFn: () => listWorkspaceAccess(workspaceId),
     staleTime: 20_000,
   });
-  // `can_manage` is the coarse project-manage flag; AND it with the real
+  // `can_manage` is the coarse workspace-manage flag; AND it with the real
   // connector write leaf so a READ-only connector role can't edit bindings
-  // (the PATCH route asserts project.connector.write and would 403).
+  // (the PATCH route asserts workspace.connector.write and would 403).
   const canManage = Boolean(accessQuery.data?.can_manage) && canWrite;
 
   // Same agent source as the chat input / schedules pickers (spec: "use the
-  // same component everywhere"). `projectId` does a server-side fetch of the
+  // same component everywhere"). `workspaceId` does a server-side fetch of the
   // declared manifest agents — no live sandbox/session required, so it works
   // on a settings page with nothing running.
-  const visibleAgents = useVisibleAgents({ projectId });
+  const visibleAgents = useVisibleAgents({ workspaceId });
   const agentSelectorAgents = useMemo<Agent[]>(() => {
     const defaultEntry = {
-      name: agentDefaultLabel(projectDefaultAgent),
-      description: "Falls back to the project's configured default agent.",
+      name: agentDefaultLabel(workspaceDefaultAgent),
+      description: "Falls back to the workspace's configured default agent.",
       mode: 'primary',
       permission: {},
       options: {},
@@ -373,8 +373,8 @@ function ChannelBindingTableRow({
           ]
         : [];
     return [defaultEntry, ...visibleAgents, ...missingCurrent];
-  }, [visibleAgents, projectDefaultAgent, binding.agentName]);
-  const selectedAgentValue = binding.agentName ?? agentDefaultLabel(projectDefaultAgent);
+  }, [visibleAgents, workspaceDefaultAgent, binding.agentName]);
+  const selectedAgentValue = binding.agentName ?? agentDefaultLabel(workspaceDefaultAgent);
 
   const { data: providers } = useRuntimeProviders();
   const models = useMemo(() => flattenModels(providers), [providers]);
@@ -400,9 +400,9 @@ function ChannelBindingTableRow({
             onSelect={(v) =>
               update.mutate(
                 {
-                  projectId,
+                  workspaceId,
                   bindingId: binding.bindingId,
-                  agentName: !v || v === agentDefaultLabel(projectDefaultAgent) ? null : v,
+                  agentName: !v || v === agentDefaultLabel(workspaceDefaultAgent) ? null : v,
                 },
                 {
                   onSuccess: () => successToast('Channel agent updated'),
@@ -422,11 +422,11 @@ function ChannelBindingTableRow({
                 models={models}
                 providers={providers}
                 selectedModel={selectedModel}
-                unsetLabel="Project default"
+                unsetLabel="Workspace default"
                 onSelect={(m) =>
                   update.mutate(
                     {
-                      projectId,
+                      workspaceId,
                       bindingId: binding.bindingId,
                       opencodeModel: m ? modelKeyToWire(m) : null,
                     },
@@ -454,7 +454,7 @@ function ChannelBindingTableRow({
           onValueChange={(v) =>
             update.mutate(
               {
-                projectId,
+                workspaceId,
                 bindingId: binding.bindingId,
                 conversationPolicy: v as ChannelBinding['conversationPolicy'],
               },
@@ -487,12 +487,12 @@ function errorToastFallback(error: unknown) {
 }
 
 function SlackChannelRow({
-  projectId,
+  workspaceId,
   installation,
   oauthInstallUrl,
   canWrite,
 }: {
-  projectId: string;
+  workspaceId: string;
   installation: SlackInstallation | null;
   oauthInstallUrl: string | null;
   canWrite: boolean;
@@ -542,7 +542,7 @@ function SlackChannelRow({
                 size="sm"
                 disabled={disconnect.isPending}
                 onClick={() =>
-                  disconnect.mutate(projectId, {
+                  disconnect.mutate(workspaceId, {
                     onSuccess: () => setConfirming(false),
                   })
                 }
@@ -576,9 +576,9 @@ function SlackChannelRow({
   );
 }
 
-function TeamsChannelRow({ projectId, canWrite }: { projectId: string; canWrite: boolean }) {
-  const { data: install } = useTeamsInstall(projectId);
-  const { data: mode } = useTeamsMode(projectId);
+function TeamsChannelRow({ workspaceId, canWrite }: { workspaceId: string; canWrite: boolean }) {
+  const { data: install } = useTeamsInstall(workspaceId);
+  const { data: mode } = useTeamsMode(workspaceId);
   const disconnect = useDisconnectTeams();
   const [confirming, setConfirming] = useState(false);
 
@@ -627,7 +627,7 @@ function TeamsChannelRow({ projectId, canWrite }: { projectId: string; canWrite:
                 size="sm"
                 disabled={disconnect.isPending}
                 onClick={() =>
-                  disconnect.mutate(projectId, {
+                  disconnect.mutate(workspaceId, {
                     onSuccess: () => setConfirming(false),
                   })
                 }
@@ -671,11 +671,11 @@ function TeamsChannelRow({ projectId, canWrite }: { projectId: string; canWrite:
 }
 
 function EmailChannelRow({
-  projectId,
+  workspaceId,
   installation,
   canWrite,
 }: {
-  projectId: string;
+  workspaceId: string;
   installation: EmailInstallation | null;
   canWrite: boolean;
 }) {
@@ -730,7 +730,7 @@ function EmailChannelRow({
                   disabled={disconnect.isPending}
                   onClick={() =>
                     disconnect.mutate(
-                      { projectId, connectorSlug: EMAIL_CONNECTOR_SLUG },
+                      { workspaceId, connectorSlug: EMAIL_CONNECTOR_SLUG },
                       {
                         onSuccess: () => {
                           setConfirming(false);
@@ -775,7 +775,7 @@ function EmailChannelRow({
           </ModalHeader>
           <ModalBody className="max-h-[75vh] overflow-y-auto">
             <EmailConnectForm
-              projectId={projectId}
+              workspaceId={workspaceId}
               connectorSlug={EMAIL_CONNECTOR_SLUG}
               onConnected={() => {
                 setConnectOpen(false);
@@ -796,15 +796,15 @@ function ConnectedDetails() {
     <InfoBanner tone="neutral" icon={CheckCircleSolid}>
       <p className="text-sm">
         {tI18nHardcoded.raw(
-          'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextInviteThe94db1964',
+          'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextInviteThe94db1964',
         )}{' '}
         <code className="font-mono text-xs">
           {tI18nHardcoded.raw(
-            'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextMention67ed74a7',
+            'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextMention67ed74a7',
           )}
         </code>{' '}
         {tI18nHardcoded.raw(
-          'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextItA7139ed4f',
+          'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextItA7139ed4f',
         )}{' '}
         <code className="font-mono text-xs">slack</code> CLI.
       </p>
@@ -812,7 +812,7 @@ function ConnectedDetails() {
   );
 }
 
-function BringYourOwnPanel({ projectId, inline = false }: { projectId: string; inline?: boolean }) {
+function BringYourOwnPanel({ workspaceId, inline = false }: { workspaceId: string; inline?: boolean }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
@@ -821,7 +821,7 @@ function BringYourOwnPanel({ projectId, inline = false }: { projectId: string; i
   const [signingSecret, setSigningSecret] = useState('');
   const [error, setError] = useState<string | null>(null);
   const connect = useConnectSlack();
-  const manifest = useSlackManifest(projectId);
+  const manifest = useSlackManifest(workspaceId);
 
   const manifestText = manifest.data ?? '';
 
@@ -836,7 +836,7 @@ function BringYourOwnPanel({ projectId, inline = false }: { projectId: string; i
     setError(null);
     connect.mutate(
       {
-        projectId,
+        workspaceId,
         bot_token: botToken.trim(),
         signing_secret: signingSecret.trim(),
       },
@@ -849,7 +849,7 @@ function BringYourOwnPanel({ projectId, inline = false }: { projectId: string; i
       <div className="space-y-4">
         <p className="text-muted-foreground text-sm">
           {tI18nHardcoded.raw(
-            'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextStep12c389f4e',
+            'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextStep12c389f4e',
           )}
         </p>
 
@@ -857,7 +857,7 @@ function BringYourOwnPanel({ projectId, inline = false }: { projectId: string; i
           <div className="flex items-center justify-between gap-2">
             <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
               {tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextAppManifest040b924e',
+                'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextAppManifest040b924e',
               )}
             </span>
             <ButtonGroup>
@@ -882,7 +882,7 @@ function BringYourOwnPanel({ projectId, inline = false }: { projectId: string; i
                   rel="noopener noreferrer"
                 >
                   {tI18nHardcoded.raw(
-                    'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextOpenSlacka088997c',
+                    'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextOpenSlacka088997c',
                   )}
                   <ExternalLinkSolid className="size-3.5 shrink-0" />
                 </Link>
@@ -907,7 +907,7 @@ function BringYourOwnPanel({ projectId, inline = false }: { projectId: string; i
         <div className="flex justify-end">
           <Button size="sm" variant="secondary" onClick={() => setStep(2)}>
             {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextNextPasted1384aaa',
+              'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextNextPasted1384aaa',
             )}
           </Button>
         </div>
@@ -916,11 +916,11 @@ function BringYourOwnPanel({ projectId, inline = false }: { projectId: string; i
       <div className="space-y-4">
         <p className="text-muted-foreground text-sm">
           {tI18nHardcoded.raw(
-            'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextStep22f8cae80',
+            'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextStep22f8cae80',
           )}{' '}
-          <code className="font-mono text-xs">project_secrets</code>{' '}
+          <code className="font-mono text-xs">workspace_secrets</code>{' '}
           {tI18nHardcoded.raw(
-            'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextAlongsideAny8e77bd03',
+            'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextAlongsideAny8e77bd03',
           )}
         </p>
 
@@ -928,13 +928,13 @@ function BringYourOwnPanel({ projectId, inline = false }: { projectId: string; i
           <div className="space-y-1.5">
             <Label htmlFor="bot-token">
               {tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextBotUser193e4bfd',
+                'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextBotUser193e4bfd',
               )}
             </Label>
             <Input
               id="bot-token"
               placeholder={tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsChannelsViewJsxAttrPlaceholderXoxb84fe69f4',
+                'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxAttrPlaceholderXoxb84fe69f4',
               )}
               value={botToken}
               onChange={(e) => setBotToken(e.target.value)}
@@ -943,14 +943,14 @@ function BringYourOwnPanel({ projectId, inline = false }: { projectId: string; i
             />
             <p className="text-muted-foreground text-xs">
               {tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextSlackYouraeeca6ed',
+                'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextSlackYouraeeca6ed',
               )}
             </p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="signing-secret">
               {tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextSigningSecret2762795e',
+                'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextSigningSecret2762795e',
               )}
             </Label>
             <Input
@@ -964,7 +964,7 @@ function BringYourOwnPanel({ projectId, inline = false }: { projectId: string; i
             />
             <p className="text-muted-foreground text-xs">
               {tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextSlackYour09fe8ce8',
+                'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextSlackYour09fe8ce8',
               )}
             </p>
           </div>
@@ -988,7 +988,7 @@ function BringYourOwnPanel({ projectId, inline = false }: { projectId: string; i
           >
             {connect.isPending ? <Loading className="mr-2 size-3.5 shrink-0 animate-spin" /> : null}
             {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextConnectSlack5ad82c3b',
+              'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextConnectSlack5ad82c3b',
             )}
           </Button>
         </div>
@@ -1007,12 +1007,12 @@ function BringYourOwnPanel({ projectId, inline = false }: { projectId: string; i
           <div className="min-w-0 text-left">
             <p className="text-sm font-medium">
               {tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextBringYourc7326733',
+                'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextBringYourc7326733',
               )}
             </p>
             <p className="text-muted-foreground mt-0.5 text-xs">
               {tI18nHardcoded.raw(
-                'autoComponentsProjectsCustomizeSectionsChannelsViewJsxTextForSelf3fbeca22',
+                'autoComponentsWorkspacesCustomizeSectionsChannelsViewJsxTextForSelf3fbeca22',
               )}
             </p>
           </div>

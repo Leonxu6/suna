@@ -22,9 +22,9 @@ const IAM_ACTION_MAP: Record<string, { title: string; kind: HumanizedAuditAction
   'iam.member.super_admin.grant': { title: 'Granted super-admin', kind: 'grant' },
   'iam.member.super_admin.revoke': { title: 'Revoked super-admin', kind: 'revoke' },
   'iam.member.role.change': { title: 'Changed member role', kind: 'update' },
-  'iam.project.group.attach': { title: 'Attached group to project', kind: 'attach' },
-  'iam.project.group.detach': { title: 'Detached group from project', kind: 'detach' },
-  'iam.project.group.update': { title: 'Changed group role on project', kind: 'update' },
+  'iam.workspace.group.attach': { title: 'Attached group to workspace', kind: 'attach' },
+  'iam.workspace.group.detach': { title: 'Detached group from workspace', kind: 'detach' },
+  'iam.workspace.group.update': { title: 'Changed group role on workspace', kind: 'update' },
   'iam.member.invite': { title: 'Invited member', kind: 'create' },
   'iam.member.remove': { title: 'Removed member', kind: 'delete' },
   'iam.mfa_required.enable': { title: 'Required MFA for the account', kind: 'update' },
@@ -64,10 +64,14 @@ const IAM_ACTION_MAP: Record<string, { title: string; kind: HumanizedAuditAction
   'auth.email.verify': { title: 'Verified email', kind: 'read' },
 };
 
+IAM_ACTION_MAP['iam.project.group.attach'] = IAM_ACTION_MAP['iam.workspace.group.attach']!;
+IAM_ACTION_MAP['iam.project.group.detach'] = IAM_ACTION_MAP['iam.workspace.group.detach']!;
+IAM_ACTION_MAP['iam.project.group.update'] = IAM_ACTION_MAP['iam.workspace.group.update']!;
+
 /** Turn an unmapped dotted/underscored action code into a readable sentence,
  *  e.g. "auth.invite.accepted" → "Invite accepted". Drops a leading namespace. */
 function prettifyAction(action: string): string {
-  const cleaned = action.replace(/^(auth|iam|account|project|billing|member|group)\./, '');
+  const cleaned = action.replace(/^(auth|iam|account|project|workspace|billing|member|group)\./, '');
   const words = cleaned.replace(/[._]+/g, ' ').trim();
   if (!words) return action;
   return words.charAt(0).toUpperCase() + words.slice(1);
@@ -78,38 +82,38 @@ type HttpPatternHandler = (method: string, segs: PathSegments, rawPath: string) 
 
 const HTTP_PATTERNS: HttpPatternHandler[] = [
   (m, s) => {
-    if (s[0] === 'projects' && s[2] === 'group-grants') {
-      if (m === 'POST' && s.length === 3) return { title: 'Attached group to project', kind: 'attach' };
-      if (m === 'PATCH' && s.length === 4) return { title: 'Changed group role on project', kind: 'update' };
-      if (m === 'DELETE' && s.length === 4) return { title: 'Detached group from project', kind: 'detach' };
+    if ((s[0] === 'workspaces' || s[0] === 'projects') && s[2] === 'group-grants') {
+      if (m === 'POST' && s.length === 3) return { title: 'Attached group to workspace', kind: 'attach' };
+      if (m === 'PATCH' && s.length === 4) return { title: 'Changed group role on workspace', kind: 'update' };
+      if (m === 'DELETE' && s.length === 4) return { title: 'Detached group from workspace', kind: 'detach' };
     }
     return null;
   },
   (m, s, raw) => {
-    if (s[0] === 'projects' && s[2] === 'secrets') {
+    if ((s[0] === 'workspaces' || s[0] === 'projects') && s[2] === 'secrets') {
       const name = s[3] && s[3] !== ':id' ? s[3] : null;
       const personal = s[4] === 'personal';
       if (m === 'PUT') return { title: personal ? 'Set personal secret' : 'Set shared secret', detail: name ?? undefined, kind: 'update' };
       if (m === 'DELETE') return { title: personal ? 'Removed personal secret' : 'Removed shared secret', detail: name ?? undefined, kind: 'delete' };
       if (m === 'POST' && raw.endsWith(':rotate')) return { title: 'Rotated secret', detail: name ?? undefined, kind: 'update' };
-      if (m === 'POST' && s.length === 3) return { title: 'Set project secret', kind: 'update' };
+      if (m === 'POST' && s.length === 3) return { title: 'Set workspace secret', kind: 'update' };
     }
     return null;
   },
   (m, s) => {
-    if (s[0] === 'projects' && s[2] === 'access') {
+    if ((s[0] === 'workspaces' || s[0] === 'projects') && s[2] === 'access') {
       if (s[3] === 'pending-invites') {
-        if (m === 'GET') return { title: 'Listed pending project invites', kind: 'read' };
-        if (m === 'DELETE') return { title: 'Revoked pending project invitation', kind: 'revoke' };
+        if (m === 'GET') return { title: 'Listed pending workspace invites', kind: 'read' };
+        if (m === 'DELETE') return { title: 'Revoked pending workspace invitation', kind: 'revoke' };
       }
-      if (m === 'POST' && s[3] === 'invite') return { title: 'Invited project member', kind: 'create' };
-      if (m === 'PUT' && s.length === 4) return { title: 'Changed project member role', kind: 'update' };
-      if (m === 'DELETE' && s.length === 4) return { title: 'Removed project member', kind: 'delete' };
+      if (m === 'POST' && s[3] === 'invite') return { title: 'Invited workspace member', kind: 'create' };
+      if (m === 'PUT' && s.length === 4) return { title: 'Changed workspace member role', kind: 'update' };
+      if (m === 'DELETE' && s.length === 4) return { title: 'Removed workspace member', kind: 'delete' };
     }
     return null;
   },
   (m, s) => {
-    if (s[0] === 'projects' && s[2] === 'sessions') {
+    if ((s[0] === 'workspaces' || s[0] === 'projects') && s[2] === 'sessions') {
       const tail = s.slice(3);
       if (m === 'POST' && tail.length === 0) return { title: 'Started session', kind: 'create' };
       if (m === 'POST' && tail[1] === 'exec') return { title: 'Ran session command', kind: 'update' };
@@ -120,7 +124,7 @@ const HTTP_PATTERNS: HttpPatternHandler[] = [
     return null;
   },
   (m, s) => {
-    if (s[0] === 'projects' && s[2] === 'triggers') {
+    if ((s[0] === 'workspaces' || s[0] === 'projects') && s[2] === 'triggers') {
       if (m === 'POST' && s.length === 3) return { title: 'Created trigger', kind: 'create' };
       if (m === 'PATCH' && s.length === 4) return { title: 'Updated trigger', kind: 'update' };
       if (m === 'DELETE' && s.length === 4) return { title: 'Deleted trigger', kind: 'delete' };
@@ -129,10 +133,10 @@ const HTTP_PATTERNS: HttpPatternHandler[] = [
     return null;
   },
   (m, s) => {
-    if (s[0] === 'projects') {
-      if (m === 'POST' && s.length === 1) return { title: 'Created project', kind: 'create' };
-      if (m === 'PATCH' && s.length === 2) return { title: 'Updated project', kind: 'update' };
-      if (m === 'DELETE' && s.length === 2) return { title: 'Deleted project', kind: 'delete' };
+    if ((s[0] === 'workspaces' || s[0] === 'projects')) {
+      if (m === 'POST' && s.length === 1) return { title: 'Created workspace', kind: 'create' };
+      if (m === 'PATCH' && s.length === 2) return { title: 'Updated workspace', kind: 'update' };
+      if (m === 'DELETE' && s.length === 2) return { title: 'Deleted workspace', kind: 'delete' };
     }
     return null;
   },
@@ -172,7 +176,9 @@ const HTTP_PATTERNS: HttpPatternHandler[] = [
     if (s[0] === 'accounts' && s[2] === 'iam' && s[3] === 'members') {
       const tail = s.slice(4);
       if (tail[1] === 'super-admin') return { title: 'Set super-admin status', kind: 'grant' };
-      if (tail[1] === 'project-access') return { title: 'Listed project access', kind: 'read' };
+      if (tail[1] === 'workspace-access' || tail[1] === 'project-access') {
+        return { title: 'Listed workspace access', kind: 'read' };
+      }
       if (tail[1] === 'groups') return { title: 'Listed member groups', kind: 'read' };
       if (tail[1]?.startsWith('effective')) return { title: 'Checked effective permissions', kind: 'read' };
       if (tail[1] === 'boundary') return { title: 'Updated permission boundary', kind: 'update' };
@@ -189,7 +195,9 @@ const HTTP_PATTERNS: HttpPatternHandler[] = [
         if (m === 'POST') return { title: 'Added member to group', kind: 'attach' };
         if (m === 'DELETE') return { title: 'Removed member from group', kind: 'detach' };
       }
-      if (tail[1] === 'project-grants') return { title: 'Listed group project access', kind: 'read' };
+      if (tail[1] === 'workspace-grants' || tail[1] === 'project-grants') {
+        return { title: 'Listed group workspace access', kind: 'read' };
+      }
     }
     return null;
   },

@@ -2,12 +2,12 @@ import { describe, expect, test } from 'bun:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import type { ProjectSnapshotBuild } from '@kortix/sdk';
+import type { WorkspaceSnapshotBuild } from '@kortix/sdk';
 
-import { BuildRow, isProjectAcceleratorBuild } from './sandbox-view';
+import { BuildRow, isWorkspaceAcceleratorBuild } from './sandbox-view';
 import type { SandboxProviderMode } from './sandbox-provider-coverage';
 
-const build = (overrides: Partial<ProjectSnapshotBuild> = {}): ProjectSnapshotBuild => ({
+const build = (overrides: Partial<WorkspaceSnapshotBuild> = {}): WorkspaceSnapshotBuild => ({
   build_id: 'build-1',
   slug: 'essentia',
   template_slug: 'essentia',
@@ -24,10 +24,10 @@ const build = (overrides: Partial<ProjectSnapshotBuild> = {}): ProjectSnapshotBu
   ...overrides,
 });
 
-describe('project accelerator build presentation', () => {
-  test('identifies only ppwarm snapshots as project accelerators', () => {
+describe('workspace accelerator build presentation', () => {
+  test('identifies only ppwarm snapshots as workspace accelerators', () => {
     expect(
-      isProjectAcceleratorBuild(
+      isWorkspaceAcceleratorBuild(
         build({
           slug: 'default-warm',
           template_slug: 'default',
@@ -36,7 +36,7 @@ describe('project accelerator build presentation', () => {
       ),
     ).toBe(true);
     expect(
-      isProjectAcceleratorBuild(
+      isWorkspaceAcceleratorBuild(
         build({
           slug: 'worker-warm',
           template_slug: 'worker-warm',
@@ -58,12 +58,12 @@ describe('project accelerator build presentation', () => {
   });
 });
 
-function renderBuildRow(providerMode: SandboxProviderMode, overrides?: Partial<ProjectSnapshotBuild>) {
+function renderBuildRow(providerMode: SandboxProviderMode, overrides?: Partial<WorkspaceSnapshotBuild>) {
   return renderToStaticMarkup(createElement(BuildRow, { build: build(overrides), providerMode }));
 }
 
 describe('sandbox template build row provider disclosure', () => {
-  test('never names the resolved provider when the project is on Automatic', () => {
+  test('never names the resolved provider when the workspace is on Automatic', () => {
     const html = renderBuildRow('automatic');
 
     expect(html).not.toContain('Daytona');
@@ -73,7 +73,7 @@ describe('sandbox template build row provider disclosure', () => {
     expect(html).toContain('Manual rebuild');
   });
 
-  test('names the resolved provider once the project has explicitly pinned one', () => {
+  test('names the resolved provider once the workspace has explicitly pinned one', () => {
     const html = renderBuildRow('pinned');
 
     expect(html).toContain('Daytona');

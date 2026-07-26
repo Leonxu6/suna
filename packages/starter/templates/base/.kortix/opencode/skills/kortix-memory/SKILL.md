@@ -1,13 +1,13 @@
 ---
 name: kortix-memory
-description: How to read, write, and curate project memory in `.kortix/memory/` — the project brain. Load this skill whenever you (or the memory-reflector agent) need to add, update, or reorganize what this project knows about itself. Defines the rubric for what belongs in memory, the file structure, and the change-request flow for landing memory edits on `main`.
+description: How to read, write, and curate workspace memory in `.kortix/memory/` — the workspace memory. Load this skill whenever you (or the memory-reflector agent) need to add, update, or reorganize what this workspace knows about itself. Defines the rubric for what belongs in memory, the file structure, and the change-request flow for landing memory edits on `main`.
 ---
 
 <skill name="kortix-memory">
 
 <overview>
-Every Kortix project has a **project brain** at `.kortix/memory/` — a
-folder of curated markdown files describing what this project is,
+Every Kortix workspace has a **workspace memory** at `.kortix/memory/` — a
+folder of curated markdown files describing what this workspace is,
 which integrations it talks to, the conventions the team works by, and
 the decisions worth not re-litigating.
 
@@ -35,15 +35,15 @@ never by pushing directly.
 <when-to-load>
 Load this skill when you:
 
-- Discover a project convention, integration detail, decision, or
+- Discover a workspace convention, integration detail, decision, or
   workaround that should outlast this session
-- Notice the project brain is out of date or contradicts current code
+- Notice the workspace memory is out of date or contradicts current code
 - Are the `memory-reflector` agent doing your scheduled reflection run
 - Want to know if something is worth writing down (use the rubric below)
 - Need to add, rename, split, or delete a memory file
 - Want to know how memory edits reach `main`
 
-Skip this skill for one-off questions about *operating* code. Project
+Skip this skill for one-off questions about *operating* code. Workspace
 memory is about durable knowledge, not session state.
 </when-to-load>
 
@@ -51,7 +51,7 @@ memory is about durable knowledge, not session state.
 ```
 .kortix/memory/
 ├── MEMORY.md           Index. `view` this first. One line per sub-file.
-├── overview.md         What this project IS — purpose, shape, stakeholders.
+├── overview.md         What this workspace IS — purpose, shape, stakeholders.
 ├── integrations.md     Third parties, MCP servers, channels, executor connectors.
 ├── conventions.md      Coding patterns, naming, do / don't, style decisions.
 └── decisions.md        Architectural and business decisions worth not re-debating.
@@ -74,7 +74,7 @@ there's enough depth to warrant a click.
 
 ### What to remember (KEEP)
 
-- **The project's purpose** — what we're building, for whom, and the
+- **The workspace's purpose** — what we're building, for whom, and the
   one-sentence pitch.
 - **Architecture-level decisions** — why we use X over Y, which
   service owns what, the data flow.
@@ -86,14 +86,14 @@ there's enough depth to warrant a click.
   flaky dependencies, gotchas that bit us once.
 - **Ops runbooks** — how to deploy, how to roll back, how to debug the
   thing that breaks every quarter.
-- **Glossary** — domain terms specific to this project that an
+- **Glossary** — domain terms specific to this workspace that an
   outsider wouldn't know.
 - **People & ownership** *(optional)* — who owns which surface, how to
   reach them, what they care about.
 
 ### What NOT to remember (DROP)
 
-- One user's personal preferences — those are not project memory.
+- One user's personal preferences — those are not workspace memory.
 - Facts derivable from the repo layout, file names, or `git log`.
 - One-off task state that won't matter next week.
 - Anything that's already in `kortix.yaml`, `AGENTS.md`, or a SKILL.md.
@@ -175,7 +175,7 @@ The `memory-reflector` agent
 around this skill — its job is to:
 
 1. Load this skill.
-2. Survey recent project activity (git log since last run, recent
+2. Survey recent workspace activity (git log since last run, recent
    merged CRs, the active session transcript if invoked from one).
 3. Decide what's worth keeping per the **rubric** above.
 4. CRUD `.kortix/memory/` accordingly.
@@ -198,7 +198,7 @@ changes within a few seconds of the CR merging.
   every fact into `MEMORY.md` — keep it a clean table of contents and
   push depth into sub-files the agent `view`s only when relevant.
 - **`view` your memory before you start.** Nothing is auto-injected;
-  if you skip the `view`, you work blind to what the project already
+  if you skip the `view`, you work blind to what the workspace already
   knows. The `memory` tool's description and the agent rules say the
   same thing — this is the memory protocol.
 - **Memory files are markdown, not databases.** Avoid heavy

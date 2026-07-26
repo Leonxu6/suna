@@ -17,15 +17,15 @@ import { createExecutorClient } from '@kortix/executor-sdk';
 const executor = createExecutorClient({
   apiUrl: process.env.KORTIX_API_URL!,
   token: process.env.KORTIX_CLI_TOKEN ?? process.env.KORTIX_EXECUTOR_TOKEN!,
-  projectId: process.env.KORTIX_PROJECT_ID,
+  workspaceId: process.env.KORTIX_WORKSPACE_ID,
   timeoutMs: 60_000,
 });
 ```
 
 `apiUrl` may be either the API root or `/v1`; the SDK normalizes it. Set
-`projectId` when a script should run against a specific linked project using a
+`workspaceId` when a script should run against a specific linked workspace using a
 normal user token or session token. Omit it only for legacy in-sandbox
-session-token routes that derive the project from the token.
+session-token routes that derive the workspace from the token.
 
 ## Methods
 
@@ -69,7 +69,7 @@ import { createExecutorClient } from '@kortix/executor-sdk';
 const executor = createExecutorClient({
   apiUrl: process.env.KORTIX_API_URL!,
   token: process.env.KORTIX_CLI_TOKEN ?? process.env.KORTIX_EXECUTOR_TOKEN!,
-  projectId: process.env.KORTIX_PROJECT_ID,
+  workspaceId: process.env.KORTIX_WORKSPACE_ID,
 });
 
 const matches = await executor.discover('email inbox unread', { limit: 5 });

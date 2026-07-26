@@ -4,17 +4,17 @@ import {
   type ConfigEntity,
   ConfigEntityView,
 } from '@/features/workspace/customize/sections/component/config-entity-view';
-import { PROJECT_ACTIONS } from '@/lib/project-actions';
-import { useProjectCan } from '@/lib/use-project-can';
+import { WORKSPACE_ACTIONS } from '@/lib/workspace-actions';
+import { useWorkspaceCan } from '@/lib/use-workspace-can';
 import { Sparkles } from 'lucide-react';
 
 type Skill = ConfigEntity;
 
-export function SkillsView({ projectId }: { projectId: string }) {
-  const canWrite = useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_SKILL_WRITE).allowed === true;
+export function SkillsView({ workspaceId }: { workspaceId: string }) {
+  const canWrite = useWorkspaceCan(workspaceId, WORKSPACE_ACTIONS.WORKSPACE_SKILL_WRITE).allowed === true;
   return (
     <ConfigEntityView<Skill>
-      projectId={projectId}
+      workspaceId={workspaceId}
       kind="skill"
       noun="skill"
       layout="split"

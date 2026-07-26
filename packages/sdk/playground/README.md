@@ -19,8 +19,8 @@ Stack must be up (`pnpm dev` from the repo root; `curl localhost:8008/v1/health`
 
 | # | Script | Tests | Needs sandbox? |
 |---|---|---|---|
-| 01 | `projects/01-list-projects.ts` | `projects.list()` returns everything | no |
-| 02 | `sessions/02-list-sessions.ts` | `projects.sessions(id)` for one project | no |
+| 01 | `workspaces/01-list-workspaces.ts` | `workspaces.list()` returns everything | no |
+| 02 | `sessions/02-list-sessions.ts` | `workspaces.sessions(id)` for one workspace | no |
 | 03 | `sessions/03-create-session.ts` | `createSession` + re-list proof | no |
 | 04 | `chat/04-send-and-stream.ts` | ready → stream → send → idle → transcript; `KORTIX_MODEL` = change model | **yes** |
 | 05 | `agents/05-list-agents.ts` | `detail().config.agents` + `getAgentConfig()` | no |
@@ -32,11 +32,11 @@ Stack must be up (`pnpm dev` from the repo root; `curl localhost:8008/v1/health`
 | 11 | `commands/11-create-command.ts` | command file write→read→delete | **yes** |
 | 12 | `env/12-env-and-secrets.ts` | manifest env + secrets upsert/list/remove CRUD | no |
 | 13 | `channels/13-slack-status.ts` | Slack installation/mode/manifest (+ real `connect()` if tokens set) | no |
-| 14 | `chat/14-change-default-model.ts` | project default model via `modelDefaults.set` + typed catalog (was `step5-change-model.ts`) | no |
+| 14 | `chat/14-change-default-model.ts` | workspace default model via `modelDefaults.set` + typed catalog (was `step5-change-model.ts`) | no |
 | 15 | `accounts/15-accounts-and-tokens.ts` | validateToken, accounts, PAT create→list→revoke CRUD | no |
 | 16 | `billing/16-billing.ts` | account state, transactions, credit breakdown, usage, tiers | no |
 | 17 | `gateway/17-gateway-observability.ts` | LLM cost/latency overview, series, breakdown, logs, budgets, keys | no |
-| 18 | `marketplace/18-marketplace.ts` | public catalog + project registry installed/updates | no |
+| 18 | `marketplace/18-marketplace.ts` | public catalog + workspace registry installed/updates | no |
 | 19 | `connectors/19-connectors.ts` | connectStatus, connector list + config + policies | no |
 | 20 | `access/20-access-and-policies.ts` | members, invites, requests, resource grants, policies | no |
 | 21 | `git/21-files-and-git.ts` | repo files list/read, commits, branches, commit diff | no |
@@ -50,13 +50,13 @@ Stack must be up (`pnpm dev` from the repo root; `curl localhost:8008/v1/health`
 | 30 | `sessions/30-session-crud.ts` | `generateSessionId` client-id create → get → rename → stop → delete → verify gone | no |
 | 31 | `session-extras/31-files-deep.ts` | files create/readBlob/copy/rename/findText round-trip in a temp dir | **yes** |
 | 32 | `env/32-personal-secrets.ts` | personal secret setPersonal → list → removePersonal | no |
-| 33 | `projects/33-models-and-search.ts` | llmCatalog, modelDefaults.get, repo search, file history, single commit, marketplace featured/item, pipedream apps | no |
+| 33 | `workspaces/33-models-and-search.ts` | llmCatalog, modelDefaults.get, repo search, file history, single commit, marketplace featured/item, pipedream apps | no |
 | 34 | `server/34-server-scoped.ts` | `@kortix/sdk/server`: createScopedKortix + runWithKortix (incl. concurrent runs) | no |
 | 35 | `session-extras/35-shares.ts` | session public-share create→list→revoke + sandboxShares.list (known local 502) | **yes** |
 
 ## Deliberately NOT covered (and why)
 
-- **Mutations that change your project/account for real** — marketplace install,
+- **Mutations that change your workspace/account for real** — marketplace install,
   trigger create/fire, `updateAgentConfig`/`setAgentScope`,
   experimental-feature toggles, access invites, connector create, channel
   connect/disconnect (except opt-in Slack), meet voice/bot mutations,
@@ -74,7 +74,7 @@ Stack must be up (`pnpm dev` from the repo root; `curl localhost:8008/v1/health`
 Run any of them from `packages/sdk`:
 
 ```bash
-bun run playground/projects/01-list-projects.ts
+bun run playground/workspaces/01-list-workspaces.ts
 KORTIX_MODEL=claude-sonnet-4.6 bun run playground/chat/04-send-and-stream.ts "Say hello"
 ```
 
@@ -93,9 +93,9 @@ send → transcript).
 
 | Var | Effect |
 |---|---|
-| `KORTIX_PROJECT_ID` | pin the project (default: first on the account; most scripts also take it as argv) |
+| `KORTIX_WORKSPACE_ID` | pin the workspace (default: first on the account; most scripts also take it as argv) |
 | `KORTIX_SESSION_ID` | pin the session (default: chat/create scripts make a fresh one) |
-| `KORTIX_MODEL` | per-send model id from `projects.llmCatalog()` — **set this**: the local default model currently 400s (`max_tokens` vs `max_completion_tokens` gateway bug) |
+| `KORTIX_MODEL` | per-send model id from `workspaces.llmCatalog()` — **set this**: the local default model currently 400s (`max_tokens` vs `max_completion_tokens` gateway bug) |
 | `KEEP_TEST_FILES=1` | 06/09/11 keep their created file instead of deleting (commit it to register the entity) |
 | `SLACK_BOT_TOKEN` + `SLACK_SIGNING_SECRET` | 13 actually calls `connect()` |
 
@@ -104,7 +104,7 @@ send → transcript).
 - **Cold sandboxes**: `ensureReady()` throws `RUNTIME_UNAVAILABLE` while a
   sandbox provisions; `_shared.retryUntilReady` loops it (up to 5 min).
 - **Create-entity scripts (06/09/11)** write into the *session workspace
-  branch* — the entity shows up in `projects.detail()` / the Customize UI only
+  branch* — the entity shows up in `workspaces.detail()` / the Customize UI only
   after that change is committed to the repo. The web UI's "New agent/skill"
   buttons drive an LLM configure-thread instead; these scripts are the
   deterministic file-level equivalent.

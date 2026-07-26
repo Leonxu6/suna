@@ -75,8 +75,8 @@ function Dashboard({
   wrapperMode: boolean;
   onDisconnect: () => void;
 }) {
-  const projects = useQuery({ queryKey: qk.projects, queryFn: () => kortix.projects.list() });
-  const items = projects.data ?? [];
+  const workspaces = useQuery({ queryKey: qk.workspaces, queryFn: () => kortix.workspaces.list() });
+  const items = workspaces.data ?? [];
 
   return (
     <div className="min-h-dvh bg-background">
@@ -107,22 +107,22 @@ function Dashboard({
       <div className="mx-auto max-w-4xl px-5 py-8">
         <div className="flex items-end justify-between">
           <div>
-            <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
+            <h1 className="text-xl font-semibold tracking-tight">Workspaces</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Each project is a git repo. Open one to run an agent against it.
+              Each workspace is a git repo. Open one to run an agent against it.
             </p>
           </div>
-          <CreateProjectDialog />
+          <CreateWorkspaceDialog />
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {projects.isLoading &&
+          {workspaces.isLoading &&
             Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-[72px] rounded-xl" />
             ))}
-          {projects.isError && (
+          {workspaces.isError && (
             <Card className="col-span-full p-4 text-sm text-destructive">
-              Couldn&apos;t load projects —{' '}
+              Couldn&apos;t load workspaces —{' '}
               {wrapperMode ? 'try signing in again' : 'check your API key'}.{' '}
               <Button
                 variant="link"
@@ -134,13 +134,13 @@ function Dashboard({
               </Button>
             </Card>
           )}
-          {projects.isSuccess && items.length === 0 && (
+          {workspaces.isSuccess && items.length === 0 && (
             <Card className="col-span-full p-8 text-center text-sm text-muted-foreground">
-              No projects yet. Create your first one to get started.
+              No workspaces yet. Create your first one to get started.
             </Card>
           )}
           {items.map((p) => (
-            <Link key={p.project_id} href={`/projects/${p.project_id}`}>
+            <Link key={p.workspace_id} href={`/workspaces/${p.workspace_id}`}>
               <Card className="flex items-center gap-3 p-4 transition-colors hover:bg-accent">
                 <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">
                   <FolderGit2 className="size-4 text-muted-foreground" />
@@ -148,7 +148,7 @@ function Dashboard({
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium">{p.name}</div>
                   <div className="truncate text-xs text-muted-foreground">
-                    {p.updated_at ? `Updated ${relativeTime(p.updated_at)}` : p.project_id}
+                    {p.updated_at ? `Updated ${relativeTime(p.updated_at)}` : p.workspace_id}
                   </div>
                 </div>
               </Card>
@@ -160,34 +160,34 @@ function Dashboard({
   );
 }
 
-function CreateProjectDialog() {
+function CreateWorkspaceDialog() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const qc = useQueryClient();
   const router = useRouter();
 
   const create = useMutation({
-    mutationFn: () => kortix.projects.provision({ name: name.trim(), seed_starter: true }),
-    onSuccess: (project) => {
-      qc.invalidateQueries({ queryKey: qk.projects });
+    mutationFn: () => kortix.workspaces.provision({ name: name.trim(), seed_starter: true }),
+    onSuccess: (workspace) => {
+      qc.invalidateQueries({ queryKey: qk.workspaces });
       setOpen(false);
       setName('');
-      toast.success('Project created');
-      router.push(`/projects/${project.project_id}`);
+      toast.success('Workspace created');
+      router.push(`/workspaces/${workspace.workspace_id}`);
     },
-    onError: () => toast.error('Could not create the project'),
+    onError: () => toast.error('Could not create the workspace'),
   });
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button>
-          <Plus className="size-4" /> New project
+          <Plus className="size-4" /> New workspace
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New project</DialogTitle>
+          <DialogTitle>New workspace</DialogTitle>
           <DialogDescription>
             We&apos;ll provision a managed git repo seeded with a starter so the agent can boot
             immediately.
@@ -200,9 +200,9 @@ function CreateProjectDialog() {
           }}
         >
           <div className="space-y-2">
-            <Label htmlFor="project-name">Project name</Label>
+            <Label htmlFor="workspace-name">Workspace name</Label>
             <Input
-              id="project-name"
+              id="workspace-name"
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -212,7 +212,7 @@ function CreateProjectDialog() {
           <DialogFooter className="mt-4">
             <Button type="submit" disabled={!name.trim() || create.isPending}>
               {create.isPending && <Loading className="size-4" />}
-              Create project
+              Create workspace
             </Button>
           </DialogFooter>
         </form>

@@ -1,17 +1,17 @@
 /**
- * 32 — PERSONAL project secrets (per-user overrides of project secrets):
+ * 32 — PERSONAL workspace secrets (per-user overrides of workspace secrets):
  * setPersonal → list → removePersonal round-trip. Cleans up after itself.
  *
- * Run (from packages/sdk):  bun run playground/env/32-personal-secrets.ts [projectId]
+ * Run (from packages/sdk):  bun run playground/env/32-personal-secrets.ts [workspaceId]
  */
-import { makeKortix, pickProjectId, run } from "../_shared";
+import { makeKortix, pickWorkspaceId, run } from "../_shared";
 
 const NAME = "SDK_PLAYGROUND_PERSONAL_SECRET";
 
 run("personal-secrets", async () => {
   const kortix = makeKortix();
-  const projectId = await pickProjectId(kortix, process.argv[2]);
-  const secrets = kortix.project(projectId).secrets;
+  const workspaceId = await pickWorkspaceId(kortix, process.argv[2]);
+  const secrets = kortix.workspace(workspaceId).secrets;
 
   await secrets.setPersonal(NAME, { value: "personal-value-from-playground" });
   console.log(`✓ setPersonal(${NAME})`);

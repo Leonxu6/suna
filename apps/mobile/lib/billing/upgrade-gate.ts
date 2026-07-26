@@ -58,7 +58,7 @@ export function createApiRequestError(
 }
 
 /**
- * `@kortix/sdk`'s `backendApi`/`projects-client` throws a different error
+ * `@kortix/sdk`'s `backendApi`/`workspaces-client` throws a different error
  * shape than mobile's own `apiFetch` + `createApiRequestError`: a 402 comes
  * back as a `BillingError` with `.status` + `.message` at the top level, but
  * `code` / `account_id` / `balance` nested one level down under `.detail`
@@ -67,8 +67,8 @@ export function createApiRequestError(
  * `BillingError.detail`, not onto the error object itself). Mobile's own
  * `createApiRequestError` puts them flat on the error. Read both shapes so
  * this keeps working for code paths now backed by the SDK (e.g.
- * `lib/projects/projects-client.ts`'s SDK-re-exported functions) as well as
- * the mobile-native ones (`startProjectSession`, `lib/platform/client.ts`).
+ * `lib/workspaces/workspaces-client.ts`'s SDK-re-exported functions) as well as
+ * the mobile-native ones (`startWorkspaceSession`, `lib/platform/client.ts`).
  */
 interface SdkBillingErrorLike {
   status?: number;

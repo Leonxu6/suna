@@ -36,7 +36,7 @@ terraform apply
 - Store prod secrets in Secrets Manager (separate from dev); reference ARNs in
   `api_secrets`. The execution role reads only those ARNs.
 - **`api_secrets` MUST include `MANAGED_GIT_GITHUB_TOKEN`** — the managed-git org
-  PAT used by `POST /v1/projects/provision` to create repos under `managed-kortix`.
+  PAT used by `POST /v1/workspaces/provision` to create repos under `managed-kortix`.
   Without it the code falls back to the GitHub App installation, which lacks
   Administration:write → `403 Resource not accessible by integration` → 502 on
   EVERY "Create project". (EKS loads the whole bundle via `envFrom` so it tolerates

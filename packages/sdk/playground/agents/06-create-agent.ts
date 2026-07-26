@@ -8,7 +8,7 @@
  * after committing).
  *
  * NOTE: the file lives on this session's branch until committed — it will not
- * appear in `projects.detail()` (which reads the repo) until the change lands.
+ * appear in `workspaces.detail()` (which reads the repo) until the change lands.
  * The web UI's "New agent" button drives an LLM configure-thread instead;
  * this is the deterministic equivalent.
  *
@@ -17,7 +17,7 @@
 import {
   makeKortix,
   pickOrCreateSessionId,
-  pickProjectId,
+  pickWorkspaceId,
   retryUntilReady,
   run,
 } from "../_shared";
@@ -35,13 +35,13 @@ You are ${AGENT_NAME}. Whatever the user says, reply with the single word: pong.
 
 run("create-agent", async () => {
   const kortix = makeKortix();
-  const projectId = await pickProjectId(kortix);
+  const workspaceId = await pickWorkspaceId(kortix);
   const sessionId = await pickOrCreateSessionId(
     kortix,
-    projectId,
+    workspaceId,
     "sdk agent test",
   );
-  const session = kortix.session(projectId, sessionId);
+  const session = kortix.session(workspaceId, sessionId);
 
   console.log("readying session…");
   await retryUntilReady(() => session.ensureReady());

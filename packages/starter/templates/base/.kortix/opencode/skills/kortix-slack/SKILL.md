@@ -19,7 +19,7 @@ Everything else (`slack history`, `slack react`, `slack send --file`, `slack sea
 <connecting>
 ### "Connect my Slack" = ONE command. Nothing else.
 
-If the project isn't wired to Slack yet (or the user asks to connect/set up
+If the workspace isn't wired to Slack yet (or the user asks to connect/set up
 Slack), run:
 
 ```sh

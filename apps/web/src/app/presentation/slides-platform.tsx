@@ -394,7 +394,7 @@ export function useSlides(): SlideDef[] {
               </h2>
               <Lead>
                 {tI18nHardcoded.raw(
-                  'autoAppPresentationSlidesPlatformJsxTextAKortixProjectIsa8e122a4',
+                  'autoAppPresentationSlidesPlatformJsxTextAKortixWorkspaceIsa8e122a4',
                 )}
                 <em>is</em>{' '}
                 {tI18nHardcoded.raw(
@@ -425,7 +425,7 @@ export function useSlides(): SlideDef[] {
               lines={[
                 { kind: 'comment', text: 'kortix_version: 2' },
                 { kind: 'out', text: '' },
-                { kind: 'out', text: 'project:' },
+                { kind: 'out', text: 'workspace:' },
                 { kind: 'out', text: '  name: acme' },
                 { kind: 'out', text: '' },
                 { kind: 'comment', text: '# a trigger runs itself, on a schedule' },
@@ -453,7 +453,7 @@ export function useSlides(): SlideDef[] {
               'autoAppPresentationSlidesPlatformJsxAttrEyebrowTheCoreLoop29905493',
             )}
             title={tI18nHardcoded.raw(
-              'autoAppPresentationSlidesPlatformJsxAttrTitleProjectSessionSandboxee8af285',
+              'autoAppPresentationSlidesPlatformJsxAttrTitleWorkspaceSessionSandboxee8af285',
             )}
             lead={tI18nHardcoded.raw(
               'autoAppPresentationSlidesPlatformJsxAttrLeadWorkReachesMain11f15aad',
@@ -461,7 +461,7 @@ export function useSlides(): SlideDef[] {
           />
           <div className="mt-12 flex flex-wrap items-stretch gap-3">
             {[
-              ['project', 'git repo', 'kortix.yaml + config'],
+              ['workspace', 'git repo', 'kortix.yaml + config'],
               ['session', 'isolated sandbox', 'its own branch'],
               ['agent', 'OpenCode', 'works · commits · pushes'],
               ['change request', 'you review', 'approve to merge'],
@@ -1276,7 +1276,7 @@ export function useSlides(): SlideDef[] {
                   'autoAppPresentationSlidesPlatformJsxAttrTitleKortixInitShip24f086f1',
                 )}
                 body={tI18nHardcoded.raw(
-                  'autoAppPresentationSlidesPlatformJsxAttrBodyScaffoldAProject47c3905e',
+                  'autoAppPresentationSlidesPlatformJsxAttrBodyScaffoldAWorkspace47c3905e',
                 )}
               />
               <IconFeature

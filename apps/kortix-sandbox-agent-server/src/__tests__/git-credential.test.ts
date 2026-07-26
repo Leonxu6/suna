@@ -21,13 +21,13 @@ function baseConfig(over: Partial<Config> = {}): Config {
     opencodeInternalPort: 4096,
     staticPort: 3211,
     workspace: '/workspace',
-    projectTarget: '/workspace',
+    workspaceTarget: '/workspace',
     defaultBranch: 'main',
     branchFetchAttempts: 60,
     branchFetchDelaySec: 0.25,
     defaultOpencodeConfigDir: '/ephemeral/opencode',
     autoClone: false,
-    projectId: 'proj-1',
+    workspaceId: 'workspace-1',
     apiUrl: undefined,
     repoUrl: 'https://git.example.test/repo-abc',
     branchName: 'session-xyz',
@@ -42,7 +42,7 @@ function baseConfig(over: Partial<Config> = {}): Config {
   }
 }
 
-/** Mock control plane that mimics GET /v1/projects/:id/git/clone-credential. */
+/** Mock control plane that mimics GET /v1/workspaces/:id/git/clone-credential. */
 function startCloneCredentialServer(opts: {
   expectToken: string
   pushToken: string | null
@@ -92,7 +92,9 @@ describe('git credential helper', () => {
       expect(out).toBe('username=x-access-token\npassword=push-token-123\n')
       // It authenticated with the sandbox KORTIX_TOKEN, not anything else.
       expect(srv.calls.at(-1)?.auth).toBe('Bearer kortix_sb_secret')
-      expect(srv.calls.at(-1)?.path).toBe('/v1/projects/proj-1/git/clone-credential')
+      expect(srv.calls.at(-1)?.path).toBe(
+        '/v1/workspaces/workspace-1/git/clone-credential',
+      )
     } finally {
       srv.stop()
     }
@@ -127,7 +129,7 @@ describe('git credential helper', () => {
 
   it('returns null when token/project/api are not all present', async () => {
     expect(await resolveGitCredentialOutput(baseConfig({ apiUrl: undefined }))).toBeNull()
-    expect(await resolveGitCredentialOutput(baseConfig({ projectId: undefined }))).toBeNull()
+    expect(await resolveGitCredentialOutput(baseConfig({ workspaceId: undefined }))).toBeNull()
     expect(await resolveGitCredentialOutput(baseConfig({ sandboxToken: undefined }))).toBeNull()
   })
 

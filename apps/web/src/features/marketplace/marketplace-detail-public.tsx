@@ -15,17 +15,17 @@ import { MarketplaceDetail, useDetailNav } from './marketplace-detail';
 /**
  * Public detail page wrapper — the SSR page can't hand `MarketplaceDetail`
  * function props, so this client shim computes the ← / → siblings from the
- * public catalog and routes between item pages. (The in-project overlay wires
+ * public catalog and routes between item pages. (The in-workspace overlay wires
  * the same nav through the detail store instead.)
  */
 export function MarketplaceDetailPublic({
   data,
   company,
-  otherProjects,
+  otherWorkspaces,
 }: {
   data: MarketplaceItemDetail;
   company?: MarketplaceSummary;
-  otherProjects?: MarketplaceItem[];
+  otherWorkspaces?: MarketplaceItem[];
 }) {
   const router = useRouter();
   const itemsQuery = useMarketplaceItems({ publicOnly: true });
@@ -33,6 +33,6 @@ export function MarketplaceDetailPublic({
   const nav = useDetailNav(ids, data.id, (id) => router.push(marketplaceItemHref(id)));
 
   return (
-    <MarketplaceDetail data={data} company={company} otherProjects={otherProjects} nav={nav} />
+    <MarketplaceDetail data={data} company={company} otherWorkspaces={otherWorkspaces} nav={nav} />
   );
 }

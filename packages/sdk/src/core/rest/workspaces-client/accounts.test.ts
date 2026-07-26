@@ -1,6 +1,6 @@
 import { beforeEach, expect, mock, test } from 'bun:test';
 import { configureKortix } from '../../http/config';
-import { validateToken } from './accounts';
+import { type KortixAccount, validateToken } from './accounts';
 
 let calls: { url: string; method: string }[] = [];
 let nextResponse: { status: number; body: unknown } = { status: 200, body: {} };
@@ -19,6 +19,15 @@ beforeEach(() => {
 
 configureKortix({ backendUrl: 'http://test.local', getToken: async () => 'tok' });
 const last = () => calls[calls.length - 1];
+
+test('KortixAccount exposes the stored default workspace', () => {
+  const account: KortixAccount = {
+    account_id: 'acc-1',
+    name: 'Acme',
+    default_workspace_id: 'workspace-1',
+  };
+  expect(account.default_workspace_id).toBe('workspace-1');
+});
 
 test('validateToken hits GET /accounts/me and returns { valid: true, identity } on success', async () => {
   nextResponse = {

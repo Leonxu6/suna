@@ -41,7 +41,7 @@ Point it at a different backend without a rebuild:
 pnpm --filter @kortix/desktop-electron dev:dev-env    # https://dev.kortix.com
 pnpm --filter @kortix/desktop-electron dev:prod-env   # https://kortix.com
 # or:
-KORTIX_DESKTOP_URL=https://kortix.com/projects pnpm --filter @kortix/desktop-electron dev
+KORTIX_DESKTOP_URL=https://kortix.com/workspaces pnpm --filter @kortix/desktop-electron dev
 ```
 
 At runtime you can also switch via the native **Kortix → Frontend URL** menu

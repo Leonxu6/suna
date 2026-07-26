@@ -28,11 +28,11 @@ import { toast } from 'sonner';
 /** The workbench tabs: Chat + the SDK-powered Files / Changes / Preview panels. */
 export function WorkbenchTabs({
   session,
-  projectId,
+  workspaceId,
   sessionId,
 }: {
   session: UseSessionResult;
-  projectId: string;
+  workspaceId: string;
   sessionId: string;
 }) {
   return (
@@ -53,13 +53,13 @@ export function WorkbenchTabs({
         <Thread session={session} />
       </TabsContent>
       <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden p-4">
-        <FilesPanel projectId={projectId} />
+        <FilesPanel workspaceId={workspaceId} />
       </TabsContent>
       <TabsContent value="changes" className="min-h-0 flex-1 overflow-hidden p-4">
-        <ChangesPanel projectId={projectId} sessionId={sessionId} />
+        <ChangesPanel workspaceId={workspaceId} sessionId={sessionId} />
       </TabsContent>
       <TabsContent value="preview" className="min-h-0 flex-1 overflow-hidden p-4">
-        <PreviewPanel projectId={projectId} sessionId={sessionId} />
+        <PreviewPanel workspaceId={workspaceId} sessionId={sessionId} />
       </TabsContent>
     </Tabs>
   );
@@ -84,9 +84,9 @@ function Thread({ session: c }: { session: UseSessionResult }) {
   // recover: restart() wakes the box and re-arms useSession's /start poll.
   const qc = useQueryClient();
   const restart = useMutation({
-    mutationFn: () => kortix.session(c.projectId, c.sessionId).restart(),
+    mutationFn: () => kortix.session(c.workspaceId, c.sessionId).restart(),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: qk.sessionStart(c.projectId, c.sessionId) });
+      qc.invalidateQueries({ queryKey: qk.sessionStart(c.workspaceId, c.sessionId) });
       toast.success('Reconnecting the runtime…');
     },
     onError: () => toast.error('Could not reconnect the runtime'),

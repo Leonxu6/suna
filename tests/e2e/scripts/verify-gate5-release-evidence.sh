@@ -392,7 +392,7 @@ jq -e --argjson min_expected "${#required_self_hosted_titles[@]}" '
   and .stats.expected >= $min_expected
   and .stats.skipped == 0
   and ([.. | objects | select(has("file")) | .file] | any(. == "04-auth-flow.spec.ts"))
-  and ([.. | objects | select(has("file")) | .file] | any(. == "08-accounts-project-access.spec.ts"))
+  and ([.. | objects | select(has("file")) | .file] | any(. == "08-accounts-workspace-access.spec.ts"))
   and ([.. | objects | select(has("file")) | .file] | any(. == "09-admin-ops.spec.ts"))
   and ([.. | objects | select(has("file")) | .file] | any(. == "10-production-golden-paths.spec.ts"))
   and ([.. | objects | select(has("file")) | .file] | any(. == "11-production-boundaries.spec.ts"))
@@ -640,7 +640,7 @@ jq -e '
   and .stats.flaky == 0
   and .stats.expected >= 8
   and .stats.skipped == 0
-  and ([.. | objects | select(has("file")) | .file] | any(. == "08-accounts-project-access.spec.ts"))
+  and ([.. | objects | select(has("file")) | .file] | any(. == "08-accounts-workspace-access.spec.ts"))
   and ([.. | objects | select(has("file")) | .file] | any(. == "09-admin-ops.spec.ts"))
   and ([.. | objects | select(has("file")) | .file] | any(. == "10-production-golden-paths.spec.ts"))
   and ([.. | objects | select(has("file")) | .file] | any(. == "11-production-boundaries.spec.ts"))

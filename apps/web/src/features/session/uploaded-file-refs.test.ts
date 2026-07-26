@@ -33,7 +33,7 @@ function remoteFile(filename = 'remote.pdf'): Extract<AttachedFile, { kind: 'rem
 
 describe('uploaded file references', () => {
   test('sanitizes upload filenames for the daemon multipart filename', () => {
-    expect(sanitizeUploadFilename('Project Veyris #1.zip')).toBe('Project_Veyris__1.zip');
+    expect(sanitizeUploadFilename('Workspace Veyris #1.zip')).toBe('Workspace_Veyris__1.zip');
     expect(sanitizeUploadFilename('')).toBe('upload');
   });
 
@@ -46,22 +46,22 @@ describe('uploaded file references', () => {
 
     const result = await buildPromptPartsWithUploads(
       'analyze this',
-      [localFile('Project Veyris #1.zip', 'application/zip')],
+      [localFile('Workspace Veyris #1.zip', 'application/zip')],
       upload,
     );
 
     expect(uploadCalls).toEqual([
       {
-        originalName: 'Project Veyris #1.zip',
+        originalName: 'Workspace Veyris #1.zip',
         targetPath: UPLOADS_DIR,
-        filename: 'Project_Veyris__1.zip',
+        filename: 'Workspace_Veyris__1.zip',
       },
     ]);
     expect(result.remoteParts).toEqual([]);
     expect(result.text).toContain('analyze this');
     expect(result.text).toContain(`path="${UPLOADS_DIR}/actual.zip"`);
-    expect(result.text).toContain('filename="Project Veyris #1.zip"');
-    expect(result.text).not.toContain('Project_Veyris__1.zip"');
+    expect(result.text).toContain('filename="Workspace Veyris #1.zip"');
+    expect(result.text).not.toContain('Workspace_Veyris__1.zip"');
   });
 
   test('keeps remote files as file parts without uploading them', async () => {

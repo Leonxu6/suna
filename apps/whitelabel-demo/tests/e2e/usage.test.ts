@@ -1,7 +1,7 @@
 /**
- * `/api/usage` — aggregates `GET /projects/:id/gateway/sessions` across every
- * project the caller owns, applies `COST_MARKUP`, and degrades gracefully if
- * one project's upstream call fails.
+ * `/api/usage` — aggregates `GET /workspaces/:id/gateway/sessions` across every
+ * workspace the caller owns, applies `COST_MARKUP`, and degrades gracefully if
+ * one workspace's upstream call fails.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
@@ -17,8 +17,8 @@ import { createMockUpstream, type MockUpstream } from './mock-upstream';
 import { COST_MARKUP, DEMO_PASSWORD, wrapperEnv, WRAPPER_KEY } from './env';
 
 async function provision(app: AppInstance, token: string, name: string): Promise<string> {
-  const project = await createTestKortix(app, token).projects.provision({ name });
-  return project.project_id;
+  const workspace = await createTestKortix(app, token).workspaces.provision({ name });
+  return workspace.workspace_id;
 }
 
 describe('/api/usage', () => {
@@ -37,11 +37,11 @@ describe('/api/usage', () => {
     resetUsersStore();
   });
 
-  test('markup math is exact for a single project', async () => {
+  test('markup math is exact for a single workspace', async () => {
     const email = uniqueEmail('usage-single');
     const token = await loginUser(app, email, DEMO_PASSWORD);
-    const projectId = await provision(app, token, 'Usage Single');
-    mock.seedGatewaySessions(projectId, [
+    const workspaceId = await provision(app, token, 'Usage Single');
+    mock.seedGatewaySessions(workspaceId, [
       { session_id: 's1', total_cost: 10 },
       { session_id: 's2', total_cost: 2.5 },
     ]);
@@ -51,19 +51,19 @@ describe('/api/usage', () => {
     const data = (await res.json()) as {
       markup: number;
       totals: { raw: number; billed: number };
-      projects: Array<{ projectId: string; sessions: Array<{ billed_cost: number; total_cost: number }> }>;
+      workspaces: Array<{ workspaceId: string; sessions: Array<{ billed_cost: number; total_cost: number }> }>;
     };
 
     expect(data.markup).toBe(Number(COST_MARKUP));
     expect(data.totals.raw).toBe(12.5);
     expect(data.totals.billed).toBe(Math.round(12.5 * Number(COST_MARKUP) * 100) / 100);
 
-    const proj = data.projects.find((p) => p.projectId === projectId)!;
+    const proj = data.workspaces.find((p) => p.workspaceId === workspaceId)!;
     expect(proj.sessions.find((s) => s.total_cost === 10)!.billed_cost).toBe(15);
     expect(proj.sessions.find((s) => s.total_cost === 2.5)!.billed_cost).toBe(3.75);
   });
 
-  test('sums across multiple owned projects', async () => {
+  test('sums across multiple owned workspaces', async () => {
     const email = uniqueEmail('usage-multi');
     const token = await loginUser(app, email, DEMO_PASSWORD);
     const p1 = await provision(app, token, 'Usage Multi 1');
@@ -73,13 +73,13 @@ describe('/api/usage', () => {
 
     const res = await fetch(`${app.baseUrl}/api/usage`, { headers: { authorization: `Bearer ${token}` } });
     expect(res.status).toBe(200);
-    const data = (await res.json()) as { totals: { raw: number; billed: number }; projects: unknown[] };
-    expect(data.projects).toHaveLength(2);
+    const data = (await res.json()) as { totals: { raw: number; billed: number }; workspaces: unknown[] };
+    expect(data.workspaces).toHaveLength(2);
     expect(data.totals.raw).toBe(10);
     expect(data.totals.billed).toBe(15); // 10 * 1.5
   });
 
-  test('degrades gracefully when one owned project errors upstream', async () => {
+  test('degrades gracefully when one owned workspace errors upstream', async () => {
     const email = uniqueEmail('usage-degrade');
     const token = await loginUser(app, email, DEMO_PASSWORD);
     const healthy = await provision(app, token, 'Usage Healthy');
@@ -91,15 +91,15 @@ describe('/api/usage', () => {
     expect(res.status).toBe(200);
     const data = (await res.json()) as {
       totals: { raw: number; billed: number };
-      projects: Array<{ projectId: string; sessions: unknown[]; error?: string }>;
+      workspaces: Array<{ workspaceId: string; sessions: unknown[]; error?: string }>;
     };
 
-    const healthyEntry = data.projects.find((p) => p.projectId === healthy)!;
-    const brokenEntry = data.projects.find((p) => p.projectId === broken)!;
+    const healthyEntry = data.workspaces.find((p) => p.workspaceId === healthy)!;
+    const brokenEntry = data.workspaces.find((p) => p.workspaceId === broken)!;
     expect(healthyEntry.sessions).toHaveLength(1);
     expect(brokenEntry.sessions).toHaveLength(0);
     expect(brokenEntry.error).toBeTruthy();
-    // Totals reflect only the healthy project — one bad upstream doesn't 500 the whole response.
+    // Totals reflect only the healthy workspace — one bad upstream doesn't 500 the whole response.
     expect(data.totals.raw).toBe(8);
     expect(data.totals.billed).toBe(12);
   });

@@ -28,12 +28,12 @@ test('navigateToPath defaults to /workspace for an empty path', () => {
 
 test('navigateToPath clamps to rootPath when one is set', () => {
   const store = createFilesStore();
-  store.getState().setRootPath('/workspace/project');
+  store.getState().setRootPath('/workspace/workspace');
   store.getState().navigateToPath('/tmp');
-  expect(store.getState().currentPath).toBe('/workspace/project');
+  expect(store.getState().currentPath).toBe('/workspace/workspace');
 
-  store.getState().navigateToPath('/workspace/project/src');
-  expect(store.getState().currentPath).toBe('/workspace/project/src');
+  store.getState().navigateToPath('/workspace/workspace/src');
+  expect(store.getState().currentPath).toBe('/workspace/workspace/src');
 });
 
 test('revealPath expands every ancestor of a non-workspace file', () => {

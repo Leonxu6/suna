@@ -68,6 +68,23 @@ function allowSet(entries: AllowEntry[]): Set<string> {
   return new Set(entries.map((e) => normalize(e.method, e.path)));
 }
 
+function canonicalWorkspaceRouteForDeprecatedAlias(key: string): string | null {
+  const replacements: Array<[string, string]> = [
+    ["/v1/executor/projects", "/v1/executor/workspaces"],
+    ["/v1/webhooks/projects", "/v1/webhooks/workspaces"],
+    ["/v1/projects", "/v1/workspaces"],
+    ["/project-grants", "/workspace-grants"],
+    ["/project-access", "/workspace-access"],
+    ["/admin/api/accounts/:*/projects", "/admin/api/accounts/:*/workspaces"],
+  ];
+
+  for (const [legacy, canonical] of replacements) {
+    if (key.includes(legacy)) return key.replace(legacy, canonical);
+  }
+
+  return null;
+}
+
 export async function runCoverage(opts: CoverageOptions = {}): Promise<boolean> {
   await discoverFlows();
   const flows = allFlows();
@@ -99,9 +116,26 @@ export async function runCoverage(opts: CoverageOptions = {}): Promise<boolean> 
 
   const manifestKeys = [...manifestSet.keys()];
   const covered = manifestKeys.filter((k) => declared.has(k));
-  const allowlisted = manifestKeys.filter((k) => !declared.has(k) && allowUncovered.has(k));
+  const compatibilityAliases = new Set(
+    manifestKeys.filter((key) => {
+      const canonical = canonicalWorkspaceRouteForDeprecatedAlias(key);
+      return (
+        canonical !== null &&
+        manifestSet.has(canonical) &&
+        (declared.has(canonical) || allowUncovered.has(canonical))
+      );
+    }),
+  );
+  const allowlisted = manifestKeys.filter(
+    (k) => !declared.has(k) && (allowUncovered.has(k) || compatibilityAliases.has(k)),
+  );
   const uncovered = manifestKeys
-    .filter((k) => !declared.has(k) && !allowUncovered.has(k))
+    .filter(
+      (k) =>
+        !declared.has(k) &&
+        !allowUncovered.has(k) &&
+        !compatibilityAliases.has(k),
+    )
     .sort();
   const external = [...declared.keys()]
     .filter((k) => !manifestSet.has(k) && !allowExternal.has(k))

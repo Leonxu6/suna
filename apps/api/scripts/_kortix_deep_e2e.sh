@@ -25,14 +25,14 @@ echo "=== DEEP REAL-KORTIX e2e on Platinum — $ROUNDS rounds (DEFAULT template:
 pass=0; agentok=0
 for r in $(seq 1 "$ROUNDS"); do
   t0=$(nowms)
-  sid=$(curl -s -m20 "${H[@]}" -X POST "$BASE/v1/projects/$PID/sessions" -d '{"provider":"platinum","branch_already_created":false}' | python3 -c "import sys,json;print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null)
+  sid=$(curl -s -m20 "${H[@]}" -X POST "$BASE/v1/workspaces/$PID/sessions" -d '{"provider":"platinum","branch_already_created":false}' | python3 -c "import sys,json;print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null)
   [ -z "$sid" ] && { echo "round $r: CREATE_FAILED"; mint; continue; }
   ext=""; while :; do row=$(psql "select external_id||'|'||status from kortix.session_sandboxes where session_id='$sid' order by created_at desc limit 1;"); ext=${row%%|*}; [ "${row##*|}" = active ] && [ -n "$ext" ] && break; [ $(( ($(nowms)-t0)/1000 )) -ge 180 ] && break; sleep 0.3; done
   [ -z "$ext" ] && { echo "round $r: NO_SANDBOX"; psql "delete from kortix.session_sandboxes where session_id='$sid';">/dev/null 2>&1; mint; continue; }
   ta=$(( $(nowms)-t0 ))
   rok=0; while :; do curl -s -m5 "${H[@]}" "$BASE/v1/p/$ext/8000/kortix/health" 2>/dev/null | grep -q '"runtimeReady":true' && { rok=1; break; }; [ $(( ($(nowms)-t0)/1000 )) -ge 180 ] && break; sleep 0.3; done
   tr=$(( $(nowms)-t0 ))
-  curl -s -m30 "${H[@]}" -X POST "$BASE/v1/projects/$PID/sessions/$sid/ensure-opencode" -d '{}' >/dev/null 2>&1
+  curl -s -m30 "${H[@]}" -X POST "$BASE/v1/workspaces/$PID/sessions/$sid/ensure-opencode" -d '{}' >/dev/null 2>&1
   oc=$(ocid "$ext"); to=$(( $(nowms)-t0 ))
   a=$((13+r)); b=$((17+r*2)); exp=$((a*b)); agent="TIMEOUT"
   if [ -n "$oc" ]; then
@@ -57,7 +57,7 @@ echo "=== SEQUENTIAL: runtimeReady $pass/$ROUNDS | agent-computed-correct $agent
 
 echo "=== CONCURRENCY burst: 4 simultaneous real-kortix sessions ==="
 mint; declare -a CSID CEXT; tb=$(nowms)
-for j in 1 2 3 4; do CSID[$j]=$(curl -s -m20 "${H[@]}" -X POST "$BASE/v1/projects/$PID/sessions" -d '{"provider":"platinum","branch_already_created":false}' | python3 -c "import sys,json;print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null); done
+for j in 1 2 3 4; do CSID[$j]=$(curl -s -m20 "${H[@]}" -X POST "$BASE/v1/workspaces/$PID/sessions" -d '{"provider":"platinum","branch_already_created":false}' | python3 -c "import sys,json;print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null); done
 echo "  created sessions: ${CSID[*]}"
 okc=0
 for j in 1 2 3 4; do

@@ -52,13 +52,13 @@ if (!accountId) err('no account');
   if (await p.exited !== 0) err('credit seed failed: ' + (await new Response(p.stderr).text()).slice(0, 200));
 }
 
-const prov = await api('POST', '/projects/provision', { account_id: accountId, name: `e2e ui ${Date.now().toString().slice(-6)}`, seed_starter: true });
+const prov = await api('POST', '/workspaces/provision', { account_id: accountId, name: `e2e ui ${Date.now().toString().slice(-6)}`, seed_starter: true });
 const projectId = prov.json?.project_id || prov.json?.id; if (!projectId) err('provision failed: ' + prov.text.slice(0, 200));
-if (OPENROUTER) await api('POST', `/projects/${projectId}/secrets`, { name: 'OPENROUTER_API_KEY', value: OPENROUTER });
+if (OPENROUTER) await api('POST', `/workspaces/${projectId}/secrets`, { name: 'OPENROUTER_API_KEY', value: OPENROUTER });
 
 const snapEnd = Date.now() + 11 * 60_000; let ready = false;
 while (Date.now() < snapEnd) {
-  const s = await api('GET', `/projects/${projectId}/snapshots`);
+  const s = await api('GET', `/workspaces/${projectId}/snapshots`);
   const templates: any[] = s.json?.templates ?? []; const builds: any[] = s.json?.builds ?? [];
   if (templates.some((t) => t.ready) || builds.some((b) => b.status === 'ready')) { ready = true; break; }
   if (builds.length && builds.every((b) => b.status === 'failed')) err('snapshot build failed');
@@ -66,12 +66,12 @@ while (Date.now() < snapEnd) {
 }
 if (!ready) err('snapshot not ready in time');
 
-const sess = await api('POST', `/projects/${projectId}/sessions`, { name: 'ui upload session' });
+const sess = await api('POST', `/workspaces/${projectId}/sessions`, { name: 'ui upload session' });
 const sessionId = sess.json?.session_id || sess.json?.id; if (!sessionId) err('session create failed: ' + sess.text.slice(0, 200));
 
 let ext = '', sbStatus = ''; const sbEnd = Date.now() + 5 * 60_000;
 while (Date.now() < sbEnd) {
-  const sb = await api('GET', `/projects/${projectId}/sessions/${sessionId}/sandbox`);
+  const sb = await api('GET', `/workspaces/${projectId}/sessions/${sessionId}/sandbox`);
   if (sb.status === 404) { await sleep(4000); continue; }
   sbStatus = sb.json?.status ?? ''; ext = sb.json?.external_id || sb.json?.externalId || '';
   if (sbStatus === 'active' || sbStatus === 'error' || sbStatus === 'failed') break;
@@ -83,4 +83,4 @@ if (sbStatus !== 'active') err('sandbox not active: ' + sbStatus);
 const pEnd = Date.now() + 2 * 60_000;
 while (Date.now() < pEnd) { const p = await api('GET', `/p/${ext}/8000/config`); if (p.status === 200) break; await sleep(4000); }
 
-console.log(JSON.stringify({ email, password, accountId, projectId, sessionId, ext, url: `http://localhost:3000/projects/${projectId}/sessions/${sessionId}` }));
+console.log(JSON.stringify({ email, password, accountId, projectId, sessionId, ext, url: `http://localhost:3000/workspaces/${projectId}/sessions/${sessionId}` }));

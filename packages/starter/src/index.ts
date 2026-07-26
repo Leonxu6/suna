@@ -1,5 +1,5 @@
 /**
- * Kortix project starter — folder-based template.
+ * Kortix workspace starter — folder-based template.
  *
  * The starter is a shared base directory plus optional template layers.
  * `getStarterFiles()` walks the selected directories, applies `{{var}}`
@@ -34,15 +34,15 @@ export interface StarterFile {
 }
 
 // There is one USER-FACING starter kit: `general-knowledge-worker` (base
-// plumbing + the full consolidated Kortix skill kit). Every new project is
-// scaffolded with it — project creation no longer offers a choice.
+// plumbing + the full consolidated Kortix skill kit). Every new workspace is
+// scaffolded with it. Workspace creation no longer offers a choice.
 //
 // `minimal` (base only, no domain skills) is kept purely as an INTERNAL
-// building block: the project-clone seed path (`buildProjectSeedFilesFromItem`)
+// building block: the workspace-clone seed path (`buildProjectSeedFilesFromItem`)
 // uses it to lay down just the opencode runtime before a `registry:project`'s
-// own skills/agents are layered on top, so a specialized project template isn't
+// own skills/agents are layered on top, so a specialized workspace template is not
 // polluted with every general-knowledge skill. It is not surfaced in the
-// create-project UI, mobile, or the `kortix init` prompt.
+// create-workspace UI, mobile, or the `kortix init` prompt.
 export const STARTER_TEMPLATE_IDS = ['minimal', 'general-knowledge-worker'] as const;
 export type StarterTemplateId = (typeof STARTER_TEMPLATE_IDS)[number];
 export const DEFAULT_STARTER_TEMPLATE_ID: StarterTemplateId = 'general-knowledge-worker';
@@ -189,22 +189,22 @@ export function getMarketplaceFiles(): StarterFile[] {
 }
 
 /**
- * Full, clonable example Kortix projects listed in the marketplace under
+ * Full, clonable example Kortix workspaces listed in the marketplace under
  * `registry:project`. Each is a subdirectory keyed by slug (e.g.
  * `marketplace-projects/support-agent-kit/...`); paths returned here are
  * still slug-prefixed — callers that turn this into registry items strip the
- * slug to get each project's own repo-relative paths. Raw (uninterpolated) —
+ * slug to get each workspace's own repo-relative paths. Raw (uninterpolated) —
  * `{{var}}` placeholders are resolved by the installer at clone time using
- * the real destination project's name, not this fixture's.
+ * the real destination workspace's name, not this fixture's.
  */
-export function getProjectTemplateFiles(): StarterFile[] {
+export function getWorkspaceTemplateFiles(): StarterFile[] {
   return rawFilesForRoot('marketplace-projects', MARKETPLACE_PROJECTS_TEMPLATE_DIR).sort((a, b) =>
     a.path.localeCompare(b.path),
   );
 }
 
-/** Canonical name for `getProjectTemplateFiles`. */
-export const getWorkspaceTemplateFiles = getProjectTemplateFiles;
+/** @deprecated Use `getWorkspaceTemplateFiles`. */
+export const getProjectTemplateFiles = getWorkspaceTemplateFiles;
 
 /**
  * Map of every bundled-catalog file path → its real repo-relative source path

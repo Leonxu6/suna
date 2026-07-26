@@ -367,7 +367,7 @@ test.describe.serial('10 - SPEC production golden paths', () => {
       201,
     ));
     primarySession = sessionCreate.value;
-    assertSlo('POST /v1/projects/:id/sessions -> 201', sessionCreate.durationMs, threshold('E2E_SLO_SESSION_CREATE_MS', 800));
+    assertSlo('POST /v1/workspaces/:id/sessions -> 201', sessionCreate.durationMs, threshold('E2E_SLO_SESSION_CREATE_MS', 800));
     expect(primarySession.session_id).toBeTruthy();
     if (process.env.E2E_GOLDEN_PROVIDER) {
       expect(primarySession.sandbox_provider).toBe(process.env.E2E_GOLDEN_PROVIDER);
@@ -455,7 +455,7 @@ test.describe.serial('10 - SPEC production golden paths', () => {
     const badResponses: string[] = [];
     page.on('response', (response) => {
       const url = response.url();
-      if (response.status() >= 400 && (url.includes('/v1/projects') || url.includes('/v1/p/'))) {
+      if (response.status() >= 400 && (url.includes('/v1/workspaces') || url.includes('/v1/p/'))) {
         badResponses.push(`${response.status()} ${response.request().method()} ${url}`);
       }
     });

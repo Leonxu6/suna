@@ -113,8 +113,8 @@ interface AppProvidersProps {
   /**
    * Right rail control. `true` (default) mounts the legacy `<SidebarRight />`
    * with all the dashboard nav (Files, Terminal, Secrets, Triggers, etc.).
-   * Project routes pass `false` so the session view is just the conversation
-   * inside the project's own chrome — no extra dashboard noise.
+   * Workspace routes pass `false` so the session view is just the conversation
+   * inside the workspace's own chrome — no extra dashboard noise.
    */
   showRightSidebar?: boolean;
   defaultSidebarOpen?: boolean;

@@ -29,7 +29,7 @@ export const STEPS: Step[] = [
     bullets: [
       '3,000+ apps, plus MCP, OpenAPI, GraphQL, and HTTP',
       'Credentials stay brokered by Kortix, never copied into a session',
-      'Scope each tool per project, per agent, per person',
+      'Scope each tool per workspace, per agent, per person',
       'Admins set what can run, what asks first, and what stays blocked',
     ],
   },
@@ -97,7 +97,7 @@ export const STEPS: Step[] = [
     description:
       'Every session adds to a shared memory — people, docs, decisions, context — so the next one starts smarter. The company gets sharper on its own.',
     bullets: [
-      'Relevant projects, people, and decisions carry forward',
+      'Relevant workspaces, people, and decisions carry forward',
       'Agents stop asking the same setup questions twice',
       'Memory is shared by everyone and inspectable as files',
       'Your company compounds what it learns, every run',

@@ -1,6 +1,6 @@
 'use client';
 
-import { SandboxTemplateForm } from '@/components/projects/sandbox-template-form';
+import { SandboxTemplateForm } from '@/components/workspaces/sandbox-template-form';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -19,20 +19,20 @@ import { errorToast, successToast } from '@/components/ui/toast';
 import { Icon } from '@/features/icon/icon';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import { ErrorState } from '@/features/layout/section/error-state';
-import { useProjectManifestVersion } from '@/features/workspace/customize/migrate-to-v2/manifest-version';
+import { useWorkspaceManifestVersion } from '@/features/workspace/customize/migrate-to-v2/manifest-version';
 import CustomizeSectionWrapper from '@/features/workspace/customize/sections/component/section-wrapper';
-import { useSandboxRecovery } from '@/features/workspace/project-sidebar/footer/project-sandbox-alert';
-import { currentFailedBuild } from '@/features/workspace/project-sidebar/footer/sandbox-alert-state';
+import { useSandboxRecovery } from '@/features/workspace/workspace-sidebar/footer/workspace-sandbox-alert';
+import { currentFailedBuild } from '@/features/workspace/workspace-sidebar/footer/sandbox-alert-state';
 import { cn } from '@/lib/utils';
 import {
-  type ProjectSnapshotBuild,
-  type ProjectSnapshotStatus,
+  type WorkspaceSnapshotBuild,
+  type WorkspaceSnapshotStatus,
   type SandboxTemplate,
   type SnapshotErrorCategory,
   buildSandboxTemplate,
   deleteSandboxTemplate,
-  getProject,
-  listProjectSnapshots,
+  getWorkspace,
+  listWorkspaceSnapshots,
 } from '@kortix/sdk';
 import { CheckCircleSolid, SparklesSolid, XCircleSolid } from '@mynaui/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -55,7 +55,7 @@ import {
   SandboxTemplateProviderModeBadge,
 } from './sandbox-provider-coverage';
 
-const SNAPSHOTS_QUERY_KEY = (projectId: string) => ['project-snapshots', projectId];
+const SNAPSHOTS_QUERY_KEY = (workspaceId: string) => ['workspace-snapshots', workspaceId];
 const TEMPLATE_SKELETON_ROWS = [
   'sandbox-template-skeleton-1',
   'sandbox-template-skeleton-2',
@@ -76,9 +76,9 @@ const CATEGORY_LABEL: Record<SnapshotErrorCategory, string> = {
   unknown: 'Build failed',
 };
 
-const BUILD_SOURCE_LABEL: Record<NonNullable<ProjectSnapshotBuild['source']>, string> = {
+const BUILD_SOURCE_LABEL: Record<NonNullable<WorkspaceSnapshotBuild['source']>, string> = {
   'session-start': 'Session start',
-  'project-create': 'Project created',
+  'workspace-create': 'Workspace created',
   'cr-merge': 'Code review merge',
   manual: 'Manual rebuild',
   background: 'Background sync',
@@ -86,7 +86,7 @@ const BUILD_SOURCE_LABEL: Record<NonNullable<ProjectSnapshotBuild['source']>, st
 };
 
 const BUILD_STATUS_TILE: Record<
-  ProjectSnapshotStatus,
+  WorkspaceSnapshotStatus,
   {
     label: string;
     badgeVariant: 'success' | 'warning' | 'destructive';
@@ -163,7 +163,7 @@ function formatBuildDuration(startedAt: string, finishedAt: string | null): stri
   return `${hours}h`;
 }
 
-export function isProjectAcceleratorBuild(build: ProjectSnapshotBuild): boolean {
+export function isWorkspaceAcceleratorBuild(build: WorkspaceSnapshotBuild): boolean {
   return build.snapshot_name.startsWith('kortix-ppwarm-');
 }
 
@@ -171,8 +171,8 @@ export function BuildRow({
   build,
   providerMode,
 }: {
-  build: ProjectSnapshotBuild;
-  /** Only reveal the resolved provider when the project has explicitly pinned one. */
+  build: WorkspaceSnapshotBuild;
+  /** Only reveal the resolved provider when the workspace has explicitly pinned one. */
   providerMode: SandboxProviderMode;
 }) {
   const status = BUILD_STATUS_TILE[build.status];
@@ -181,7 +181,7 @@ export function BuildRow({
   const sourceLabel = build.source ? BUILD_SOURCE_LABEL[build.source] : null;
   const timestamp = formatRelative(build.finished_at ?? build.started_at);
   const hasErrorDetails = build.status === 'failed' && !!build.error;
-  const accelerator = isProjectAcceleratorBuild(build);
+  const accelerator = isWorkspaceAcceleratorBuild(build);
 
   const row = (
     <>
@@ -276,7 +276,7 @@ function LatestFailureBanner({
   isFixPending,
   onFix,
 }: {
-  failure: ProjectSnapshotBuild;
+  failure: WorkspaceSnapshotBuild;
   canManage: boolean;
   canFixWithAgent: boolean;
   isFixPending: boolean;
@@ -296,7 +296,7 @@ function LatestFailureBanner({
             <div className="min-w-0 space-y-1">
               <p className="text-foreground text-sm font-medium text-balance">
                 {tI18nHardcoded.raw(
-                  'autoComponentsProjectsSandboxSnapshotCardJsxTextLatestBuildFailedf1dd9030',
+                  'autoComponentsWorkspacesSandboxSnapshotCardJsxTextLatestBuildFailedf1dd9030',
                 )}
               </p>
               <InlineMeta>
@@ -328,7 +328,7 @@ function LatestFailureBanner({
                       <SparklesSolid className="size-3.5 shrink-0" />
                     )}
                     {tI18nHardcoded.raw(
-                      'autoComponentsProjectsSandboxSnapshotCardJsxTextFixWithAgent918e1083',
+                      'autoComponentsWorkspacesSandboxSnapshotCardJsxTextFixWithAgent918e1083',
                     )}
                   </Button>
                 ) : null}
@@ -362,14 +362,14 @@ function formatRelative(input: string | null | undefined): string {
 }
 
 function TemplateRow({
-  projectId,
+  workspaceId,
   template,
   canManage,
   onEdit,
   providerMode,
   selectedProvider,
 }: {
-  projectId: string;
+  workspaceId: string;
   template: SandboxTemplate;
   canManage: boolean;
   onEdit: (tpl: SandboxTemplate) => void;
@@ -378,7 +378,7 @@ function TemplateRow({
 }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
-  const { version: manifestVersion } = useProjectManifestVersion(projectId);
+  const { version: manifestVersion } = useWorkspaceManifestVersion(workspaceId);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const templateId = template.template_id ?? null;
   const requireTemplateId = () => {
@@ -386,19 +386,19 @@ function TemplateRow({
     return templateId;
   };
   const buildMut = useMutation({
-    mutationFn: () => buildSandboxTemplate(projectId, requireTemplateId()),
+    mutationFn: () => buildSandboxTemplate(workspaceId, requireTemplateId()),
     onSuccess: () => {
       successToast(`Rebuild started for "${template.name}"`);
-      queryClient.invalidateQueries({ queryKey: SNAPSHOTS_QUERY_KEY(projectId) });
+      queryClient.invalidateQueries({ queryKey: SNAPSHOTS_QUERY_KEY(workspaceId) });
     },
     onError: (err: Error) => errorToast(err.message || 'Failed to start build'),
   });
   const deleteMut = useMutation({
-    mutationFn: () => deleteSandboxTemplate(projectId, requireTemplateId()),
+    mutationFn: () => deleteSandboxTemplate(workspaceId, requireTemplateId()),
     onSuccess: () => {
       successToast(`Deleted "${template.name}"`);
-      queryClient.invalidateQueries({ queryKey: SNAPSHOTS_QUERY_KEY(projectId) });
-      queryClient.invalidateQueries({ queryKey: ['project-sandboxes', projectId] });
+      queryClient.invalidateQueries({ queryKey: SNAPSHOTS_QUERY_KEY(workspaceId) });
+      queryClient.invalidateQueries({ queryKey: ['workspace-sandboxes', workspaceId] });
       setConfirmDelete(false);
     },
     onError: (err: Error) => errorToast(err.message || 'Failed to delete template'),
@@ -406,7 +406,7 @@ function TemplateRow({
 
   const Icon = template.is_default ? Container : template.has_image ? Package : FileCode;
   const sub = template.is_default
-    ? 'Platform default · shared by every project'
+    ? 'Platform default · shared by every workspace'
     : template.has_image
       ? `Image: ${template.image}`
       : `Dockerfile: ${template.dockerfile_path}`;
@@ -440,11 +440,11 @@ function TemplateRow({
           </div>
           <div className="text-muted-foreground truncate text-xs">
             {sub} &bull; {template.cpu}{' '}
-            {tI18nHardcoded.raw('autoComponentsProjectsSandboxSnapshotCardJsxTextVCPU15535b27')}{' '}
+            {tI18nHardcoded.raw('autoComponentsWorkspacesSandboxSnapshotCardJsxTextVCPU15535b27')}{' '}
             &bull; {template.memory_gb}{' '}
-            {tI18nHardcoded.raw('autoComponentsProjectsSandboxSnapshotCardJsxTextGiB9d1e488f')}{' '}
+            {tI18nHardcoded.raw('autoComponentsWorkspacesSandboxSnapshotCardJsxTextGiB9d1e488f')}{' '}
             &bull; {template.disk_gb}{' '}
-            {tI18nHardcoded.raw('autoComponentsProjectsSandboxSnapshotCardJsxTextGiBDiskd395296d')}{' '}
+            {tI18nHardcoded.raw('autoComponentsWorkspacesSandboxSnapshotCardJsxTextGiBDiskd395296d')}{' '}
             &bull; {sourceTag}
           </div>
           <SandboxTemplateProviderCoverage
@@ -469,7 +469,7 @@ function TemplateRow({
                   className="size-7 p-0"
                   onClick={() => onEdit(template)}
                   aria-label={tI18nHardcoded.raw(
-                    'autoComponentsProjectsSandboxSnapshotCardJsxAttrAriaLabelEditdc9d24c2',
+                    'autoComponentsWorkspacesSandboxSnapshotCardJsxAttrAriaLabelEditdc9d24c2',
                   )}
                 >
                   <Edit3 className="size-3.5" />
@@ -481,7 +481,7 @@ function TemplateRow({
                   disabled={deleteMut.isPending}
                   onClick={() => setConfirmDelete(true)}
                   aria-label={tI18nHardcoded.raw(
-                    'autoComponentsProjectsSandboxSnapshotCardJsxAttrAriaLabelDeleteda0507cf',
+                    'autoComponentsWorkspacesSandboxSnapshotCardJsxAttrAriaLabelDeleteda0507cf',
                   )}
                 >
                   {deleteMut.isPending ? (
@@ -515,7 +515,7 @@ function TemplateRow({
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
         title={`Delete sandbox template "${template.name}"?`}
-        description="This removes the template from the project. Sessions already using it are unaffected."
+        description="This removes the template from the workspace. Sessions already using it are unaffected."
         confirmLabel="Delete"
         confirmVariant="destructive"
         isPending={deleteMut.isPending}
@@ -525,19 +525,19 @@ function TemplateRow({
   );
 }
 
-export function SandboxView({ projectId }: { projectId: string }) {
-  const projectQuery = useQuery({
-    queryKey: ['project', projectId],
-    queryFn: () => getProject(projectId),
+export function SandboxView({ workspaceId }: { workspaceId: string }) {
+  const workspaceQuery = useQuery({
+    queryKey: ['workspace', workspaceId],
+    queryFn: () => getWorkspace(workspaceId),
     staleTime: 20_000,
   });
-  const { version: manifestVersion } = useProjectManifestVersion(projectId);
-  const canManage = projectQuery.data?.effective_project_role === 'manager';
+  const { version: manifestVersion } = useWorkspaceManifestVersion(workspaceId);
+  const canManage = workspaceQuery.data?.effective_workspace_role === 'manager';
 
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const snapshotsQuery = useQuery({
-    queryKey: SNAPSHOTS_QUERY_KEY(projectId),
-    queryFn: () => listProjectSnapshots(projectId),
+    queryKey: SNAPSHOTS_QUERY_KEY(workspaceId),
+    queryFn: () => listWorkspaceSnapshots(workspaceId),
     staleTime: 10_000,
     refetchInterval: (query) => {
       const data = query.state.data;
@@ -553,7 +553,7 @@ export function SandboxView({ projectId }: { projectId: string }) {
       return anyBuilding ? 5_000 : false;
     },
   });
-  const { fixWithAgent } = useSandboxRecovery(projectId);
+  const { fixWithAgent } = useSandboxRecovery(workspaceId);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<SandboxTemplate | null>(null);
@@ -564,8 +564,8 @@ export function SandboxView({ projectId }: { projectId: string }) {
   const providerMode: SandboxProviderMode =
     data?.provider_mode === 'pinned' ? 'pinned' : 'automatic';
   const selectedProvider = data?.selected_provider ?? null;
-  const templateBuilds = builds.filter((build) => !isProjectAcceleratorBuild(build));
-  const acceleratorBuilds = builds.filter(isProjectAcceleratorBuild);
+  const templateBuilds = builds.filter((build) => !isWorkspaceAcceleratorBuild(build));
+  const acceleratorBuilds = builds.filter(isWorkspaceAcceleratorBuild);
   const latestFailure = currentFailedBuild(templateBuilds);
   const latestReady = templateBuilds.find((b) => b.status === 'ready') ?? null;
   const canFixWithAgent = !!latestFailure && latestFailure.fixable_by_agent && !!latestReady;
@@ -574,7 +574,7 @@ export function SandboxView({ projectId }: { projectId: string }) {
   const newTemplateAction = canManage ? (
     <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setFormOpen(true)}>
       <Plus className="size-3.5 shrink-0" />
-      {tI18nHardcoded.raw('autoComponentsProjectsSandboxSnapshotCardJsxTextNewTemplate62cccf85')}
+      {tI18nHardcoded.raw('autoComponentsWorkspacesSandboxSnapshotCardJsxTextNewTemplate62cccf85')}
     </Button>
   ) : undefined;
 
@@ -590,7 +590,7 @@ export function SandboxView({ projectId }: { projectId: string }) {
   return (
     <CustomizeSectionWrapper
       title={tI18nHardcoded.raw(
-        'autoComponentsProjectsSandboxSnapshotCardJsxTextSandboxTemplatesc053b378',
+        'autoComponentsWorkspacesSandboxSnapshotCardJsxTextSandboxTemplatesc053b378',
       )}
       description="Manage sandbox templates, image builds, and failure recovery."
       action={
@@ -598,7 +598,7 @@ export function SandboxView({ projectId }: { projectId: string }) {
           <Button size="sm" variant="secondary" className="gap-1.5" onClick={openNewForm}>
             <Icon.Plus className="size-4 shrink-0" />
             {tI18nHardcoded.raw(
-              'autoComponentsProjectsSandboxSnapshotCardJsxTextNewTemplate62cccf85',
+              'autoComponentsWorkspacesSandboxSnapshotCardJsxTextNewTemplate62cccf85',
             )}
           </Button>
         )
@@ -614,7 +614,7 @@ export function SandboxView({ projectId }: { projectId: string }) {
         <ErrorState
           size="sm"
           title={tI18nHardcoded.raw(
-            'autoComponentsProjectsSandboxSnapshotCardJsxTextFailedToLoad51fc2341',
+            'autoComponentsWorkspacesSandboxSnapshotCardJsxTextFailedToLoad51fc2341',
           )}
           description={(snapshotsQuery.error as Error).message}
           action={
@@ -628,11 +628,11 @@ export function SandboxView({ projectId }: { projectId: string }) {
           <div className="space-y-10">
             <p className="text-muted-foreground text-sm text-balance">
               {tI18nHardcoded.raw(
-                'autoComponentsProjectsSandboxSnapshotCardJsxTextSessionsBootFrom7b80534b',
+                'autoComponentsWorkspacesSandboxSnapshotCardJsxTextSessionsBootFrom7b80534b',
               )}{' '}
               <code className="font-mono">/workspace</code>{' '}
               {tI18nHardcoded.raw(
-                'autoComponentsProjectsSandboxSnapshotCardJsxTextAtBootAdd8305ffcd',
+                'autoComponentsWorkspacesSandboxSnapshotCardJsxTextAtBootAdd8305ffcd',
               )}{' '}
               {manifestVersion === 2 ? (
                 <>
@@ -651,7 +651,7 @@ export function SandboxView({ projectId }: { projectId: string }) {
             {data.templates_error ? (
               <InfoBanner tone="warning">
                 {tI18nHardcoded.raw(
-                  'autoComponentsProjectsSandboxSnapshotCardJsxTextCouldnTReadf6f1bc48',
+                  'autoComponentsWorkspacesSandboxSnapshotCardJsxTextCouldnTReadf6f1bc48',
                 )}{' '}
                 {data.templates_error}
               </InfoBanner>
@@ -662,10 +662,10 @@ export function SandboxView({ projectId }: { projectId: string }) {
                 icon={Container}
                 size="sm"
                 title={tI18nHardcoded.raw(
-                  'autoComponentsProjectsSandboxSnapshotCardJsxTextNoTemplatesResolved1e5654c6',
+                  'autoComponentsWorkspacesSandboxSnapshotCardJsxTextNoTemplatesResolved1e5654c6',
                 )}
                 description={tI18nHardcoded.raw(
-                  'autoComponentsProjectsSandboxSnapshotCardJsxTextNoBuildsRecordedfa95bbcb',
+                  'autoComponentsWorkspacesSandboxSnapshotCardJsxTextNoBuildsRecordedfa95bbcb',
                 )}
                 action={newTemplateAction}
               />
@@ -675,7 +675,7 @@ export function SandboxView({ projectId }: { projectId: string }) {
                   <div className="border-border rounded-md border">
                     <InlinePanelEmpty
                       message={tI18nHardcoded.raw(
-                        'autoComponentsProjectsSandboxSnapshotCardJsxTextNoTemplatesResolved1e5654c6',
+                        'autoComponentsWorkspacesSandboxSnapshotCardJsxTextNoTemplatesResolved1e5654c6',
                       )}
                       action={newTemplateAction}
                     />
@@ -686,7 +686,7 @@ export function SandboxView({ projectId }: { projectId: string }) {
                       {templates.map((t) => (
                         <TemplateRow
                           key={t.template_id ?? `tpl-${t.slug}`}
-                          projectId={projectId}
+                          workspaceId={workspaceId}
                           template={t}
                           canManage={canManage}
                           onEdit={openEditForm}
@@ -715,7 +715,7 @@ export function SandboxView({ projectId }: { projectId: string }) {
                     <div className="border-border rounded-md border">
                       <InlinePanelEmpty
                         message={tI18nHardcoded.raw(
-                          'autoComponentsProjectsSandboxSnapshotCardJsxTextNoBuildsRecordedfa95bbcb',
+                          'autoComponentsWorkspacesSandboxSnapshotCardJsxTextNoBuildsRecordedfa95bbcb',
                         )}
                       />
                     </div>
@@ -730,13 +730,13 @@ export function SandboxView({ projectId }: { projectId: string }) {
 
                 {acceleratorBuilds.length > 0 ? (
                   <div className="space-y-2">
-                    <Label>Project accelerator</Label>
+                    <Label>Workspace accelerator</Label>
                     <InfoBanner
                       tone="neutral"
                       icon={SparklesSolid}
                       title="Optional repository acceleration"
                     >
-                      A project accelerator preloads this repository for a later session. A missing
+                      A workspace accelerator preloads this repository for a later session. A missing
                       or failed accelerator never blocks a session. Kortix uses the shared session
                       runtime and clones the repository into{' '}
                       <code className="font-mono">/workspace</code>.
@@ -753,7 +753,7 @@ export function SandboxView({ projectId }: { projectId: string }) {
           </div>
 
           <SandboxTemplateForm
-            projectId={projectId}
+            workspaceId={workspaceId}
             open={formOpen}
             onOpenChange={setFormOpen}
             template={editingTemplate}

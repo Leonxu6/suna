@@ -19,42 +19,42 @@ describe('humanizeAuditAction — IAM action codes', () => {
       'Granted super-admin',
     );
   });
-  test('iam.project.group.detach → Detached…', () => {
-    const r = humanizeAuditAction('iam.project.group.detach');
-    expect(r.title).toBe('Detached group from project');
+  test('iam.workspace.group.detach → Detached…', () => {
+    const r = humanizeAuditAction('iam.workspace.group.detach');
+    expect(r.title).toBe('Detached group from workspace');
     expect(r.kind).toBe('detach');
   });
 });
 
 describe('humanizeAuditAction — HTTP routes', () => {
-  test('POST /v1/projects/:id/group-grants → Attached group', () => {
-    expect(humanizeAuditAction(`POST /v1/projects/${UID}/group-grants`)).toEqual({
-      title: 'Attached group to project',
+  test('POST /v1/workspaces/:id/group-grants → Attached group', () => {
+    expect(humanizeAuditAction(`POST /v1/workspaces/${UID}/group-grants`)).toEqual({
+      title: 'Attached group to workspace',
       kind: 'attach',
     });
   });
 
-  test('PATCH /v1/projects/:id/group-grants/:gid → Changed role', () => {
+  test('PATCH /v1/workspaces/:id/group-grants/:gid → Changed role', () => {
     expect(
-      humanizeAuditAction(`PATCH /v1/projects/${UID}/group-grants/${UID2}`),
+      humanizeAuditAction(`PATCH /v1/workspaces/${UID}/group-grants/${UID2}`),
     ).toEqual({
-      title: 'Changed group role on project',
+      title: 'Changed group role on workspace',
       kind: 'update',
     });
   });
 
-  test('DELETE /v1/projects/:id/group-grants/:gid → Detached', () => {
+  test('DELETE /v1/workspaces/:id/group-grants/:gid → Detached', () => {
     expect(
-      humanizeAuditAction(`DELETE /v1/projects/${UID}/group-grants/${UID2}`),
+      humanizeAuditAction(`DELETE /v1/workspaces/${UID}/group-grants/${UID2}`),
     ).toEqual({
-      title: 'Detached group from project',
+      title: 'Detached group from workspace',
       kind: 'detach',
     });
   });
 
   test('PUT shared secret carries the name as detail', () => {
     expect(
-      humanizeAuditAction(`PUT /v1/projects/${UID}/secrets/MY_KEY`),
+      humanizeAuditAction(`PUT /v1/workspaces/${UID}/secrets/MY_KEY`),
     ).toEqual({
       title: 'Set shared secret',
       detail: 'MY_KEY',
@@ -63,7 +63,7 @@ describe('humanizeAuditAction — HTTP routes', () => {
   });
 
   test('PUT personal secret distinguishes from shared', () => {
-    const r = humanizeAuditAction(`PUT /v1/projects/${UID}/secrets/TEST/personal`);
+    const r = humanizeAuditAction(`PUT /v1/workspaces/${UID}/secrets/TEST/personal`);
     expect(r.title).toBe('Set personal secret');
     expect(r.detail).toBe('TEST');
     expect(r.kind).toBe('update');
@@ -71,7 +71,7 @@ describe('humanizeAuditAction — HTTP routes', () => {
 
   test('DELETE personal secret', () => {
     expect(
-      humanizeAuditAction(`DELETE /v1/projects/${UID}/secrets/X/personal`),
+      humanizeAuditAction(`DELETE /v1/workspaces/${UID}/secrets/X/personal`),
     ).toEqual({
       title: 'Removed personal secret',
       detail: 'X',
@@ -79,10 +79,10 @@ describe('humanizeAuditAction — HTTP routes', () => {
     });
   });
 
-  test('POST /v1/projects/:id/access/invite → Invited project member', () => {
+  test('POST /v1/workspaces/:id/access/invite → Invited workspace member', () => {
     expect(
-      humanizeAuditAction(`POST /v1/projects/${UID}/access/invite`).title,
-    ).toBe('Invited project member');
+      humanizeAuditAction(`POST /v1/workspaces/${UID}/access/invite`).title,
+    ).toBe('Invited workspace member');
   });
 
   test('PATCH /v1/accounts/:id/members/:uid → Changed member role', () => {
@@ -142,10 +142,10 @@ describe('humanizeAuditAction — HTTP routes', () => {
 
   test('POST /v1/accounts/:id/iam/policy-templates/:slug/apply → Applied template + slug detail', () => {
     const r = humanizeAuditAction(
-      `POST /v1/accounts/${UID}/iam/policy-templates/project-readonly-auditor/apply`,
+      `POST /v1/accounts/${UID}/iam/policy-templates/workspace-readonly-auditor/apply`,
     );
     expect(r.title).toBe('Applied policy template');
-    expect(r.detail).toBe('project-readonly-auditor');
+    expect(r.detail).toBe('workspace-readonly-auditor');
     expect(r.kind).toBe('grant');
   });
 
@@ -156,48 +156,48 @@ describe('humanizeAuditAction — HTTP routes', () => {
     });
   });
 
-  test('DELETE /v1/projects/:id/access/pending-invites/:inviteId → Revoked pending invitation', () => {
+  test('DELETE /v1/workspaces/:id/access/pending-invites/:inviteId → Revoked pending invitation', () => {
     const r = humanizeAuditAction(
-      `DELETE /v1/projects/${UID}/access/pending-invites/${UID2}`,
+      `DELETE /v1/workspaces/${UID}/access/pending-invites/${UID2}`,
     );
-    expect(r.title).toBe('Revoked pending project invitation');
+    expect(r.title).toBe('Revoked pending workspace invitation');
     expect(r.kind).toBe('revoke');
   });
 
-  test('GET /v1/projects/:id/access/pending-invites → Listed pending invites', () => {
+  test('GET /v1/workspaces/:id/access/pending-invites → Listed pending invites', () => {
     expect(
-      humanizeAuditAction(`GET /v1/projects/${UID}/access/pending-invites`).title,
-    ).toBe('Listed pending project invites');
+      humanizeAuditAction(`GET /v1/workspaces/${UID}/access/pending-invites`).title,
+    ).toBe('Listed pending workspace invites');
   });
 
-  test('POST /v1/projects/:id/sessions → Started session', () => {
-    expect(humanizeAuditAction(`POST /v1/projects/${UID}/sessions`)).toEqual({
+  test('POST /v1/workspaces/:id/sessions → Started session', () => {
+    expect(humanizeAuditAction(`POST /v1/workspaces/${UID}/sessions`)).toEqual({
       title: 'Started session',
       kind: 'create',
     });
   });
 
-  test('POST /v1/projects/:id/sessions/:sid/exec → Ran session command', () => {
+  test('POST /v1/workspaces/:id/sessions/:sid/exec → Ran session command', () => {
     expect(
-      humanizeAuditAction(`POST /v1/projects/${UID}/sessions/${UID2}/exec`).title,
+      humanizeAuditAction(`POST /v1/workspaces/${UID}/sessions/${UID2}/exec`).title,
     ).toBe('Ran session command');
   });
 
-  test('POST /v1/projects/:id/sessions/:sid/stop → Stopped session', () => {
+  test('POST /v1/workspaces/:id/sessions/:sid/stop → Stopped session', () => {
     expect(
-      humanizeAuditAction(`POST /v1/projects/${UID}/sessions/${UID2}/stop`).title,
+      humanizeAuditAction(`POST /v1/workspaces/${UID}/sessions/${UID2}/stop`).title,
     ).toBe('Stopped session');
   });
 
-  test('POST /v1/projects/:id/triggers/:tid/fire → Fired trigger', () => {
+  test('POST /v1/workspaces/:id/triggers/:tid/fire → Fired trigger', () => {
     expect(
-      humanizeAuditAction(`POST /v1/projects/${UID}/triggers/${UID2}/fire`).title,
+      humanizeAuditAction(`POST /v1/workspaces/${UID}/triggers/${UID2}/fire`).title,
     ).toBe('Fired trigger');
   });
 
-  test('POST /v1/projects/:id/secrets (root, no name) → Set project secret', () => {
-    expect(humanizeAuditAction(`POST /v1/projects/${UID}/secrets`)).toEqual({
-      title: 'Set project secret',
+  test('POST /v1/workspaces/:id/secrets (root, no name) → Set workspace secret', () => {
+    expect(humanizeAuditAction(`POST /v1/workspaces/${UID}/secrets`)).toEqual({
+      title: 'Set workspace secret',
       kind: 'update',
     });
   });
@@ -251,7 +251,7 @@ describe('humanizeAuditAction — fallbacks', () => {
 
 describe('formatResourcePill', () => {
   test('type + id → "type · short"', () => {
-    expect(formatResourcePill('project', UID)).toBe('project · 8fb490fe');
+    expect(formatResourcePill('workspace', UID)).toBe('workspace · 8fb490fe');
   });
   test('type only → "type"', () => {
     expect(formatResourcePill('account_group', null)).toBe('account group');

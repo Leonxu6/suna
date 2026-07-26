@@ -18,8 +18,8 @@
  * Run (Bun only — this subpath statically imports node:async_hooks):
  *   KORTIX_API_URL=http://localhost:8008/v1 KORTIX_API_KEY=kortix_pat_... \
  *     bun run examples/03-server-wrapper.ts
- *   curl http://localhost:8787/projects -H 'x-end-user: alice'
- *   curl http://localhost:8787/projects -H 'x-end-user: bob'   # different token, same process, no cross-talk
+ *   curl http://localhost:8787/workspaces -H 'x-end-user: alice'
+ *   curl http://localhost:8787/workspaces -H 'x-end-user: bob'   # different token, same process, no cross-talk
  *
  * As an npm consumer:
  *   import { createScopedKortix } from '@kortix/sdk/server';
@@ -60,9 +60,9 @@ Bun.serve({
       getToken: async () => tokenForEndUser(endUserId),
     });
 
-    if (url.pathname === '/projects' && req.method === 'GET') {
-      const projects = await kortix.projects.list();
-      return Response.json({ endUserId, projects });
+    if (url.pathname === '/workspaces' && req.method === 'GET') {
+      const workspaces = await kortix.workspaces.list();
+      return Response.json({ endUserId, workspaces });
     }
 
     return new Response('Not found', { status: 404 });

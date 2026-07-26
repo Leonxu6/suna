@@ -1,5 +1,5 @@
-// Post-auth landing goes to the projects list.
-const DEFAULT_AUTH_RETURN_URL = '/projects';
+// Post-auth landing goes to the workspaces list.
+const DEFAULT_AUTH_RETURN_URL = '/workspaces';
 const LEGACY_AUTH_RETURN_PREFIXES = [
   '/dashboard',
   '/instances',
@@ -52,7 +52,7 @@ export function sanitizeAuthReturnUrl(
  * True when a (already-sanitized) return URL points at an invite acceptance
  * page. Invited users must land here verbatim after sign-up so they see the
  * accept/decline dialog — they must NOT be bounced to a freshly-provisioned
- * first project, which would skip the dialog and leave the invite unaccepted.
+ * first workspace, which would skip the dialog and leave the invite unaccepted.
  */
 export function isInviteReturnUrl(returnUrl: string | null | undefined): boolean {
   return typeof returnUrl === 'string' && returnUrl.startsWith('/invites/');
@@ -70,7 +70,7 @@ export function isInviteReturnUrl(returnUrl: string | null | undefined): boolean
  * resolves to the internal wildcard BIND address `https://0.0.0.0:3000` instead
  * of the public host. Redirecting there drops the user on a dead address right
  * after they authenticate (observed live: SSO on a self-host landing on
- * `https://0.0.0.0:3000/projects?auth_event=signup&auth_method=sso:...`).
+ * `https://0.0.0.0:3000/workspaces?auth_event=signup&auth_method=sso:...`).
  *
  * A wildcard bind address (0.0.0.0 / [::]) is never a real client-facing
  * origin, so when we see one we fall back to the configured public APP_URL.

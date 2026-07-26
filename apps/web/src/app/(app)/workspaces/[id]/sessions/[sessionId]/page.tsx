@@ -1,0 +1,677 @@
+'use client';
+
+import { useTranslations } from 'next-intl';
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { RotateCcw } from 'lucide-react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
+
+import { ClientErrorBoundary } from '@/components/common/error-boundary';
+import { Button } from '@/components/ui/button';
+import Loading from '@/components/ui/loading';
+import { useAuth } from '@/features/providers/auth-provider';
+import { InstantSessionShell } from '@/features/session/instant-session-shell';
+import { SandboxLoadingBoundary } from '@/features/session/sandbox-loading-boundary';
+import { SessionChat } from '@/features/session/session-chat';
+import { SessionLayout } from '@/features/session/session-layout';
+import { isAutoResuming, isSandboxResumable } from '@/features/session/session-resume';
+import { SessionStartingLoader } from '@/features/session/session-starting-loader';
+import { isUnmaterializedSessionFailure } from '@/features/session/session-terminal-state';
+import { useAccountState } from '@/hooks/billing';
+import { useSandboxConnection } from '@/hooks/platform/use-sandbox-connection';
+import { isBillingEnabled } from '@/lib/config';
+import { finishSessionTiming, sessionMark } from '@/lib/session-timing';
+import { cn } from '@/lib/utils';
+import {
+  shouldShowSessionSwitchLoading,
+  useSessionSwitchStore,
+} from '@/stores/session-switch-store';
+import { useUpgradeDialogStore } from '@/stores/upgrade-dialog-store';
+import { clearSessionFresh, isSessionFresh } from '@kortix/sdk/fresh-sessions';
+import { setActiveInstanceCookie } from '@kortix/sdk/instance-routes';
+import { formatRuntimeError } from '@kortix/sdk';
+import {
+  getWorkspaceDetail,
+  restartWorkspaceSession,
+  sessionStartKey,
+} from '@kortix/sdk';
+import {
+  clearRuntimeEnsureGuard,
+  migrateStash,
+  readStartStash,
+  useSession,
+  type UseSessionResult,
+} from '@kortix/sdk/react';
+import { useRuntimeConnectionStore } from '@kortix/sdk/react';
+
+/**
+ * /workspaces/[id]/sessions/[sessionId] — workspace-scoped session view.
+ *
+ * The entire runtime lifecycle (POST /start, the sandbox switch, the SSE stream,
+ * readiness seeding, and the canonical OpenCode pin) is owned by the SDK's
+ * `useSession` hook — the page no longer hand-rolls the 7-step mount. The page
+ * keeps its rich shell: the billing gate, the instant-shell/loader crossfade, the
+ * fresh-session + pending-prompt hand-off, and the restart/error cards.
+ *
+ * Readiness is server-truth (`/start` `stage==='ready'`, seeded by useSession into
+ * the connection store). The local `useSandboxConnection` poller is still mounted
+ * — purely for MID-SESSION reconnect detection (the box dropping after it was
+ * healthy), which drives the reconnect/offline UI. The URL stays at
+ * `/workspaces/<id>/sessions/<sessionId>` the whole time.
+ */
+export default function WorkspaceSessionPage() {
+  const tI18nHardcoded = useTranslations('hardcodedUi');
+  const { id: workspaceId, sessionId } = useParams<{ id: string; sessionId: string }>();
+  const { user, isLoading: authLoading } = useAuth();
+
+  // Billing gate. An account that cannot run should not start a session — the
+  // backend would never provision a sandbox, so polling for one spins forever.
+  // Scope to the account that OWNS this workspace (team account), not the viewer's.
+  const { data: workspaceDetail } = useQuery({
+    queryKey: ['workspace-detail', workspaceId],
+    queryFn: () => {
+      if (!workspaceId) throw new Error('Missing workspace id');
+      return getWorkspaceDetail(workspaceId);
+    },
+    enabled: !!workspaceId,
+  });
+  const workspaceAccountId = workspaceDetail?.workspace?.account_id ?? undefined;
+  const { data: accountState, isLoading: accountStateLoading } = useAccountState({
+    accountId: workspaceAccountId,
+  });
+  const openUpgradeDialog = useUpgradeDialogStore((s) => s.openUpgradeDialog);
+  const accountLoaded = !!accountState;
+  const billingGatePending =
+    isBillingEnabled() && !!workspaceAccountId && (accountStateLoading || !accountLoaded);
+  const noPlan = isBillingEnabled() && accountLoaded && !accountState.credits?.can_run;
+
+  // ONE hook owns the runtime: POST /start (idempotent provision/resume + the
+  // server-resolved OpenCode pin), the sandbox switch, the SSE stream, readiness
+  // seeding (no client health poll), and the canonical id. Gated on the billing
+  // check so a no-plan account never spins on a sandbox that won't provision.
+  // replayStartStash:false — the web has its own pending-prompt hand-off (below).
+  // The default chat engine stays enabled. This hook owns message sync and the
+  // question and permission recovery pollers for the root session.
+  const session = useSession(workspaceId, sessionId, {
+    enabled: !!user && !billingGatePending && !noPlan,
+    replayStartStash: false,
+  });
+  const sandbox = session.sandbox;
+  const startStage = session.stage ?? 'provisioning';
+  const switchingToSessionId = useSessionSwitchStore((state) => state.targetSessionId);
+  const completeSessionSwitch = useSessionSwitchStore((state) => state.completeSwitch);
+
+  // ── Auto-resume a hibernated-but-resumable sandbox ────────────────────────
+  // On the first /start of an idle-stopped session the backend can race into a
+  // TERMINAL 'stopped' (openSession's self-preserve path on a transient provider
+  // getStatus()) even though the row is left EXACTLY resumable (status 'stopped'
+  // + external_id). useSession then stops polling and the page used to pin a
+  // dead-end "open a new session" card — yet a hard refresh's fresh /start hits
+  // the resume path and wakes the box. So: re-issue /start ourselves a few times
+  // (what the refresh did) before ever surfacing a manual control.
+  const queryClient = useQueryClient();
+  const sandboxResumable = isSandboxResumable(sandbox);
+  const MAX_AUTO_RESUME = 3;
+  const [resumeAttempts, setResumeAttempts] = useState(0);
+  const restartMutation = useMutation({
+    mutationFn: () => restartWorkspaceSession(workspaceId, sessionId),
+    onSuccess: () => {
+      setResumeAttempts(0);
+      queryClient.invalidateQueries({ queryKey: sessionStartKey(workspaceId, sessionId) });
+    },
+  });
+  useEffect(() => {
+    if (!sandboxResumable || resumeAttempts >= MAX_AUTO_RESUME) return;
+    // First attempt fires immediately (match the refresh); back off after that.
+    const t = setTimeout(
+      () => {
+        setResumeAttempts((n) => n + 1);
+        queryClient.invalidateQueries({ queryKey: sessionStartKey(workspaceId, sessionId) });
+      },
+      resumeAttempts === 0 ? 0 : 1500,
+    );
+    return () => clearTimeout(t);
+  }, [sandboxResumable, resumeAttempts, workspaceId, sessionId, queryClient]);
+  // While we still have auto-resume attempts left, a resumable box is "waking",
+  // not "dead" — render the boot loader, never the dead-end card.
+  const autoResuming = isAutoResuming(sandbox, resumeAttempts, MAX_AUTO_RESUME);
+
+  // Belt-and-suspenders: clear the legacy active-instance cookie once on mount for
+  // this route so no later navigation can be hijacked onto a stale sandbox.
+  useEffect(() => {
+    setActiveInstanceCookie(null);
+  }, []);
+
+  useEffect(() => {
+    if (session.switched && sandbox) {
+      sessionMark(sandbox.session_id, 'server-switched');
+      // The sidebar's session-list status ('running' vs 'stopped') is a SEPARATE
+      // query that /start never touches, so opening a session left the dot stale
+      // until a manual refresh. Refresh the list once the runtime switches in so
+      // the status flips to running on its own.
+      queryClient.invalidateQueries({ queryKey: ['workspace-sessions', workspaceId] });
+    }
+  }, [session.switched, sandbox, queryClient, workspaceId]);
+
+  // The moment we know there's no plan, pop the one Team plan modal.
+  const billingGatedRef = useRef(false);
+  useEffect(() => {
+    if (!noPlan || billingGatedRef.current) return;
+    billingGatedRef.current = true;
+    openUpgradeDialog({ reason: 'subscription_required', accountId: workspaceAccountId });
+  }, [noPlan, openUpgradeDialog, workspaceAccountId]);
+
+  // ── Crossfade: the instant shell fades out as the real chat fades in ──────
+  // A fully-interactive shell (welcome wallpaper + live input) renders at a SINGLE
+  // stable tree position for the whole pre-ready lifecycle, so it never remounts.
+  const [chatReady, setChatReady] = useState(false);
+  const [loaderMounted, setLoaderMounted] = useState(true);
+  const [shellSubmitted, setShellSubmitted] = useState(false);
+  const freshRef = useRef<boolean>(false);
+  const lifecycleForRef = useRef<string | null>(null);
+  if (lifecycleForRef.current !== sessionId) {
+    lifecycleForRef.current = sessionId;
+    if (chatReady) setChatReady(false);
+    if (!loaderMounted) setLoaderMounted(true);
+    let fresh = false;
+    let pending = false;
+    if (typeof window !== 'undefined') {
+      // Was two raw legacy-key checks (`opencode_pending_prompt:<id>` /
+      // `workspace_pending_prompt:<id>`) — now that every producer stashes
+      // canonically under the route id (see the `migrateStash` call below),
+      // `readStartStash` is the one check that still sees a stash from any of
+      // them (canonical or legacy shape) without knowing which key it lives
+      // under.
+      pending = !!readStartStash(sessionId)?.prompt;
+      fresh = pending || isSessionFresh(sessionId);
+    }
+    freshRef.current = fresh;
+    setShellSubmitted(pending);
+    if (resumeAttempts !== 0) setResumeAttempts(0);
+  }
+  const isFresh = freshRef.current;
+  useEffect(() => {
+    if (chatReady) clearSessionFresh(sessionId);
+  }, [chatReady, sessionId]);
+
+  // Terminal/gated states fully REPLACE the content (no chat to fade to).
+  const gated = !authLoading && !!user && noPlan;
+  const fatal =
+    !authLoading &&
+    !!user &&
+    !!sandbox &&
+    (sandbox.status === 'error' || sandbox.status === 'stopped');
+  const unmaterializedFailure =
+    !authLoading &&
+    !!user &&
+    isUnmaterializedSessionFailure({
+      phase: session.phase,
+      hasStartError: !!session.startError,
+      sandboxStatus: sandbox?.status,
+    });
+  const sessionSwitchLoading = shouldShowSessionSwitchLoading(
+    switchingToSessionId,
+    sessionId,
+    session.switched,
+  );
+  useEffect(() => {
+    if (switchingToSessionId !== sessionId) return;
+    if (session.switched || session.startError || unmaterializedFailure || fatal || gated) {
+      completeSessionSwitch(sessionId);
+    }
+  }, [
+    switchingToSessionId,
+    sessionId,
+    session.switched,
+    session.startError,
+    unmaterializedFailure,
+    fatal,
+    gated,
+    completeSessionSwitch,
+  ]);
+  // The chat subtree mounts once useSession reports the runtime is switched in.
+  const canMountChat = session.switched;
+  // For a fresh session, hold the real chat until the user actually sends their
+  // first message — the instant shell is the typing surface until then.
+  const mountChat = canMountChat && (!isFresh || shellSubmitted);
+
+  // `sandbox_id` is nullable on the wire: the `/start` path always serves a
+  // non-null id (it serializes the `session_sandboxes` uuid PK), but the
+  // optimistic cache seed (`workspaceSessionStartSeed`, fed by the
+  // `workspace_sessions` row) can carry a `null` `sandbox_id` — e.g. a legacy
+  // Suna-migration session whose `workspace_sessions.sandbox_id` was minted null
+  // and never back-filled by provisioning (which only writes `sandbox_url`).
+  // The `SessionCacheWarmer` seeds that into React Query, so `useSession` can
+  // hand us a truthy `sandbox` whose `sandbox_id` is null; guard the `.slice`
+  // so a null id degrades to the bare label instead of crashing the page
+  // (Better Stack pattern e6d0e044 — `Cannot read properties of null (reading
+  // 'slice')` on this exact line).
+  const sandboxLabel = sandbox?.sandbox_id
+    ? `session ${sandbox.sandbox_id.slice(0, 8)}`
+    : undefined;
+  const inner = (() => {
+    if (sessionSwitchLoading) {
+      return (
+        <SessionStartingLoader
+          stage={switchingToSessionId === sessionId ? startStage : 'starting'}
+          workspaceId={workspaceId}
+          sessionId={switchingToSessionId ?? sessionId}
+        />
+      );
+    }
+
+    if (gated) {
+      return (
+        <InlineSessionError
+          title={tI18nHardcoded.raw(
+            'autoAppAppWorkspacesIdSessionsSessionIdPageJsxAttrTitlebf9bba8c',
+          )}
+          message={tI18nHardcoded.raw(
+            'autoAppAppWorkspacesIdSessionsSessionIdPageJsxAttrMessage93bc2779',
+          )}
+          action={
+            <Button
+              onClick={() =>
+                openUpgradeDialog({ reason: 'subscription_required', accountId: workspaceAccountId })
+              }
+            >
+              {tI18nHardcoded.raw(
+                'autoAppAppWorkspacesIdSessionsSessionIdPageJsxTextSubscribe40f5b8e1',
+              )}
+            </Button>
+          }
+        />
+      );
+    }
+
+    if (session.startError) {
+      const sessionMissing = session.startError.status === 404;
+      return (
+        <InlineSessionError
+          title="Couldn't start session"
+          message={
+            sessionMissing
+              ? 'This session is no longer available, or you do not have access to it.'
+              : session.startError.message
+          }
+        />
+      );
+    }
+
+    if (unmaterializedFailure) {
+      return (
+        <InlineSessionError
+          title="Couldn't start session"
+          message="The session failed before its computer was created. Restart the session to try again."
+          action={
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => restartMutation.mutate()}
+              disabled={restartMutation.isPending}
+            >
+              {restartMutation.isPending ? (
+                <Loading className="size-3.5 shrink-0" />
+              ) : (
+                <RotateCcw className="size-3.5 shrink-0" />
+              )}
+              Restart session
+            </Button>
+          }
+        />
+      );
+    }
+
+    if (fatal) {
+      const meta = (sandbox?.metadata as Record<string, unknown>) ?? {};
+      if (sandbox?.status === 'error') {
+        return (
+          <InlineSessionError
+            title={`Couldn't start ${sandboxLabel ?? 'session'}`}
+            message={
+              (meta.provisioningError as string) ||
+              (meta.errorMessage as string) ||
+              'Something went wrong while provisioning this session.'
+            }
+          />
+        );
+      }
+      // Stopped but resumable → we're auto-waking it. Show the boot loader, not a
+      // dead-end, so the user just sees it come back (as a hard refresh would).
+      if (autoResuming) {
+        return (
+          <SessionStartingLoader stage="starting" workspaceId={workspaceId} sessionId={sessionId} />
+        );
+      }
+      // Auto-resume exhausted (or genuinely un-resumable): give an in-place
+      // Restart instead of forcing a manual browser refresh.
+      return (
+        <InlineSessionError
+          title={`${sandboxLabel ?? 'session'} is stopped`}
+          message={tI18nHardcoded.raw(
+            'appWorkspacesIdSessionsSessionidPage.line151JsxAttrMessageTheSandboxForThisSessionWasStoppedOpen',
+          )}
+          action={
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => restartMutation.mutate()}
+              disabled={restartMutation.isPending}
+            >
+              {restartMutation.isPending ? (
+                <Loading className="size-3.5 shrink-0" />
+              ) : (
+                <RotateCcw className="size-3.5 shrink-0" />
+              )}
+              Restart session
+            </Button>
+          }
+        />
+      );
+    }
+
+    // Dual-layer: the real chat mounts under the instant shell (fresh sessions) or
+    // the staged loader (resumes) and crossfades in once it's ready. useSession
+    return (
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        {canMountChat && (
+          <div
+            className={cn(
+              'absolute inset-0 flex min-h-0 flex-1 flex-col overflow-hidden transition-opacity duration-300 ease-out',
+              chatReady ? 'opacity-100' : 'pointer-events-none opacity-0',
+            )}
+          >
+            <WorkspaceSessionRuntimeConnection>
+              {mountChat && (
+                <ActiveSessionChat
+                  workspaceId={workspaceId}
+                  sessionId={sessionId}
+                  sessionState={session}
+                  onChatReady={() => setChatReady(true)}
+                />
+              )}
+            </WorkspaceSessionRuntimeConnection>
+          </div>
+        )}
+
+        {loaderMounted && (
+          <div
+            onTransitionEnd={() => {
+              if (chatReady) setLoaderMounted(false);
+            }}
+            className={cn(
+              'absolute inset-0 flex flex-col transition-opacity duration-300 ease-out',
+              chatReady ? 'pointer-events-none opacity-0' : 'opacity-100',
+            )}
+          >
+            {isFresh ? (
+              <InstantSessionShell
+                workspaceId={workspaceId}
+                sessionId={sessionId}
+                stage={authLoading || !user ? 'provisioning' : startStage}
+                onSubmit={() => setShellSubmitted(true)}
+              />
+            ) : (
+              <SessionStartingLoader
+                stage={authLoading || !user ? 'provisioning' : startStage}
+                workspaceId={workspaceId}
+                sessionId={sessionId}
+              />
+            )}
+          </div>
+        )}
+      </div>
+    );
+  })();
+
+  return <SandboxLoadingBoundary>{inner}</SandboxLoadingBoundary>;
+}
+
+function WorkspaceSessionRuntimeConnection({ children }: { children: ReactNode }) {
+  // MID-SESSION reconnect detection only. Initial readiness is server-truth (seeded
+  // by useSession from /start); this poller keeps the SDK-unified connection store's
+  // status fresh so the reconnect/offline UI fires if the box drops after boot.
+  useSandboxConnection();
+  return <>{children}</>;
+}
+
+/* ─── Inline error card (used inside the workspace shell) ────────────────── */
+
+function InlineSessionError({
+  title,
+  message,
+  detail,
+  action,
+}: {
+  title: string;
+  message: string;
+  detail?: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center px-6">
+      <div className="flex max-w-md flex-col items-center gap-3 text-center">
+        <h2 className="text-foreground/90 text-sm font-medium">{title}</h2>
+        <p className="text-muted-foreground/70 text-xs leading-relaxed">{message}</p>
+        {detail ? (
+          <p className="border-border/60 bg-muted/40 text-muted-foreground max-w-full rounded-md border px-2 py-1 font-mono text-xs leading-relaxed">
+            {detail}
+          </p>
+        ) : null}
+        {action}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Renders SessionLayout + SessionChat against this workspace session's sandbox.
+ * `useSession` owns the canonical runtime session and the optional REST session
+ * list used by legacy `?oc` deep links.
+ */
+function ActiveSessionChat({
+  workspaceId,
+  sessionId,
+  sessionState,
+  onChatReady,
+}: {
+  workspaceId: string;
+  sessionId: string;
+  sessionState: UseSessionResult;
+  onChatReady?: () => void;
+}) {
+  const tHardcodedUi = useTranslations('hardcodedUi');
+  const runtimeReady = useRuntimeConnectionStore(
+    (s) => s.status === 'connected' && s.healthy === true,
+  );
+  const runtimeBootError = useRuntimeConnectionStore((s) => s.runtimeError);
+  const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const rootSessionId = sessionState.opencodeSessionId;
+  const runtimeSessions = sessionState.runtimeSessions;
+  const sessionsLoading = sessionState.runtimeSessionsLoading;
+  const sessionsListed = sessionState.runtimeSessionsListed;
+  const runtimeError = sessionState.runtimeError;
+
+  const restartMutation = useMutation({
+    mutationFn: () => restartWorkspaceSession(workspaceId, sessionId),
+    onMutate: () => {
+      queryClient.setQueryData(sessionStartKey(workspaceId, sessionId), {
+        stage: 'provisioning',
+        retriable: true,
+        sandbox: null,
+        opencode_session_id: null,
+        reason: 'restart_requested',
+      });
+    },
+    onSuccess: () => {
+      clearRuntimeEnsureGuard();
+      queryClient.removeQueries({ queryKey: ['opencode'] });
+      queryClient.invalidateQueries({ queryKey: sessionStartKey(workspaceId, sessionId) });
+      queryClient.invalidateQueries({
+        queryKey: ['workspace', 'session-sandbox', workspaceId, sessionId],
+      });
+      queryClient.invalidateQueries({ queryKey: ['workspace-sessions', workspaceId] });
+    },
+  });
+
+  const selectedOpenCodeSessionId = searchParams.get('oc');
+  const selectedSession = selectedOpenCodeSessionId
+    ? runtimeSessions.find((session) => session.id === selectedOpenCodeSessionId)
+    : null;
+  const pinRef = useRef<{ sid: string; id: string | null }>({ sid: sessionId, id: null });
+  if (pinRef.current.sid !== sessionId) pinRef.current = { sid: sessionId, id: null };
+  if (!pinRef.current.id && rootSessionId) pinRef.current.id = rootSessionId;
+  const chatSessionId = selectedSession?.id ?? pinRef.current.id ?? rootSessionId ?? null;
+
+  // Migrate the home-composer prompt onto the canonical SDK start-stash DURING
+  // RENDER — every producer (workspace-home composer, `useConfigureThread`, the
+  // instant shell) stashes under the ROUTE session id (before the canonical
+  // OpenCode session exists); once it resolves, hand the stash off to
+  // `chatSessionId`'s stash, which `readStartStash` (SessionChat's
+  // pending-prompt effect, or `useSession`'s own replay) reads uniformly.
+  // `migrateStash` understands both the canonical shape and any producer that
+  // still writes the older bare-prompt legacy shape at the route id.
+  const promptMigratedForRef = useRef<string | null>(null);
+  if (
+    typeof window !== 'undefined' &&
+    chatSessionId &&
+    promptMigratedForRef.current !== chatSessionId
+  ) {
+    promptMigratedForRef.current = chatSessionId;
+    migrateStash(sessionId, chatSessionId);
+  }
+
+  // ── Readiness benchmarking marks ───────────────────────────────────────
+  useEffect(() => {
+    if (runtimeReady) sessionMark(sessionId, 'runtime-ready');
+  }, [runtimeReady, sessionId]);
+  useEffect(() => {
+    if (sessionsListed) sessionMark(sessionId, 'opencode-listed');
+  }, [sessionsListed, sessionId]);
+  useEffect(() => {
+    if (!chatSessionId) return;
+    sessionMark(sessionId, 'chat-ready');
+    const sb = queryClient.getQueryData<{ metadata?: Record<string, unknown> }>([
+      'workspace',
+      'session-sandbox',
+      workspaceId,
+      sessionId,
+    ]);
+    finishSessionTiming(sessionId, sb?.metadata?.provisionTimeline);
+  }, [chatSessionId, sessionId, workspaceId, queryClient]);
+
+  const chatShowable =
+    (!!chatSessionId && runtimeReady) || !!runtimeError || (!runtimeReady && !!runtimeBootError);
+  useEffect(() => {
+    if (chatShowable) onChatReady?.();
+  }, [chatShowable, onChatReady]);
+
+  useEffect(() => {
+    if (!selectedOpenCodeSessionId) return;
+    if (selectedSession) return;
+    if (sessionsLoading) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('oc');
+    const query = params.toString();
+    router.replace(
+      query
+        ? `/workspaces/${workspaceId}/sessions/${sessionId}?${query}`
+        : `/workspaces/${workspaceId}/sessions/${sessionId}`,
+      { scroll: false },
+    );
+  }, [
+    selectedOpenCodeSessionId,
+    selectedSession,
+    sessionsLoading,
+    searchParams,
+    router,
+    workspaceId,
+    sessionId,
+  ]);
+
+  if (!runtimeReady && runtimeBootError) {
+    return (
+      <InlineSessionError
+        title={tHardcodedUi.raw(
+          'appWorkspacesIdSessionsSessionidPage.line380JsxAttrTitleOpencodeRuntimeIsNotReady',
+        )}
+        message={tHardcodedUi.raw(
+          'appWorkspacesIdSessionsSessionidPage.line381JsxAttrMessageTheSandboxBootedButTheWorkspaceRuntimeDid',
+        )}
+        detail={runtimeBootError}
+        action={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => restartMutation.mutate()}
+            disabled={restartMutation.isPending}
+          >
+            {restartMutation.isPending ? (
+              <Loading className="size-3.5 shrink-0" />
+            ) : (
+              <RotateCcw className="size-3.5 shrink-0" />
+            )}
+            {tHardcodedUi.raw('appWorkspacesIdSessionsSessionidPage.line395JsxTextRestartSession')}
+          </Button>
+        }
+      />
+    );
+  }
+
+  if (runtimeError) {
+    const formatted = formatRuntimeError(runtimeError);
+    const restartError = restartMutation.error
+      ? formatRuntimeError(restartMutation.error)
+      : null;
+    return (
+      <InlineSessionError
+        title={formatted.title}
+        message={formatted.message}
+        detail={restartError?.message ?? formatted.detail}
+        action={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => restartMutation.mutate()}
+            disabled={restartMutation.isPending}
+          >
+            {restartMutation.isPending ? (
+              <Loading className="size-3.5 shrink-0" />
+            ) : (
+              <RotateCcw className="size-3.5 shrink-0" />
+            )}
+            {tHardcodedUi.raw('appWorkspacesIdSessionsSessionidPage.line424JsxTextRestartSession')}
+          </Button>
+        }
+      />
+    );
+  }
+
+  if (!chatSessionId) {
+    return null;
+  }
+
+  return (
+    <SessionLayout
+      key={chatSessionId}
+      sessionId={chatSessionId}
+      workspaceId={workspaceId}
+      workspaceSessionId={sessionId}
+    >
+      <ClientErrorBoundary>
+        <SessionChat
+          key={chatSessionId}
+          sessionId={chatSessionId}
+          workspaceId={workspaceId}
+          sessionState={
+            chatSessionId === sessionState.opencodeSessionId ? sessionState : undefined
+          }
+        />
+      </ClientErrorBoundary>
+    </SessionLayout>
+  );
+}

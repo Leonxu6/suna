@@ -3,7 +3,7 @@
  *
  * The shape a real "Kortix as a Backend" wrapper uses to charge its own
  * users: pull per-session LLM + compute cost from the gateway
- * (`project(id).gateway.sessions`) and the caller's own credit balance
+ * (`workspace(id).gateway.sessions`) and the caller's own credit balance
  * (`billing.creditBreakdown`), then apply a markup multiplier before showing
  * it to the end user. This mirrors `apps/whitelabel-demo`'s `/usage` route
  * (`src/app/api/usage/route.ts`), rewritten to go through the SDK facade
@@ -11,7 +11,7 @@
  *
  * Run:
  *   KORTIX_API_URL=http://localhost:8008/v1 KORTIX_API_KEY=kortix_pat_... \
- *   KORTIX_PROJECT_ID=... COST_MARKUP=1.2 \
+ *   KORTIX_WORKSPACE_ID=... COST_MARKUP=1.2 \
  *     bun run examples/05-cost-passthrough.ts
  *
  * As an npm consumer:
@@ -26,18 +26,18 @@ function round2(n: number): number {
 async function main() {
   const backendUrl = process.env.KORTIX_API_URL ?? 'http://localhost:8008/v1';
   const apiKey = process.env.KORTIX_API_KEY;
-  const projectId = process.env.KORTIX_PROJECT_ID;
+  const workspaceId = process.env.KORTIX_WORKSPACE_ID;
   const markup = Number(process.env.COST_MARKUP ?? 1.2);
 
-  if (!apiKey || !projectId) {
-    console.error('Set KORTIX_API_KEY and KORTIX_PROJECT_ID and re-run.');
+  if (!apiKey || !workspaceId) {
+    console.error('Set KORTIX_API_KEY and KORTIX_WORKSPACE_ID and re-run.');
     process.exit(1);
   }
 
   const kortix = createKortix({ backendUrl, getToken: async () => apiKey });
 
   const [sessions, credits] = await Promise.all([
-    kortix.project(projectId).gateway.sessions(30), // trailing 30 days
+    kortix.workspace(workspaceId).gateway.sessions(30), // trailing 30 days
     kortix.billing.creditBreakdown(),
   ]);
 

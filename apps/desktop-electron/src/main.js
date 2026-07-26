@@ -59,11 +59,11 @@ function bakedDefaultUrl() {
 const DEFAULT_URL =
   process.env.KORTIX_DESKTOP_DEFAULT_URL ||
   bakedDefaultUrl() ||
-  'https://kortix.com/projects';
+  'https://kortix.com/workspaces';
 
-const PRESET_PROD = 'https://kortix.com/projects';
-const PRESET_DEV = 'https://dev.kortix.com/projects';
-const PRESET_LOCAL = 'http://localhost:3000/projects';
+const PRESET_PROD = 'https://kortix.com/workspaces';
+const PRESET_DEV = 'https://dev.kortix.com/workspaces';
+const PRESET_LOCAL = 'http://localhost:3000/workspaces';
 
 const URL_SCHEME = 'kortix';
 // Matches DESKTOP_UA_TOKEN in apps/web/src/lib/desktop.ts and the
@@ -169,6 +169,8 @@ function isMainAppHost(host) {
 // Product + auth route prefixes allowed to render in the desktop window. MUST
 // stay in sync with DESKTOP_ALLOWED_ROUTES in apps/web/src/middleware.ts.
 const APP_PATH_PREFIXES = [
+  '/workspaces',
+  // Deprecated route. Keep it so old desktop deep links reach the web redirect.
   '/projects',
   '/accounts',
   '/invites',

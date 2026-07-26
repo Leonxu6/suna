@@ -355,7 +355,7 @@ export function Navbar({ isAbsolute = false }: NavbarProps) {
             </Button>
             {user ? (
               <Button asChild>
-                <Link href="/projects">Projects</Link>
+                <Link href="/workspaces">Workspaces</Link>
               </Button>
             ) : (
               <Button
@@ -510,8 +510,8 @@ export function Navbar({ isAbsolute = false }: NavbarProps) {
               >
                 {user ? (
                   <Button asChild size="xl" className="w-full text-lg">
-                    <Link href="/projects" onClick={() => setIsDrawerOpen(false)}>
-                      Projects
+                    <Link href="/workspaces" onClick={() => setIsDrawerOpen(false)}>
+                      Workspaces
                     </Link>
                   </Button>
                 ) : (

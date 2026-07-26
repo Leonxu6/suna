@@ -6,7 +6,7 @@ import {
   FileExplorerSourceProvider,
   FileThumbnail,
   getFileIcon,
-} from '@/features/project-files';
+} from '@/features/workspace-files';
 
 interface GridFileCardProps {
   filePath: string;

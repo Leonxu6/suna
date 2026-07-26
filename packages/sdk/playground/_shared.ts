@@ -1,5 +1,5 @@
 /**
- * Shared plumbing for every playground script: client construction, project /
+ * Shared plumbing for every playground script: client construction, workspace /
  * session selection, the ensureReady retry loop, and the full
  * send → stream → wait-for-idle → transcript cycle.
  *
@@ -10,7 +10,7 @@
  *   KORTIX_API_KEY=kortix_pat_...
  *
  * Optional:
- *   KORTIX_PROJECT_ID / KORTIX_SESSION_ID  — pin a project/session
+ *   KORTIX_WORKSPACE_ID / KORTIX_SESSION_ID  — pin a workspace/session
  *   KORTIX_MODEL=claude-sonnet-4.6         — per-send model override (the local
  *     stack's default model currently 400s on `max_tokens`, so set this)
  */
@@ -40,33 +40,33 @@ export function makeKortix(): KortixClient {
   return createKortix({ backendUrl, getToken: async () => apiKey });
 }
 
-/** argv value → KORTIX_PROJECT_ID → first project on the account. */
-export async function pickProjectId(
+/** argv value → KORTIX_WORKSPACE_ID → first workspace on the account. */
+export async function pickWorkspaceId(
   kortix: KortixClient,
   argvValue?: string,
 ): Promise<string> {
-  const given = argvValue ?? process.env.KORTIX_PROJECT_ID;
+  const given = argvValue ?? process.env.KORTIX_WORKSPACE_ID;
   if (given) return given;
-  const projects = await kortix.projects.list();
-  if (projects.length === 0) {
+  const workspaces = await kortix.workspaces.list();
+  if (workspaces.length === 0) {
     console.error(
-      "no projects on this account — create one in the web UI first",
+      "no workspaces on this account — create one in the web UI first",
     );
     process.exit(1);
   }
-  console.log(`no project given — using first project: ${projects[0]!.name}`);
-  return projects[0]!.project_id;
+  console.log(`no workspace given — using first workspace: ${workspaces[0]!.name}`);
+  return workspaces[0]!.workspace_id;
 }
 
-/** KORTIX_SESSION_ID if set, otherwise create a fresh session in the project. */
+/** KORTIX_SESSION_ID if set, otherwise create a fresh session in the workspace. */
 export async function pickOrCreateSessionId(
   kortix: KortixClient,
-  projectId: string,
+  workspaceId: string,
   name = "sdk playground",
 ): Promise<string> {
   const given = process.env.KORTIX_SESSION_ID;
   if (given) return given;
-  const created = await kortix.projects.createSession(projectId, { name });
+  const created = await kortix.workspaces.createSession(workspaceId, { name });
   console.log(`created session ${created.session_id}`);
   return created.session_id;
 }

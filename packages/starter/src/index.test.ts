@@ -7,7 +7,7 @@ import {
   DEFAULT_STARTER_TEMPLATE_ID,
   KORTIX_MANAGED_SKILL_NAMES,
   getMarketplaceFiles,
-  getProjectTemplateFiles,
+  getWorkspaceTemplateFiles,
   isKortixManagedSkillName,
   type StarterFile,
 } from './index';
@@ -307,11 +307,11 @@ describe('marketplace registry — first-party use-case templates', () => {
   });
 });
 
-describe('marketplace projects — full project templates', () => {
-  const files = getProjectTemplateFiles();
+describe('marketplace workspaces — full workspace templates', () => {
+  const files = getWorkspaceTemplateFiles();
   const paths = new Set(files.map((f) => f.path));
 
-  test('ships the SEO Department as a full cloneable project template', () => {
+  test('ships the SEO Department as a full cloneable workspace template', () => {
     expect(paths.has('seo-department/project.json')).toBe(true);
     expect(paths.has('seo-department/kortix.yaml')).toBe(true);
     expect(paths.has('seo-department/README.md')).toBe(true);
@@ -365,6 +365,6 @@ describe('marketplace projects — full project templates', () => {
     expect(director).toContain('install.md');
     expect(director).toContain('do not start another session');
     expect(director).toContain('website/app repository');
-    expect(repoSkill).toContain('do not assume the current project repo is the site');
+    expect(repoSkill).toContain('do not assume the current workspace repo is the site');
   });
 });

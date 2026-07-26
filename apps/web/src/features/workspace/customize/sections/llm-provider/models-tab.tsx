@@ -117,7 +117,7 @@ export function ModelsTab({
       <div className="flex min-h-[200px] items-center justify-center px-6 text-center">
         <p className="text-muted-foreground/60 text-xs">
           {tHardcodedUi.raw(
-            'componentsProjectsProjectProviderModal.line1258JsxTextConnectAProviderToSeeItsModels',
+            'componentsWorkspacesWorkspaceProviderModal.line1258JsxTextConnectAProviderToSeeItsModels',
           )}
         </p>
       </div>
@@ -141,7 +141,7 @@ export function ModelsTab({
           <p className="text-muted-foreground/60 text-xs">
             {enabledCount} of {flatModels.length}{' '}
             {tHardcodedUi.raw(
-              'autoComponentsProjectsProjectProviderModalJsxTextShownInTheb8c08575',
+              'autoComponentsWorkspacesWorkspaceProviderModalJsxTextShownInTheb8c08575',
             )}
           </p>
           {hasOverrides && (
@@ -152,7 +152,7 @@ export function ModelsTab({
               onClick={() => modelStore.resetVisibility()}
             >
               {tHardcodedUi.raw(
-                'autoComponentsProjectsProjectProviderModalJsxTextResetToDefaults75549180',
+                'autoComponentsWorkspacesWorkspaceProviderModalJsxTextResetToDefaults75549180',
               )}
             </Button>
           )}

@@ -61,7 +61,7 @@ async function waitForSandbox(): Promise<{ externalId: string }> {
   const end = deadline(7 * 60_000);
   let last = '';
   while (Date.now() < end) {
-    const response = await api(`/projects/${projectId}/sessions/${sessionId}/start?wait_ms=25000`, {
+    const response = await api(`/workspaces/${projectId}/sessions/${sessionId}/start?wait_ms=25000`, {
       method: 'POST',
       body: '{}',
     });
@@ -158,7 +158,7 @@ async function main(): Promise<void> {
     : null;
   if (!account?.account_id) throw new Error(`personal account missing: ${accounts.text}`);
 
-  const project = await api('/projects/provision', {
+  const project = await api('/workspaces/provision', {
     method: 'POST',
     body: JSON.stringify({
       account_id: account.account_id,
@@ -171,7 +171,7 @@ async function main(): Promise<void> {
   log('project created', projectId);
 
   const sessionName = `terminal ${provider} ${Date.now()}`;
-  let session = await api(`/projects/${projectId}/sessions`, {
+  let session = await api(`/workspaces/${projectId}/sessions`, {
     method: 'POST',
     body: JSON.stringify({ name: sessionName, provider }),
   });
@@ -181,7 +181,7 @@ async function main(): Promise<void> {
   if (session.status === 503) {
     const reconcileEnd = deadline(45_000);
     while (Date.now() < reconcileEnd) {
-      const listed = await api(`/projects/${projectId}/sessions`);
+      const listed = await api(`/workspaces/${projectId}/sessions`);
       const items = Array.isArray(listed.body) ? listed.body : (listed.body?.sessions ?? []);
       const created = items.find((item: any) => item.name === sessionName);
       if (created) {
@@ -235,10 +235,10 @@ async function main(): Promise<void> {
 
 async function cleanup(): Promise<void> {
   if (sessionId && projectId) {
-    await api(`/projects/${projectId}/sessions/${sessionId}`, { method: 'DELETE' }).catch(() => null);
+    await api(`/workspaces/${projectId}/sessions/${sessionId}`, { method: 'DELETE' }).catch(() => null);
   }
   if (projectId) {
-    await api(`/projects/${projectId}`, { method: 'DELETE' }).catch(() => null);
+    await api(`/workspaces/${projectId}`, { method: 'DELETE' }).catch(() => null);
   }
 }
 

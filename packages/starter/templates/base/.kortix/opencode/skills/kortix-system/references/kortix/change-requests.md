@@ -2,11 +2,11 @@
 
 A **change request** (CR) is Kortix's PR-equivalent. It proposes
 merging one branch (`head_ref`) into another (`base_ref`) inside a
-single Kortix project. The CR layer is **Kortix-native** — it works
+single Kortix workspace. The CR layer is **Kortix-native** — it works
 on top of any git host (GitHub, GitLab, plain git) without
 per-host integration. The CR row is metadata; the underlying git
 operations (fetch, diff, three-way merge, fast-forward) run inside the
-Kortix API against whatever backend the project's `repo_url` points
+Kortix API against whatever backend the workspace's `repo_url` points
 to.
 
 ## The agent mandate
@@ -33,7 +33,7 @@ The contract is:
 4. **Open the CR** (`kortix cr open --title "…" --description "…"`).
    From inside the sandbox `--head` and `--session` are auto-detected
    from `$KORTIX_BRANCH_NAME` and `$KORTIX_SESSION_ID`; `--base`
-   defaults to the project's default branch.
+   defaults to the workspace's default branch.
 5. **Verify it carries your diff** (`kortix cr diff <n>`). No changes
    shown = your push didn't land; push and re-check the SAME CR — it
    recomputes live. Never open a duplicate.
@@ -73,8 +73,8 @@ CRs live in the `change_requests` table (Drizzle schema in
 | --------------------- | --------------------- | ------------------------------------------------------------------------------------------ |
 | `cr_id`               | uuid (PK)             | Stable identifier. What the REST API uses.                                                 |
 | `account_id`          | uuid                  | Tenant.                                                                                    |
-| `project_id`          | uuid                  | Project the CR belongs to. Cascade-deleted with the project.                               |
-| `number`              | integer               | Short, per-project, monotonically-increasing display number. `#1`, `#2`, … Unique per project. |
+| `project_id`          | uuid                  | Workspace the CR belongs to. Cascade-deleted with the workspace.                               |
+| `number`              | integer               | Short, per-workspace, monotonically-increasing display number. `#1`, `#2`, … Unique per workspace. |
 | `title`               | text                  | Required.                                                                                  |
 | `description`         | text                  | Defaults to empty string.                                                                  |
 | `base_ref`            | text                  | The branch being merged *into*. Usually `main`.                                            |
@@ -102,7 +102,7 @@ Indexes:
 
 The unique index on `(project_id, number)` is what allows the CLI
 to accept `kortix cr show 3` — `3` resolves to the row with
-`number = 3` for the resolved project. Numbers don't recycle when a
+`number = 3` for the resolved workspace. Numbers don't recycle when a
 CR is closed; the counter just keeps going.
 
 ## Lifecycle
@@ -147,7 +147,7 @@ repo is temporarily down.
 
 ## Diff semantics
 
-`GET /v1/projects/:projectId/change-requests/:crId/diff` returns a
+`GET /v1/workspaces/:workspaceId/change-requests/:crId/diff` returns a
 unified patch with `files`, `additions`, `deletions`, and per-file
 status (`added`, `modified`, `deleted`).
 
@@ -163,8 +163,8 @@ TTY (or with `--no-color`).
 
 ## Merge mechanics
 
-`POST /v1/projects/:projectId/change-requests/:crId/merge` runs
-through `apps/api/src/projects/git.ts`'s `mergeBranches`. The
+`POST /v1/workspaces/:workspaceId/change-requests/:crId/merge` runs
+through `apps/api/src/workspaces/git.ts`'s `mergeBranches`. The
 implementation:
 
 1. Fast-forward if `head_ref` is strictly ahead of `base_ref`.
@@ -172,13 +172,13 @@ implementation:
    `Merge CR #<n>: <title>`; override with `--message`. Author is
    `Kortix <noreply@kortix.ai>`.
 3. On success: update `change_requests` row to `merged`, capture SHAs,
-   invalidate the project's mirror cache.
+   invalidate the workspace's mirror cache.
 4. On conflict: 409 with `error: "Merge failed"` and the conflict
    list available via `GET /merge-preview`.
 
 ### Merge preview
 
-`GET /v1/projects/:projectId/change-requests/:crId/merge-preview`
+`GET /v1/workspaces/:workspaceId/change-requests/:crId/merge-preview`
 returns:
 
 ```ts
@@ -212,7 +212,7 @@ The full surface is in `kortix-cli.md` alongside this doc. Summary:
 
 | Command                                      | What it does                                            |
 | -------------------------------------------- | ------------------------------------------------------- |
-| `kortix cr ls [--status open\|merged\|closed\|all]` | List CRs on the project. Default: `open`.        |
+| `kortix cr ls [--status open\|merged\|closed\|all]` | List CRs on the workspace. Default: `open`.        |
 | `kortix cr show <cr>`                        | Metadata + merge preview.                              |
 | `kortix cr diff <cr> [--no-color]`           | Unified patch.                                          |
 | `kortix cr open --title "..." [--description "..."] [--head <ref>] [--base <ref>]` | Open a CR. |
@@ -220,7 +220,7 @@ The full surface is in `kortix-cli.md` alongside this doc. Summary:
 | `kortix cr close <cr>`                       | Close without merging.                                  |
 | `kortix cr reopen <cr>`                      | Reopen a closed CR.                                     |
 
-`<cr>` is either the per-project number (`3` or `#3`) or the UUID
+`<cr>` is either the per-workspace number (`3` or `#3`) or the UUID
 `cr_id`.
 
 ### Sandbox auto-detection
@@ -231,10 +231,10 @@ When `kortix cr open` runs inside a session sandbox:
 - `--session` defaults to `$KORTIX_SESSION_ID`, which back-fills
   `origin_session_id` on the row so the dashboard can show which
   session opened the CR.
-- `--base` defaults to the project's default branch (from
+- `--base` defaults to the workspace's default branch (from
   `projects.default_branch`, usually `main`).
-- `--project` defaults to the session's project (from
-  `$KORTIX_PROJECT_ID`).
+- `--workspace` defaults to the session's workspace (from
+  `$KORTIX_WORKSPACE_ID`).
 - `--title` is the only required flag.
 
 So inside a sandbox the minimal viable invocation is:
@@ -246,7 +246,7 @@ kortix cr open --title "Add release-notes skill" \
 
 ## REST API
 
-All endpoints are under `/v1/projects/:projectId/change-requests`.
+All endpoints are under `/v1/workspaces/:workspaceId/change-requests`.
 The CLI is just a thin wrapper.
 
 | Method | Path                                      | Notes                                                                         |
@@ -262,14 +262,14 @@ The CLI is just a thin wrapper.
 | POST   | `/:crId/reopen`                           | No body. 409 if not `closed`.                                                 |
 
 All endpoints require the caller's token to have **write** access to
-the project (the project-scoped sandbox token always does; user
+the workspace (the workspace-scoped sandbox token always does; user
 tokens require account membership). Mismatched token → 403.
 
 Validation rules on `POST /`:
 
 - `title` required (non-empty).
 - `head_ref` required.
-- `base_ref` defaults to the project's `default_branch`.
+- `base_ref` defaults to the workspace's `default_branch`.
 - `head_ref === base_ref` → 400 (must differ).
 - `head_ref` with no commits ahead of `base_ref` → 422
   `CR_HEAD_NOT_AHEAD` (an empty CR can never be opened). Covers both
@@ -304,7 +304,7 @@ Validation rules on `POST /`:
 - **You cannot reopen a `merged` CR.** Open a new one against the
   post-merge tip.
 - **Branch deletion is not automatic.** After a CR merges, the head
-  branch still exists in the git backend. If the project policy is
+  branch still exists in the git backend. If the workspace policy is
   to clean up session branches, that's a separate sweep — not part of
   the CR merge.
 - **The session-branch tip changes after the agent commits more.**
@@ -312,14 +312,14 @@ Validation rules on `POST /`:
   even after the CR is opened — the diff updates. There's no
   freeze-on-open semantic.
 - **The `KORTIX_*` env vars expected at `cr open` time:**
-  `KORTIX_CLI_TOKEN` (the project-scoped PAT the CLI authenticates with —
+  `KORTIX_CLI_TOKEN` (the workspace-scoped PAT the CLI authenticates with —
   **not** `KORTIX_TOKEN`, which is the sandbox service key and is rejected
-  by the CR routes), `KORTIX_API_URL`, `KORTIX_PROJECT_ID`,
+  by the CR routes), `KORTIX_API_URL`, `KORTIX_WORKSPACE_ID`,
   `KORTIX_BRANCH_NAME` (or `KORTIX_HEAD_REF`), `KORTIX_SESSION_ID`.
   All of these are pre-injected by the session bootstrap. If you're
   running `kortix cr open` *outside* a session (e.g. on your laptop)
-  you'll need to pass `--head` and `--project` explicitly, or be on a
-  cwd linked via `kortix projects link`.
+  you'll need to pass `--head` and `--workspace` explicitly, or be on a
+  cwd linked via `kortix workspaces link`.
 
 ## See also
 
@@ -330,6 +330,6 @@ Validation rules on `POST /`:
 - `../../SKILL.md` — `<change-requests>` section, agent mandate.
 - `packages/db/src/schema/kortix.ts` — schema source (`changeRequests`
   table + `changeRequestStatusEnum`).
-- `apps/api/src/projects/index.ts` — REST handlers
+- `apps/api/src/workspaces/index.ts` — REST handlers
   (`/change-requests/...`).
 - `apps/cli/src/commands/cr.ts` — CLI implementation.

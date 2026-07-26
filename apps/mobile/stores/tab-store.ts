@@ -60,7 +60,7 @@ export const PAGE_TABS: Record<string, PageTab> = {
 // Store
 // ---------------------------------------------------------------------------
 
-/** The per-scope (per-project) slice of tab state. */
+/** The per-scope (per-workspace) slice of tab state. */
 interface TabScopeSnapshot {
   activeSessionId: string | null;
   activePageId: string | null;
@@ -102,9 +102,9 @@ interface TabState {
   showTabsOverview: boolean;
   /** Per-tab ephemeral UI state (scroll positions, view state, etc.) */
   tabStateById: Record<string, Record<string, unknown>>;
-  /** Which scope (project id, or 'home') the flat fields above belong to. */
+  /** Which scope (workspace id, or 'home') the flat fields above belong to. */
   scopeKey: string | null;
-  /** Saved tab state for every other scope, keyed by project id / 'home'. */
+  /** Saved tab state for every other scope, keyed by workspace id / 'home'. */
   scopes: Record<string, TabScopeSnapshot>;
 
   navigateToSession: (sessionId: string | null) => void;
@@ -117,10 +117,10 @@ interface TabState {
   setTabState: (tabId: string, patch: Record<string, unknown>) => void;
   clearTabState: (tabId: string) => void;
   /**
-   * Switch the store to a project's tab scope: snapshots the current flat
+   * Switch the store to a workspace's tab scope: snapshots the current flat
    * state under the old scope key and hydrates the flat state from the new
-   * scope (empty for a never-visited project). Tabs are remembered PER
-   * PROJECT, not globally. No-op when already on the scope.
+   * scope (empty for a never-visited workspace). Tabs are remembered PER
+   * WORKSPACE, not globally. No-op when already on the scope.
    */
   setScope: (key: string) => void;
 }

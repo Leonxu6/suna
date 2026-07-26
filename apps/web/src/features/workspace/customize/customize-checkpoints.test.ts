@@ -25,7 +25,7 @@ describe('Customize information architecture', () => {
     expect(customizePanelSource).not.toContain("section: 'files'");
     const entry = menuRegistry.find((item) => item.id === 'proj-files');
     expect(entry?.label).toBe('Files');
-    expect(entry?.href).toBe('/projects/{projectId}/files');
+    expect(entry?.href).toBe('/workspaces/{workspaceId}/files');
   });
 
   test('LLM management remains reachable from the Connect rail group', () => {

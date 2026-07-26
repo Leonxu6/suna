@@ -882,7 +882,7 @@ export function ReviewDetailModal({
                   {Source.label}
                 </span>
                 <span className="text-muted-foreground/40">&bull;</span>
-                <span className="text-muted-foreground/70 truncate text-xs">{item.project}</span>
+                <span className="text-muted-foreground/70 truncate text-xs">{item.workspace}</span>
               </div>
             </div>
           </div>

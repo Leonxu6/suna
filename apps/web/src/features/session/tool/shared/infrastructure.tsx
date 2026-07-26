@@ -1244,7 +1244,7 @@ export function getToolDiagnostics(part: ToolPart, filePath: string | undefined)
   const output = partOutput(part);
   if (
     output &&
-    (output.includes('<file_diagnostics>') || output.includes('<project_diagnostics>'))
+    (output.includes('<file_diagnostics>') || output.includes('<workspace_diagnostics>'))
   ) {
     const parsed = parseDiagnosticsFromToolOutput(output);
 

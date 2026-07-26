@@ -10,16 +10,16 @@ const H: Record<string,string> = { Authorization: `Bearer ${tok}`, 'Content-Type
 const now = () => Date.now();
 
 const t0 = now();
-const prov: any = await (await fetch(`${BASE}/v1/projects/provision`, { method:'POST', headers:H, body: JSON.stringify({ name:`e2e2-${t0}`, seed_starter:true }) })).json();
+const prov: any = await (await fetch(`${BASE}/v1/workspaces/provision`, { method:'POST', headers:H, body: JSON.stringify({ name:`e2e2-${t0}`, seed_starter:true }) })).json();
 console.log('provision:', prov.project_id, 'seeded', prov.seeded);
 const tSes = now();
-const ses: any = await (await fetch(`${BASE}/v1/projects/${prov.project_id}/sessions`, { method:'POST', headers:H, body: JSON.stringify({ branch_already_created:false }) })).json();
+const ses: any = await (await fetch(`${BASE}/v1/workspaces/${prov.project_id}/sessions`, { method:'POST', headers:H, body: JSON.stringify({ branch_already_created:false }) })).json();
 console.log('session:', ses.session_id, `(provision+session ${((now()-t0)/1000).toFixed(2)}s)`);
 
 // Poll the FE's sandbox endpoint until it reports running
 let sb: any = null; const tSb = now();
 for (let i=0;i<60;i++){
-  const r = await fetch(`${BASE}/v1/projects/${prov.project_id}/sessions/${ses.session_id}/sandbox`, { headers:H });
+  const r = await fetch(`${BASE}/v1/workspaces/${prov.project_id}/sessions/${ses.session_id}/sandbox`, { headers:H });
   if (r.ok){ sb = await r.json(); if (sb?.status==='running' || sb?.state==='running' || sb?.external_id) break; }
   await Bun.sleep(500);
 }
@@ -40,7 +40,7 @@ async function timed(path: string){
   catch(e:any){ console.log(`  ${path} -> ERR ${e?.name||e} (${((now()-s)/1000).toFixed(2)}s)`); return 0; }
 }
 console.log('proxy probes:');
-await timed(`/v1/projects/${prov.project_id}/sessions/${ses.session_id}/agent/health`);
-await timed(`/v1/projects/${prov.project_id}/sessions/${ses.session_id}/global/events`);
+await timed(`/v1/workspaces/${prov.project_id}/sessions/${ses.session_id}/agent/health`);
+await timed(`/v1/workspaces/${prov.project_id}/sessions/${ses.session_id}/global/events`);
 
 process.exit(0);

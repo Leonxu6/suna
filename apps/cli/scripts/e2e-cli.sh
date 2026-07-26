@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # End-to-end exercise of the ENTIRE kortix CLI against a live Kortix host.
 #
-# It scaffolds a throwaway project, ships it (creating a real cloud project +
+# It scaffolds a throwaway workspace, ships it (creating a real cloud workspace +
 # managed git repo), then drives every command group — secrets, env, providers,
 # connectors, sandboxes, files, triggers, channels, cr, sessions + chat, and
 # access — asserting each works. Finally it purges everything it created.
 #
 # Prereqs: logged in (`kortix login`) against a host whose account has credits.
 # Usage:   bash apps/cli/scripts/e2e-cli.sh
-#          KORTIX_E2E_KEEP=1 bash …   # don't purge the project at the end
+#          KORTIX_E2E_KEEP=1 bash …   # don't purge the workspace at the end
 set -uo pipefail
 
 CLI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -47,11 +47,11 @@ run_grep_retry() {
 }
 section() { echo; echo "── $1 ──"; }
 
-# ── Scratch project ─────────────────────────────────────────────────────────
+# ── Scratch workspace ─────────────────────────────────────────────────────────
 WORK="$(mktemp -d -t kortix-e2e-XXXXXX)"
 cleanup() {
   if [[ "${KORTIX_E2E_KEEP:-0}" != "1" ]]; then
-    ( cd "$WORK" && "${RUN[@]}" projects rm --purge -y >/dev/null 2>&1 )
+    ( cd "$WORK" && "${RUN[@]}" workspaces rm --purge -y >/dev/null 2>&1 )
   fi
   rm -rf "$WORK"
 }
@@ -70,14 +70,14 @@ section "init & validate"
 run_grep "init"          "Initialized"       -- "${RUN[@]}" init --name e2e-cli --primary claude --template minimal -y
 run_grep "validate"      "valid"             -- "${RUN[@]}" validate
 
-section "ship (create cloud project)"
+section "ship (create cloud workspace)"
 run_grep "ship"          "Shipped"           -- "${RUN[@]}" ship -y -m "e2e: ship"
 # The managed-git mirror is readable a few seconds after the first push.
 run_grep_retry "repo readable (mirror)" "kortix.yaml" 20 -- "${RUN[@]}" files ls
 
-section "projects"
-run_grep "projects ls"   "e2e-cli"           -- "${RUN[@]}" projects ls
-run_grep "projects info" "project_id"        -- "${RUN[@]}" projects info
+section "workspaces"
+run_grep "workspaces ls"   "e2e-cli"           -- "${RUN[@]}" workspaces ls
+run_grep "workspaces info" "workspace_id"        -- "${RUN[@]}" workspaces info
 
 section "secrets & env"
 run            "secrets set"                 -- "${RUN[@]}" secrets set E2E_TOKEN=abc123
@@ -95,7 +95,7 @@ run            "ship (push config)"          -- "${RUN[@]}" ship -y -m "e2e: con
 # a ~60s throttle, so poll sync→ls until the connector materializes.
 run_grep_retry "connector materialized (cloud)" "e2echk" 35 -- bash -c "${RUN[*]} connectors sync >/dev/null 2>&1; ${RUN[*]} connectors ls"
 run            "connectors credential (cloud)" -- bash -c "printf 'sk-x' | ${RUN[*]} connectors credential e2echk -"
-run            "connectors share (cloud)"     -- "${RUN[@]}" connectors share e2echk --mode project
+run            "connectors share (cloud)"     -- "${RUN[@]}" connectors share e2echk --mode workspace
 run            "connectors policy ls (cloud)" -- "${RUN[@]}" connectors policy ls
 run_grep "connectors apps (cloud)"  "slack"  -- "${RUN[@]}" connectors apps slack
 run            "connectors rm (local)"        -- "${RUN[@]}" connectors rm e2echk
@@ -130,7 +130,7 @@ run_grep "channels status"  "slack"          -- "${RUN[@]}" channels status
 section "change requests"
 run            "cr ls"                        -- "${RUN[@]}" cr ls
 
-section "access (project members)"
+section "access (workspace members)"
 run_grep "access ls"       "$(whoami >/dev/null; echo '@')" -- "${RUN[@]}" access ls
 run            "access pending"               -- "${RUN[@]}" access pending
 

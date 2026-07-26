@@ -32,17 +32,17 @@ PASSWORD=${PASSWORD:-kortix-e2e-password}
 CONFIG_DIR="$HOME/.config/kortix/self-host/$INSTANCE"
 WORK_DIR="$SCRIPT_DIR/work/$INSTANCE"
 CLI_CONFIG_FILE="$WORK_DIR/config.json"
-PROJECT_NAME="self-host-e2e-$INSTANCE"
+WORKSPACE_NAME="self-host-e2e-$INSTANCE"
 # A REAL, always-public, tiny, stable repo — not a fake example.com URL. Every
-# session (any provider, including local-docker) git-clones the project's
+# session (any provider, including local-docker) git-clones the workspace's
 # ACTUAL repo_url into /workspace at boot (KORTIX_GIT_PROXY is off by default
 # on self-host, so this is a direct clone, no proxy involved) — a
 # non-existent URL 404s the clone and the sandbox never reaches
 # runtimeReady:true, regardless of provider. octocat/Hello-World is GitHub's
 # own canonical smoke-test repo (tiny, public, default branch `master`).
-PROJECT_REPO_URL="https://github.com/octocat/Hello-World.git"
-PROJECT_DEFAULT_BRANCH="master"
-PROJECT_COMMIT="7fd1a60b01f91b314f59955a4e4d4e80d8edf11d"
+WORKSPACE_REPO_URL="https://github.com/octocat/Hello-World.git"
+WORKSPACE_DEFAULT_BRANCH="master"
+WORKSPACE_COMMIT="7fd1a60b01f91b314f59955a4e4d4e80d8edf11d"
 
 GREEN=$'\033[0;32m'
 RED=$'\033[0;31m'
@@ -168,7 +168,7 @@ wait_for_sandbox_external_id() {
 
 compose() {
   docker compose \
-    --project-name "kortix-$INSTANCE" \
+    --workspace-name "kortix-$INSTANCE" \
     --env-file "$CONFIG_DIR/.env" \
     -f "$CONFIG_DIR/docker-compose.yml" \
     "$@"
@@ -191,10 +191,10 @@ cleanup() {
     note "Inspect with: kortix self-host logs --instance $INSTANCE"
     return "$rc"
   fi
-  if [ -n "${PROJECT_ID:-}" ]; then
-    psql_selfhost -c "delete from kortix.projects where project_id = '$PROJECT_ID'::uuid;" >/dev/null 2>&1
+  if [ -n "${WORKSPACE_ID:-}" ]; then
+    psql_selfhost -c "delete from kortix.workspaces where workspace_id = '$WORKSPACE_ID'::uuid;" >/dev/null 2>&1
   fi
-  # The local-docker sandbox container is NOT part of the Compose project
+  # The local-docker sandbox container is NOT part of the Compose workspace
   # (kortix-api creates it directly against the host Docker socket) — remove
   # it explicitly by its provider-assigned name if a session ever got one.
   if [ -n "${SANDBOX_EXTERNAL_ID:-}" ]; then
@@ -267,7 +267,7 @@ ok "kortix-migrate one-shot completed (exit 0)"
 section "HTTP Health"
 wait_for_json "API" "$API_PUBLIC_URL/v1/health" 180
 wait_for_json "frontend runtime config" "$PUBLIC_URL/api/runtime-config" 180
-wait_for_db_table "Kortix schema" "kortix.project_snapshot_builds" 180
+wait_for_db_table "Kortix schema" "kortix.workspace_snapshot_builds" 180
 wait_for_db_table "Kortix accounts" "kortix.account_members" 60
 
 source "$CONFIG_DIR/.env"
@@ -297,19 +297,19 @@ ACCOUNT_ID=$(printf '%s' "$ACCOUNTS_JSON" | json_get 0.account_id)
 [ -n "$ACCOUNT_ID" ] || die "could not resolve account id"
 ok "GET /v1/accounts works: $ACCOUNT_ID"
 
-PROJECTS_JSON=$(curl -fsS -H "authorization: Bearer $ACCESS_TOKEN" "$API_PUBLIC_URL/v1/projects")
-printf '%s' "$PROJECTS_JSON" | python3 -c 'import json,sys; json.load(sys.stdin)' >/dev/null
-ok "GET /v1/projects works"
+WORKSPACES_JSON=$(curl -fsS -H "authorization: Bearer $ACCESS_TOKEN" "$API_PUBLIC_URL/v1/workspaces")
+printf '%s' "$WORKSPACES_JSON" | python3 -c 'import json,sys; json.load(sys.stdin)' >/dev/null
+ok "GET /v1/workspaces works"
 
-section "Seed Test Project"
-PROJECT_ID=$(python3 - <<'PY'
+section "Seed Test Workspace"
+WORKSPACE_ID=$(python3 - <<'PY'
 import uuid
 print(uuid.uuid4())
 PY
 )
 psql_selfhost <<SQL >/dev/null
-insert into kortix.projects (
-  project_id,
+insert into kortix.workspaces (
+  workspace_id,
   account_id,
   name,
   repo_url,
@@ -318,33 +318,33 @@ insert into kortix.projects (
   status,
   metadata
 ) values (
-  '$PROJECT_ID'::uuid,
+  '$WORKSPACE_ID'::uuid,
   '$ACCOUNT_ID'::uuid,
-  '$PROJECT_NAME',
-  '$PROJECT_REPO_URL',
-  '$PROJECT_DEFAULT_BRANCH',
+  '$WORKSPACE_NAME',
+  '$WORKSPACE_REPO_URL',
+  '$WORKSPACE_DEFAULT_BRANCH',
   'kortix.yaml',
   'active',
   '{"self_host_e2e":true}'::jsonb
 );
 
-insert into kortix.project_members (
+insert into kortix.workspace_members (
   account_id,
-  project_id,
+  workspace_id,
   user_id,
-  project_role,
+  workspace_role,
   granted_by
 ) values (
   '$ACCOUNT_ID'::uuid,
-  '$PROJECT_ID'::uuid,
+  '$WORKSPACE_ID'::uuid,
   '$USER_ID'::uuid,
   'manager',
   '$USER_ID'::uuid
 );
 
-insert into kortix.project_snapshot_builds (
+insert into kortix.workspace_snapshot_builds (
   account_id,
-  project_id,
+  workspace_id,
   commit_sha,
   branch,
   snapshot_name,
@@ -353,28 +353,28 @@ insert into kortix.project_snapshot_builds (
   metadata
 ) values (
   '$ACCOUNT_ID'::uuid,
-  '$PROJECT_ID'::uuid,
-  '$PROJECT_COMMIT',
-  '$PROJECT_DEFAULT_BRANCH',
+  '$WORKSPACE_ID'::uuid,
+  '$WORKSPACE_COMMIT',
+  '$WORKSPACE_DEFAULT_BRANCH',
   'self-host-e2e-ready',
   'self-host-e2e-ready',
   'ready',
   '{"self_host_e2e":true}'::jsonb
 );
 SQL
-ok "Project and ready snapshot build log seeded: $PROJECT_ID"
+ok "Workspace and ready snapshot build log seeded: $WORKSPACE_ID"
 
-curl -fsS -H "authorization: Bearer $ACCESS_TOKEN" "$API_PUBLIC_URL/v1/projects/$PROJECT_ID/sessions" >/dev/null
-ok "Seeded project is visible to API"
+curl -fsS -H "authorization: Bearer $ACCESS_TOKEN" "$API_PUBLIC_URL/v1/workspaces/$WORKSPACE_ID/sessions" >/dev/null
+ok "Seeded workspace is visible to API"
 
 section "Create Session"
-SESSION_JSON=$(curl -fsS -X POST "$API_PUBLIC_URL/v1/projects/$PROJECT_ID/sessions" \
+SESSION_JSON=$(curl -fsS -X POST "$API_PUBLIC_URL/v1/workspaces/$WORKSPACE_ID/sessions" \
   -H "authorization: Bearer $ACCESS_TOKEN" \
   -H 'content-type: application/json' \
-  -d "{\"provider\":\"local-docker\",\"base_ref\":\"$PROJECT_DEFAULT_BRANCH\",\"name\":\"self-host e2e\",\"branch_already_created\":true}")
+  -d "{\"provider\":\"local-docker\",\"base_ref\":\"$WORKSPACE_DEFAULT_BRANCH\",\"name\":\"self-host e2e\",\"branch_already_created\":true}")
 SESSION_ID=$(printf '%s' "$SESSION_JSON" | json_get session_id)
 [ -n "$SESSION_ID" ] || die "session create failed: $SESSION_JSON"
-ok "POST /v1/projects/:id/sessions works: $SESSION_ID"
+ok "POST /v1/workspaces/:id/sessions works: $SESSION_ID"
 
 section "Sandbox Container"
 # Provisioning is async off the create request (same as every provider) — the
@@ -408,7 +408,7 @@ if status not in ("ok", "degraded"):
 ok "Sandbox /kortix/health returned healthy JSON"
 
 section "Sandbox Stop / Resume (persistence semantics)"
-curl -fsS -X POST "$API_PUBLIC_URL/v1/projects/$PROJECT_ID/sessions/$SESSION_ID/stop" \
+curl -fsS -X POST "$API_PUBLIC_URL/v1/workspaces/$WORKSPACE_ID/sessions/$SESSION_ID/stop" \
   -H "authorization: Bearer $ACCESS_TOKEN" >/dev/null
 STOP_START=$(date +%s)
 while true; do
@@ -421,7 +421,7 @@ ok "stop(): container preserved (not removed), status=stopped"
 # Container must still EXIST (persistence = the writable layer survives).
 docker inspect "kortix-sb-$SANDBOX_EXTERNAL_ID" >/dev/null 2>&1 || die "sandbox container was removed by stop() — persistence semantics violated"
 
-curl -fsS -X POST "$API_PUBLIC_URL/v1/projects/$PROJECT_ID/sessions/$SESSION_ID/start" \
+curl -fsS -X POST "$API_PUBLIC_URL/v1/workspaces/$WORKSPACE_ID/sessions/$SESSION_ID/start" \
   -H "authorization: Bearer $ACCESS_TOKEN" >/dev/null
 RESUME_START=$(date +%s)
 while true; do
@@ -456,7 +456,7 @@ ok "self-host update completed"
 MIGRATE_EXIT2=$(docker inspect -f '{{.State.ExitCode}}' "kortix-$INSTANCE-kortix-migrate-1" 2>/dev/null || echo "missing")
 [ "$MIGRATE_EXIT2" = "0" ] || die "post-update kortix-migrate did not succeed (exit=$MIGRATE_EXIT2)"
 wait_for_json "API (post-update)" "$API_PUBLIC_URL/v1/health" 180
-wait_for_db_table "Kortix schema (post-update)" "kortix.project_snapshot_builds" 60
+wait_for_db_table "Kortix schema (post-update)" "kortix.workspace_snapshot_builds" 60
 ok "stack healthy after update; migrations idempotent"
 
 # The data must survive the upgrade: re-bootstrapping the owner is now a no-op

@@ -96,7 +96,7 @@ export function ShellScopeEditor({ scope, onChange }: ShellScopeEditorProps) {
           type="text"
           value={scope.workingDir || ''}
           onChange={(e) => onChange({ ...scope, workingDir: e.target.value || undefined })}
-          placeholder={tHardcodedUi.raw('componentsTunnelScopeEditorsShellScopeEditor.line96JsxAttrPlaceholderHomeUserProjectOptional')}
+          placeholder={tHardcodedUi.raw('componentsTunnelScopeEditorsShellScopeEditor.line96JsxAttrPlaceholderHomeUserWorkspaceOptional')}
           className="w-full rounded-2xl border bg-background px-2.5 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
         />
       </div>

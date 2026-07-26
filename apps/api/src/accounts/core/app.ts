@@ -41,6 +41,7 @@ export const AccountSummarySchema = z
     slug: z.string(),
     created_at: z.string(),
     updated_at: z.string(),
+    default_workspace_id: z.string().nullable(),
     account_role: z.string().optional(),
     is_primary_owner: z.boolean().optional(),
   })
@@ -57,6 +58,7 @@ export const AccountDetailSchema = z
     mfa_required: z.boolean().optional(),
     created_at: z.string(),
     updated_at: z.string(),
+    default_workspace_id: z.string().nullable(),
   })
   .openapi('AccountDetail');
 
@@ -281,6 +283,7 @@ export function serializeAccount(row: typeof accounts.$inferSelect) {
     slug: row.accountId.slice(0, 8),
     created_at: row.createdAt.toISOString(),
     updated_at: row.updatedAt.toISOString(),
+    default_workspace_id: row.defaultWorkspaceId ?? null,
   };
 }
 

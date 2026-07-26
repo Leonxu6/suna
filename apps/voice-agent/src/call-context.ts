@@ -2,11 +2,11 @@
  * Where this worker learns WHICH call it is, and how to talk back to Kortix.
  *
  * A single worker process handles many jobs (rooms) concurrently, each one a
- * different project/session/call. So anything call-specific — project id,
+ * different workspace/session/call. So anything call-specific — workspace id,
  * session id, call id, and above all the per-call API credential — MUST come
  * from the room, not from a process-wide env var: an env var is shared by
  * every job this process ever runs, and a shared credential would let any
- * call impersonate any other project.
+ * call impersonate any other workspace.
  *
  * The room's metadata is the vehicle: apps/api mints a short-lived credential
  * scoped to this one call and sets it as JSON room metadata when it creates
@@ -23,8 +23,8 @@
  */
 
 export interface CallContext {
-  /** The Kortix project this call belongs to. */
-  projectId: string;
+  /** The Kortix workspace this call belongs to. */
+  workspaceId: string;
   /** The Kortix session this call is bound to. Also the LiveKit room name. */
   sessionId: string;
   /**
@@ -43,6 +43,8 @@ export interface CallContext {
 }
 
 interface RoomMetadataShape {
+  workspace_id?: unknown;
+  /** @deprecated Use `workspace_id`. */
   project_id?: unknown;
   session_id?: unknown;
   call_id?: unknown;
@@ -86,9 +88,10 @@ export function resolveCallContext(
     );
   }
 
-  const projectId = asNonEmptyString(meta.project_id);
-  if (!projectId) {
-    throw new Error('voice-agent: room metadata is missing project_id');
+  const workspaceId =
+    asNonEmptyString(meta.workspace_id) ?? asNonEmptyString(meta.project_id);
+  if (!workspaceId) {
+    throw new Error('voice-agent: room metadata is missing workspace_id');
   }
 
   const kortixApiToken = asNonEmptyString(meta.kortix_api_token);
@@ -97,7 +100,7 @@ export function resolveCallContext(
   }
 
   return {
-    projectId,
+    workspaceId,
     sessionId,
     callId: asNonEmptyString(meta.call_id) ?? sessionId,
     kortixApiUrl:

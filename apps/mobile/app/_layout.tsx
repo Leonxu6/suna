@@ -62,8 +62,8 @@ installHapticsGate();
 // Wire the SDK's single app-specific seam once at startup, before any screen
 // mounts. `backendUrl`/`getToken` reuse mobile's own env resolution and
 // Supabase token source (api/config.ts) unchanged — this just injects them
-// into @kortix/sdk so `lib/projects/projects-client.ts` and friends can call
-// through to `backendApi`/`projects-client` instead of hand-rolling fetch.
+// into @kortix/sdk so `lib/workspaces/workspaces-client.ts` and friends can call
+// through to `backendApi`/`workspaces-client` instead of hand-rolling fetch.
 configureKortix({
   backendUrl: API_URL,
   getToken: getAuthToken,
@@ -625,7 +625,7 @@ export default function RootLayout() {
                                         }}
                                       />
                                       <Stack.Screen
-                                        name="projects"
+                                        name="workspaces"
                                         options={{
                                           gestureEnabled: false,
                                         }}
@@ -759,8 +759,8 @@ function AuthProtection({ children }: { children: React.ReactNode }) {
     // RULE 2: Authenticated users should NEVER see auth screens
     // This prevents back navigation/gestures from showing auth to logged-in users
     if (isAuthenticated && inAuthGroup) {
-      log.log('🚫 Authenticated user on auth screen, redirecting to /projects');
-      router.replace('/projects');
+      log.log('🚫 Authenticated user on auth screen, redirecting to /workspaces');
+      router.replace('/workspaces');
       return;
     }
   }, [isAuthenticated, authLoading, segments, router]);

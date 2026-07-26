@@ -5,7 +5,7 @@ import type { Config } from '../config'
 import { KORTIX_USER_CONTEXT_HEADER } from '../kortix-user-context'
 import { logger } from '../logger'
 import type { Opencode } from '../opencode'
-import type { ProjectEnvStore } from '../project-env'
+import type { WorkspaceEnvStore } from '../workspace-env'
 
 const OPENCODE_RUNTIME_ENV_NAMES = new Set([
   'KORTIX_LLM_API_KEY',
@@ -93,7 +93,11 @@ function applyLlmGatewayMode(enabled: unknown, baseUrl: unknown, denyEnv: unknow
   })
 }
 
-export function createEnvRouter(cfg: Config, opencode: Opencode, projectEnv: ProjectEnvStore): Hono {
+export function createEnvRouter(
+  cfg: Config,
+  opencode: Opencode,
+  workspaceEnv: WorkspaceEnvStore,
+): Hono {
   const router = new Hono()
   let syncInFlight: Promise<Response> | null = null
 
@@ -136,7 +140,7 @@ export function createEnvRouter(cfg: Config, opencode: Opencode, projectEnv: Pro
           return c.json({ error: 'env object is required' }, 400)
         }
 
-        const result = projectEnv.apply({
+        const result = workspaceEnv.apply({
           revision: body.revision,
           env: body.env as Record<string, unknown>,
           names: body.names,
@@ -147,16 +151,16 @@ export function createEnvRouter(cfg: Config, opencode: Opencode, projectEnv: Pro
         const opencodeEnvNames = [...new Set([...opencodeEnv.names, ...llmGatewayEnv.names])].sort()
 
         if (result.changed) {
-          logger.info('[env] project env changed; refreshing live agent env file', {
+          logger.info('[env] workspace env changed; refreshing live agent env file', {
             revision: result.revision,
             names: result.names.length,
           })
-          writeAgentEnvFile(projectEnv)
+          writeAgentEnvFile(workspaceEnv)
         }
         if (body.refreshModels === true && (result.changed || opencodeEnvChanged)) {
           logger.info('[env] model-affecting env changed; restarting opencode', {
-            projectRevision: result.revision,
-            projectEnvChanged: result.changed,
+            workspaceRevision: result.revision,
+            workspaceEnvChanged: result.changed,
             opencodeEnvNames,
           })
           await opencode.restart()

@@ -13,7 +13,7 @@ const now = () => Date.now();
 const s = (ms: number) => (ms / 1000).toFixed(2);
 
 async function provision(name: string): Promise<string|null> {
-  const r = await fetch(`${BASE}/v1/projects/provision`, { method:'POST', headers:H, body: JSON.stringify({ name, seed_starter:true, account_id: ACC }) });
+  const r = await fetch(`${BASE}/v1/workspaces/provision`, { method:'POST', headers:H, body: JSON.stringify({ name, seed_starter:true, account_id: ACC }) });
   if (!r.ok) { console.log(`  provision FAIL ${r.status}: ${(await r.text()).slice(0,120)}`); return null; }
   return (await r.json() as any).project_id;
 }
@@ -50,7 +50,7 @@ for (const prov of PROVIDERS) {
   const runs: any[] = [];
   for (let n = 1; n <= N; n++) {
     const t0 = now();
-    const sr = await fetch(`${BASE}/v1/projects/${pid}/sessions`, { method:'POST', headers:H, body: JSON.stringify({ provider: prov, branch_already_created:false }) });
+    const sr = await fetch(`${BASE}/v1/workspaces/${pid}/sessions`, { method:'POST', headers:H, body: JSON.stringify({ provider: prov, branch_already_created:false }) });
     const sj: any = await sr.json();
     if (!sr.ok || !sj.session_id) { console.log(`  [#${n}] session FAIL ${sr.status}: ${JSON.stringify(sj).slice(0,140)}`); continue; }
     // wait for running

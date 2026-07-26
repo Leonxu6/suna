@@ -20,11 +20,11 @@
   const params = new URLSearchParams(location.search);
   const backendUrl = params.get('api') ?? 'http://localhost:8008/v1';
   const apiKey = params.get('key');
-  const projectId = params.get('project');
+  const workspaceId = params.get('workspace');
   const sessionId = params.get('session');
 
-  if (!apiKey || !projectId || !sessionId) {
-    out.textContent = 'Add ?key=kortix_pat_…&project=…&session=… to the URL.';
+  if (!apiKey || !workspaceId || !sessionId) {
+    out.textContent = 'Add ?key=kortix_pat_…&workspace=…&session=… to the URL.';
     throw new Error('missing params');
   }
 
@@ -32,7 +32,7 @@
 
   (async () => {
     try {
-      const session = kortix.session(projectId, sessionId);
+      const session = kortix.session(workspaceId, sessionId);
       await session.ensureReady();
       await session.stream({
         onEvent: (event) => {

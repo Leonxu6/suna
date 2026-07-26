@@ -4,34 +4,34 @@ import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import { useCallback, useMemo, useState } from 'react';
 
-import { ProjectProviderModal } from '@/features/workspace/customize/sections/llm-provider/llm-provider-modal';
+import { WorkspaceProviderModal } from '@/features/workspace/customize/sections/llm-provider/llm-provider-modal';
 import { useLlmProviderCatalogRevision } from '@/features/workspace/customize/sections/llm-provider/use-live-catalog';
 import { accountStateSelectors, useAccountState } from '@/hooks/billing';
 import { isBillingEnabled } from '@/lib/config';
 import { isLlmGatewayEnabled } from '@/lib/llm-gateway';
-import { PROJECT_ACTIONS } from '@/lib/project-actions';
-import { useProjectCan } from '@/lib/use-project-can';
+import { WORKSPACE_ACTIONS } from '@/lib/workspace-actions';
+import { useWorkspaceCan } from '@/lib/use-workspace-can';
 import type { ProviderModalTab } from '@/stores/provider-modal-store';
 import { useProviderModalStore } from '@/stores/provider-modal-store';
 import { useUpgradeDialogStore } from '@/stores/upgrade-dialog-store';
-import { getProjectDetail, listProjectSecrets } from '@kortix/sdk';
+import { getWorkspaceDetail, listWorkspaceSecrets } from '@kortix/sdk';
 import { connectedGatewayProviderIdsFromSecretNames, hasUsableModel } from '@kortix/sdk/react';
 import type { FlatModel } from './session-chat-input';
 
-export function projectProviderModalTab(tab: ProviderModalTab): 'connected' | 'catalog' | 'models' {
+export function workspaceProviderModalTab(tab: ProviderModalTab): 'connected' | 'catalog' | 'models' {
   return tab === 'providers' ? 'catalog' : tab;
 }
 
 /**
- * Shared "connect a model" routing. Project actions open the project-scoped
- * provider modal in place. Non-project actions use the global provider modal.
+ * Shared "connect a model" routing. Workspace actions open the workspace-scoped
+ * provider modal in place. Non-workspace actions use the global provider modal.
  * Extracted from `ModelSelector` so the picker, chat gate, and onboarding use
  * the same surface.
  *
  * Also computes `hasSelectableModels` — pass the caller's flattened model list
  * (default `[]` for callers that only need the routing actions). This is
  * deliberately NOT `models.length > 0` or a raw provider-connected check: the
- * gateway bakes its whole catalog into every project regardless of plan or
+ * gateway bakes its whole catalog into every workspace regardless of plan or
  * connected keys, so the raw list is basically never empty. See
  * `hasUsableModel` for the actual entitlement check.
  */
@@ -44,36 +44,36 @@ export function useModelConnectionGate(models: FlatModel[] = []) {
   const openUpgradeDialog = useUpgradeDialogStore((s) => s.openUpgradeDialog);
 
   const params = useParams<{ id?: string }>();
-  const projectId = typeof params?.id === 'string' ? params.id : null;
+  const workspaceId = typeof params?.id === 'string' ? params.id : null;
 
-  const projectDetailQuery = useQuery({
-    queryKey: ['project-detail', projectId],
-    queryFn: () => getProjectDetail(projectId as string),
-    enabled: !!projectId,
+  const workspaceDetailQuery = useQuery({
+    queryKey: ['workspace-detail', workspaceId],
+    queryFn: () => getWorkspaceDetail(workspaceId as string),
+    enabled: !!workspaceId,
     staleTime: 30_000,
   });
-  const llmGatewayEnabled = isLlmGatewayEnabled(projectDetailQuery.data?.project);
+  const llmGatewayEnabled = isLlmGatewayEnabled(workspaceDetailQuery.data?.workspace);
   const canWriteProviders =
-    useProjectCan(projectId ?? undefined, PROJECT_ACTIONS.PROJECT_WRITE, {
-      accountId: projectDetailQuery.data?.project.account_id,
+    useWorkspaceCan(workspaceId ?? undefined, WORKSPACE_ACTIONS.WORKSPACE_WRITE, {
+      accountId: workspaceDetailQuery.data?.workspace.account_id,
     }).allowed === true;
 
-  const [projectModalOpen, setProjectModalOpen] = useState(false);
-  const [projectModalTab, setProjectModalTab] = useState<'connected' | 'catalog' | 'models'>(
+  const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
+  const [workspaceModalTab, setWorkspaceModalTab] = useState<'connected' | 'catalog' | 'models'>(
     'catalog',
   );
 
   // Same entitlement inputs ModelSelector uses: which BYOK providers are
-  // connected (from project secrets), and whether the account is on free
+  // connected (from workspace secrets), and whether the account is on free
   // tier (hides Kortix-managed models — they paywall server-side otherwise).
   const baseModels = useMemo(
     () => (llmGatewayEnabled ? models : models.filter((m) => m.providerID !== 'kortix')),
     [models, llmGatewayEnabled],
   );
   const secretsQuery = useQuery({
-    queryKey: ['project-secrets', projectId],
-    queryFn: () => listProjectSecrets(projectId as string),
-    enabled: !!projectId && llmGatewayEnabled,
+    queryKey: ['workspace-secrets', workspaceId],
+    queryFn: () => listWorkspaceSecrets(workspaceId as string),
+    enabled: !!workspaceId && llmGatewayEnabled,
     staleTime: 10_000,
   });
   const connectedProviderIds = useMemo(() => {
@@ -102,35 +102,35 @@ export function useModelConnectionGate(models: FlatModel[] = []) {
   // Disabled queries stay `isPending` forever, so each is guarded by its
   // `enabled` condition.
   const entitlementsPending =
-    (!!projectId && projectDetailQuery.isPending) ||
-    (!!projectId && llmGatewayEnabled && secretsQuery.isPending) ||
+    (!!workspaceId && workspaceDetailQuery.isPending) ||
+    (!!workspaceId && llmGatewayEnabled && secretsQuery.isPending) ||
     accountStatePending;
 
   const openConnectProvider = useCallback(
     (tab: ProviderModalTab = 'providers') => {
-      if (projectId) {
-        setProjectModalTab(projectProviderModalTab(tab));
-        setProjectModalOpen(true);
+      if (workspaceId) {
+        setWorkspaceModalTab(workspaceProviderModalTab(tab));
+        setWorkspaceModalOpen(true);
         return;
       }
       openProviderModal(tab);
     },
-    [projectId, openProviderModal],
+    [workspaceId, openProviderModal],
   );
 
   const openUpgrade = useCallback(() => {
     openUpgradeDialog({
       reason: 'subscription_required',
-      accountId: projectDetailQuery.data?.project.account_id,
+      accountId: workspaceDetailQuery.data?.workspace.account_id,
     });
-  }, [openUpgradeDialog, projectDetailQuery.data?.project.account_id]);
+  }, [openUpgradeDialog, workspaceDetailQuery.data?.workspace.account_id]);
 
-  const modal = projectId ? (
-    <ProjectProviderModal
-      projectId={projectId}
-      open={projectModalOpen}
-      onOpenChange={setProjectModalOpen}
-      defaultTab={projectModalTab}
+  const modal = workspaceId ? (
+    <WorkspaceProviderModal
+      workspaceId={workspaceId}
+      open={workspaceModalOpen}
+      onOpenChange={setWorkspaceModalOpen}
+      defaultTab={workspaceModalTab}
       canWrite={canWriteProviders}
     />
   ) : null;

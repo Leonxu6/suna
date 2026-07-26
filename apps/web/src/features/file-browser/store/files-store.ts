@@ -27,7 +27,7 @@ export interface ClipboardItem {
 interface FilesStoreState {
   /** Which view is active: directory browser or file viewer */
   view: FilesView;
-  /** Current directory path being browsed (relative to project root) */
+  /** Current directory path being browsed (relative to workspace root) */
   currentPath: string;
   /** Path of the file currently being viewed (null = none selected) */
   selectedFilePath: string | null;
@@ -188,7 +188,7 @@ export function createFilesStore(): FilesStoreApi {
   navigateToPath: (path: string) => {
     const { rootPath } = get();
     let normalized = path || '/workspace';
-    // Clamp to rootPath when set — prevent escaping the project directory
+    // Clamp to rootPath when set — prevent escaping the workspace directory
     if (rootPath && !isWithinRoot(normalized, rootPath)) {
       normalized = rootPath;
     }

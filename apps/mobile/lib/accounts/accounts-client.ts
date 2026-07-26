@@ -1,13 +1,13 @@
 /**
- * Accounts data layer (web parity: lib/projects-client account fns + iam-client).
+ * Accounts data layer (web parity: lib/workspaces-client account fns + iam-client).
  *
  * Backs the mobile Account Settings surface — members, invites, IAM permission
  * probing, groups, GitHub connections, audit, and the account-level security /
  * token / observability cards. Reuses the shared apiFetch helper.
  */
 
-import { apiFetch } from '@/lib/projects/projects-client';
-import type { AccountRole } from '@/lib/projects/projects-client';
+import { apiFetch } from '@/lib/workspaces/workspaces-client';
+import type { AccountRole } from '@/lib/workspaces/workspaces-client';
 
 // ── Account + members ─────────────────────────────────────────────────────────
 
@@ -16,7 +16,7 @@ export interface AccountDetail {
   name: string;
   iam_v2_enabled?: boolean;
   member_count: number;
-  project_count: number;
+  workspace_count: number;
   role: AccountRole;
   created_at: string;
   updated_at: string;
@@ -32,7 +32,7 @@ export interface AccountMember {
   email: string | null;
   account_role: AccountRole;
   is_super_admin?: boolean;
-  explicit_project_count?: number;
+  explicit_workspace_count?: number;
   groups?: AccountMemberGroup[];
   active_pat_count?: number;
   has_verified_mfa?: boolean;
@@ -120,7 +120,7 @@ export function leaveAccount(accountId: string) {
 
 // ── IAM permission probing ────────────────────────────────────────────────────
 
-export type IamResourceType = 'account' | 'project' | 'group' | 'member';
+export type IamResourceType = 'account' | 'workspace' | 'group' | 'member';
 
 export interface PermissionProbeInput {
   action: string;

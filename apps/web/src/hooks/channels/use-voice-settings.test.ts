@@ -7,6 +7,6 @@ const source = readFileSync(join(import.meta.dir, 'use-voice-settings.ts'), 'utf
 describe('voice settings SDK boundary', () => {
   test('imports setMeetBotName from the canonical SDK entry point', () => {
     expect(source).toContain("import { setMeetBotName } from '@kortix/sdk';");
-    expect(source).not.toContain('@kortix/sdk/projects-client');
+    expect(source).not.toContain('@kortix/sdk/workspaces-client');
   });
 });

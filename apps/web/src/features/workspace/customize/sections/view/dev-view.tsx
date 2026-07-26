@@ -23,59 +23,59 @@ import { errorToast, successToast } from '@/components/ui/toast';
 import { Icon } from '@/features/icon/icon';
 import { ErrorState } from '@/features/layout/section/error-state';
 import { useCopy } from '@/hooks/use-copy';
-import { getProject, inviteRepoCollaborator, isManagedGithubProject } from '@kortix/sdk';
-import { PROJECT_ACTIONS } from '@/lib/project-actions';
-import { useProjectCan } from '@/lib/use-project-can';
+import { getWorkspace, inviteRepoCollaborator, isManagedGithubWorkspace } from '@kortix/sdk';
+import { WORKSPACE_ACTIONS } from '@/lib/workspace-actions';
+import { useWorkspaceCan } from '@/lib/use-workspace-can';
 import { cn } from '@/lib/utils';
 import CustomizeSectionWrapper from '../component/section-wrapper';
 
-export function DevView({ projectId }: { projectId: string }) {
+export function DevView({ workspaceId }: { workspaceId: string }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
-  const projectQuery = useQuery({
-    queryKey: ['project', projectId],
-    queryFn: () => getProject(projectId),
+  const workspaceQuery = useQuery({
+    queryKey: ['workspace', workspaceId],
+    queryFn: () => getWorkspace(workspaceId),
     staleTime: 20_000,
   });
 
-  const project = projectQuery.data;
+  const workspace = workspaceQuery.data;
   // The GitHub-invite form calls inviteRepoCollaborator, which asserts
-  // project.write server-side. A read-only role (project.read only) still sees the
+  // workspace.write server-side. A read-only role (workspace.read only) still sees the
   // whole dev walkthrough — just not the invite control that would 403. Fails safe:
   // false until the probe resolves.
-  const canWrite = useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_WRITE).allowed === true;
+  const canWrite = useWorkspaceCan(workspaceId, WORKSPACE_ACTIONS.WORKSPACE_WRITE).allowed === true;
 
   return (
     <CustomizeSectionWrapper
       title={tI18nHardcoded.raw(
-        'autoComponentsProjectsCustomizeSectionsDevViewJsxTextDevelopOn125f276d',
+        'autoComponentsWorkspacesCustomizeSectionsDevViewJsxTextDevelopOn125f276d',
       )}
       description={tI18nHardcoded.raw(
-        'autoComponentsProjectsCustomizeSectionsDevViewJsxTextThisProjectfee1f74b',
+        'autoComponentsWorkspacesCustomizeSectionsDevViewJsxTextThisWorkspacefee1f74b',
       )}
     >
-      {projectQuery.isLoading && (
+      {workspaceQuery.isLoading && (
         <div className="space-y-5">
           <Skeleton className="h-40 rounded-md" />
           <Skeleton className="h-40 rounded-md" />
         </div>
       )}
 
-      {projectQuery.isError && (
+      {workspaceQuery.isError && (
         <ErrorState
           size="sm"
           title={tI18nHardcoded.raw(
-            'autoComponentsProjectsCustomizeSectionsDevViewJsxAttrTitleCouldnfd7978fb',
+            'autoComponentsWorkspacesCustomizeSectionsDevViewJsxAttrTitleCouldnfd7978fb',
           )}
-          description={(projectQuery.error as Error).message}
+          description={(workspaceQuery.error as Error).message}
           action={
-            <Button variant="outline" size="sm" onClick={() => projectQuery.refetch()}>
+            <Button variant="outline" size="sm" onClick={() => workspaceQuery.refetch()}>
               Retry
             </Button>
           }
         />
       )}
 
-      {project && <DevSteps project={project} canWrite={canWrite} />}
+      {workspace && <DevSteps workspace={workspace} canWrite={canWrite} />}
     </CustomizeSectionWrapper>
   );
 }
@@ -87,17 +87,17 @@ type DevStep = {
 };
 
 function DevSteps({
-  project,
+  workspace,
   canWrite,
 }: {
-  project: Awaited<ReturnType<typeof getProject>>;
+  workspace: Awaited<ReturnType<typeof getWorkspace>>;
   canWrite: boolean;
 }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
-  const cloneUrl = cloneUrlFor(project.repo_url);
-  const repoDir = repoDirFor(project.repo_url) || 'my-project';
-  const managed = isManagedGithubProject(project);
-  const branch = project.default_branch || 'main';
+  const cloneUrl = cloneUrlFor(workspace.repo_url);
+  const repoDir = repoDirFor(workspace.repo_url) || 'my-workspace';
+  const managed = isManagedGithubWorkspace(workspace);
+  const branch = workspace.default_branch || 'main';
 
   const steps: DevStep[] = [];
 
@@ -106,19 +106,19 @@ function DevSteps({
   if (managed && canWrite) {
     steps.push({
       title: tI18nHardcoded.raw(
-        'autoComponentsProjectsCustomizeSectionsDevViewJsxAttrTitleGetd1e11afa',
+        'autoComponentsWorkspacesCustomizeSectionsDevViewJsxAttrTitleGetd1e11afa',
       ),
       hint: tI18nHardcoded.raw(
-        'autoComponentsProjectsCustomizeSectionsDevViewJsxAttrHintThiseeeaf15f',
+        'autoComponentsWorkspacesCustomizeSectionsDevViewJsxAttrHintThiseeeaf15f',
       ),
-      content: <RepoAccessForm projectId={project.project_id} />,
+      content: <RepoAccessForm workspaceId={workspace.workspace_id} />,
     });
   }
 
   steps.push(
     {
       title: tI18nHardcoded.raw(
-        'autoComponentsProjectsCustomizeSectionsDevViewJsxAttrTitleCloneeed535b5',
+        'autoComponentsWorkspacesCustomizeSectionsDevViewJsxAttrTitleCloneeed535b5',
       ),
       hint: managed
         ? 'Once your invite is accepted, clone it like any other repo.'
@@ -127,10 +127,10 @@ function DevSteps({
     },
     {
       title: tI18nHardcoded.raw(
-        'autoComponentsProjectsCustomizeSectionsDevViewJsxAttrTitleInstall5ee6d4a5',
+        'autoComponentsWorkspacesCustomizeSectionsDevViewJsxAttrTitleInstall5ee6d4a5',
       ),
       hint: tI18nHardcoded.raw(
-        'autoComponentsProjectsCustomizeSectionsDevViewJsxAttrHintManages9608753c',
+        'autoComponentsWorkspacesCustomizeSectionsDevViewJsxAttrHintManages9608753c',
       ),
       content: (
         <CommandBlock lines={['curl -fsSL https://kortix.com/install | bash', 'kortix login']} />
@@ -138,37 +138,37 @@ function DevSteps({
     },
     {
       title: tI18nHardcoded.raw(
-        'autoComponentsProjectsCustomizeSectionsDevViewJsxAttrTitleSet0eb61991',
+        'autoComponentsWorkspacesCustomizeSectionsDevViewJsxAttrTitleSet0eb61991',
       ),
       hint: tI18nHardcoded.raw(
-        'autoComponentsProjectsCustomizeSectionsDevViewJsxAttrHintWires03f7d392',
+        'autoComponentsWorkspacesCustomizeSectionsDevViewJsxAttrHintWires03f7d392',
       ),
       content: <CommandBlock lines={['kortix init --force']} />,
     },
     {
       title: tI18nHardcoded.raw(
-        'autoComponentsProjectsCustomizeSectionsDevViewJsxAttrTitlePull407b0e0e',
+        'autoComponentsWorkspacesCustomizeSectionsDevViewJsxAttrTitlePull407b0e0e',
       ),
       hint: tI18nHardcoded.raw(
-        'autoComponentsProjectsCustomizeSectionsDevViewJsxAttrHintWritese14f4d88',
+        'autoComponentsWorkspacesCustomizeSectionsDevViewJsxAttrHintWritese14f4d88',
       ),
       content: <CommandBlock lines={['kortix env pull']} />,
     },
     {
       title: tI18nHardcoded.raw(
-        'autoComponentsProjectsCustomizeSectionsDevViewJsxAttrTitleBuild28ec472e',
+        'autoComponentsWorkspacesCustomizeSectionsDevViewJsxAttrTitleBuild28ec472e',
       ),
       hint: tI18nHardcoded.raw(
-        'autoComponentsProjectsCustomizeSectionsDevViewJsxAttrHintThisc4b92026',
+        'autoComponentsWorkspacesCustomizeSectionsDevViewJsxAttrHintThisc4b92026',
       ),
       content: <Launchers />,
     },
     {
       title: tI18nHardcoded.raw(
-        'autoComponentsProjectsCustomizeSectionsDevViewJsxAttrTitleShip32cd936f',
+        'autoComponentsWorkspacesCustomizeSectionsDevViewJsxAttrTitleShip32cd936f',
       ),
       hint: tI18nHardcoded.raw(
-        'autoComponentsProjectsCustomizeSectionsDevViewJsxAttrHintOpen4938bb8e',
+        'autoComponentsWorkspacesCustomizeSectionsDevViewJsxAttrHintOpen4938bb8e',
       ),
       content: (
         <>
@@ -182,13 +182,13 @@ function DevSteps({
           />
           <p className="text-muted-foreground mt-2 text-xs">
             {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsDevViewJsxTextBranchesMerge6cfcecc7',
+              'autoComponentsWorkspacesCustomizeSectionsDevViewJsxTextBranchesMerge6cfcecc7',
             )}{' '}
             <code className="bg-muted text-foreground rounded-sm px-1 py-0.5 font-mono text-xs">
               {branch}
             </code>{' '}
             {tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsDevViewJsxTextThroughChange0501ea03',
+              'autoComponentsWorkspacesCustomizeSectionsDevViewJsxTextThroughChange0501ea03',
             )}
           </p>
         </>
@@ -258,7 +258,7 @@ function CommandBlock({ lines }: { lines: string[] }) {
         size="icon"
         onClick={copy}
         aria-label={tI18nHardcoded.raw(
-          'autoComponentsProjectsCustomizeSectionsDevViewJsxAttrAriaLabel36dfdacf',
+          'autoComponentsWorkspacesCustomizeSectionsDevViewJsxAttrAriaLabel36dfdacf',
         )}
         className="absolute top-1.5 right-1.5 size-8"
       >
@@ -298,12 +298,12 @@ function Launchers() {
   );
 }
 
-function RepoAccessForm({ projectId }: { projectId: string }) {
+function RepoAccessForm({ workspaceId }: { workspaceId: string }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const [username, setUsername] = useState('');
 
   const invite = useMutation({
-    mutationFn: () => inviteRepoCollaborator(projectId, username.trim(), 'write'),
+    mutationFn: () => inviteRepoCollaborator(workspaceId, username.trim(), 'write'),
     onSuccess: (res) => {
       if (res.alreadyCollaborator) {
         successToast(`@${res.username} already has access to this repo`);
@@ -333,7 +333,7 @@ function RepoAccessForm({ projectId }: { projectId: string }) {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder={tI18nHardcoded.raw(
-              'autoComponentsProjectsCustomizeSectionsDevViewJsxAttrPlaceholderYoure78e16b1',
+              'autoComponentsWorkspacesCustomizeSectionsDevViewJsxAttrPlaceholderYoure78e16b1',
             )}
             autoCapitalize="off"
             autoCorrect="off"
@@ -344,7 +344,7 @@ function RepoAccessForm({ projectId }: { projectId: string }) {
         </div>
         <Button type="submit" className="shrink-0" disabled={!username.trim() || invite.isPending}>
           {invite.isPending ? <Loading className="size-3.5 animate-spin" /> : null}
-          {tI18nHardcoded.raw('autoComponentsProjectsCustomizeSectionsDevViewJsxTextAddMedc5ab441')}
+          {tI18nHardcoded.raw('autoComponentsWorkspacesCustomizeSectionsDevViewJsxTextAddMedc5ab441')}
         </Button>
       </div>
     </form>

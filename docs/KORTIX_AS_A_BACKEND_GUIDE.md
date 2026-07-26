@@ -28,10 +28,10 @@ is what unlocks the backend-only overrides below.
 
 ## 2. Start a session on behalf of a user
 
-`POST /v1/projects/:projectId/sessions` with a `Bearer` API key:
+`POST /v1/workspaces/:workspaceId/sessions` with a `Bearer` API key:
 
 ```bash
-curl -X POST https://api.kortix.com/v1/projects/<project-id>/sessions \
+curl -X POST https://api.kortix.com/v1/workspaces/<workspace-id>/sessions \
   -H "Authorization: Bearer $KORTIX_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{

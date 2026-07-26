@@ -11,7 +11,7 @@ import { useModelConnectionGate } from './use-model-connection-gate';
  * The single "no model connected" teaching moment — an icon, a plain-English
  * explanation, and the two ways out: upgrade to a Kortix plan, or bring an API
  * key from any provider. Shared by the chat input's full-block gate and the
- * project onboarding wizard so the copy and actions never drift apart.
+ * workspace onboarding wizard so the copy and actions never drift apart.
  */
 export function ModelConnectionGate({
   size = 'default',

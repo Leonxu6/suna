@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { __resetBootTimelineRelayForTests, relayBootTimelineToApi } from '../boot-timeline-relay'
 
 const BASE_ENV = {
-  KORTIX_PROJECT_ID: 'proj-1',
+  KORTIX_WORKSPACE_ID: 'workspace-1',
   KORTIX_SESSION_ID: 'sess-1',
   KORTIX_SANDBOX_TOKEN: 'sandbox-token-abc',
   KORTIX_API_URL: 'https://api.kortix.test/v1',

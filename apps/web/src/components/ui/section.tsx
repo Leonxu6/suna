@@ -8,7 +8,7 @@
  * whitespace do all the visual work.
  *
  * <Section label="About" action={<Button size="sm">Edit</Button>}>
- *   <p>Project description goes here.</p>
+ *   <p>Workspace description goes here.</p>
  * </Section>
  */
 

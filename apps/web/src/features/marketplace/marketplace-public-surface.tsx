@@ -6,7 +6,7 @@ import { useMemo, type ReactNode } from 'react';
 import { marketplaceItemHref } from '@/lib/marketplace-slug';
 import { MarketplaceSurfaceProvider, type MarketplaceSurface } from './marketplace-surface';
 
-/** Provides the public marketplace surface (route-based navigation, no project
+/** Provides the public marketplace surface (route-based navigation, no workspace
  *  binding, no installed state) to the shared cards/detail. Wrap the public
  *  `/marketplace` explore + item detail in this. */
 export function PublicMarketplaceProvider({ children }: { children: ReactNode }) {

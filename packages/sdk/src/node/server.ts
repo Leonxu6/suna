@@ -159,9 +159,9 @@ function wrapScoped<T>(value: T, config: KortixPlatformConfig, seen: WeakSet<obj
  *
  *   import { createScopedKortix } from '@kortix/sdk/server';
  *
- *   app.get('/projects', async (req, res) => {
+ *   app.get('/workspaces', async (req, res) => {
  *     const kortix = createScopedKortix({ backendUrl, getToken: () => tokenFor(req) });
- *     res.json(await kortix.projects.list());
+ *     res.json(await kortix.workspaces.list());
  *   });
  *
  * Two concurrent requests each calling `createScopedKortix` with a different

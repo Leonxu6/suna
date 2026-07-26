@@ -15,7 +15,7 @@ import { TextShimmer } from '@/components/ui/text-shimmer';
 import { errorToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import {
-  restartProjectSession,
+  restartWorkspaceSession,
   sessionStartKey,
   type SessionStartStage,
 } from '@kortix/sdk';
@@ -119,7 +119,7 @@ type BootStepVariant = 'stepper' | 'compact' | 'inline';
  */
 export const STEPS: Step[] = [
   { label: 'Reserving your computer', description: 'Finding you a secure, isolated machine.' },
-  { label: 'Loading your workspace', description: 'Copying your project files into place.' },
+  { label: 'Loading your workspace', description: 'Copying your workspace files into place.' },
   { label: 'Waking the agent', description: 'Starting the runtime and loading your tools.' },
   { label: 'Connecting', description: 'Linking you to your session. Almost there.' },
 ];
@@ -552,8 +552,8 @@ export function SessionStartingLoader({
   delayMs = LOADER_DELAY_MS,
   /** When both are given, a "Restart session" fallback appears once the boot
    *  has clearly stalled (see STUCK_AFTER_MS). Omit either to hide it — some
-   *  embeddings of this loader don't have a project session id in scope. */
-  projectId,
+   *  embeddings of this loader don't have a workspace session id in scope. */
+  workspaceId,
   sessionId,
   /** Layout. Defaults to the full stepper + progress rail; pass `compact` for
    *  the spinner + headline + description card, or `inline` for the single
@@ -562,7 +562,7 @@ export function SessionStartingLoader({
 }: {
   stage?: SessionStartStage;
   delayMs?: number;
-  projectId?: string;
+  workspaceId?: string;
   sessionId?: string;
   variant?: BootStepVariant;
 }) {
@@ -586,15 +586,15 @@ export function SessionStartingLoader({
   const clockStart = useRef(now);
   const slow = now - clockStart.current >= SLOW_AFTER_MS;
   const stuck = now - clockStart.current >= STUCK_AFTER_MS;
-  const canRestart = !!projectId && !!sessionId;
+  const canRestart = !!workspaceId && !!sessionId;
 
   const restartMutation = useMutation({
-    mutationFn: () => restartProjectSession(projectId!, sessionId!),
+    mutationFn: () => restartWorkspaceSession(workspaceId!, sessionId!),
     onSuccess: () => {
       clockStart.current = Date.now();
-      queryClient.invalidateQueries({ queryKey: sessionStartKey(projectId!, sessionId!) });
+      queryClient.invalidateQueries({ queryKey: sessionStartKey(workspaceId!, sessionId!) });
       queryClient.invalidateQueries({
-        queryKey: ['project', 'session-sandbox', projectId, sessionId],
+        queryKey: ['workspace', 'session-sandbox', workspaceId, sessionId],
       });
     },
     onError: (err) => {

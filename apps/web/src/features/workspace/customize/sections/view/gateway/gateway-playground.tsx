@@ -25,13 +25,13 @@ import { errorToast } from '@/components/ui/toast';
 import { ModelSelector } from '@/features/session/model-selector';
 import CustomizeSectionWrapper from '@/features/workspace/customize/sections/component/section-wrapper';
 import { modelKeyToWire, wireToModelKey } from '@kortix/sdk/react';
-import { useGatewayPlayground } from '@/hooks/projects/use-project-gateway';
+import { useGatewayPlayground } from '@/hooks/workspaces/use-workspace-gateway';
 import type {
   GatewayModelGenerationConfig,
   GatewayPlaygroundResult,
-} from '@/lib/projects-gateway-client';
+} from '@/lib/workspaces-gateway-client';
 import { cn } from '@/lib/utils';
-import { useProjectModels } from '@kortix/sdk/react';
+import { useWorkspaceModels } from '@kortix/sdk/react';
 
 import { displayModel } from './_shared';
 import { fmtUsd } from './_metrics';
@@ -39,7 +39,7 @@ import { GenerationControlsPanel } from './generation-controls';
 
 const MAX_MODELS = 6;
 
-type PlaygroundModel = ReturnType<typeof useProjectModels>[number];
+type PlaygroundModel = ReturnType<typeof useWorkspaceModels>[number];
 
 function PlaygroundModelSelector({
   value,
@@ -127,16 +127,16 @@ export function PlaygroundResultCard({ result }: { result: GatewayPlaygroundResu
   );
 }
 
-export function GatewayPlayground({ projectId }: { projectId: string }) {
-  const catalogModels = useProjectModels(projectId);
-  const playground = useGatewayPlayground(projectId);
+export function GatewayPlayground({ workspaceId }: { workspaceId: string }) {
+  const catalogModels = useWorkspaceModels(workspaceId);
+  const playground = useGatewayPlayground(workspaceId);
 
   const [prompt, setPrompt] = useState('');
   const [system, setSystem] = useState('');
   const [showSystem, setShowSystem] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   // Per-model generation-parameter overrides for this run only — never
-  // persisted (unlike the routing section's project-default config). Keyed
+  // persisted (unlike the routing section's workspace-default config). Keyed
   // by wire model id so removing/re-adding a model keeps its tuning.
   const [generationConfig, setGenerationConfig] = useState<
     Record<string, GatewayModelGenerationConfig>

@@ -3,9 +3,9 @@ import { z } from 'zod'
 /**
  * Env contract for kortix-sandbox-agent-server.
  *
- * Names must stay aligned with apps/api/src/projects/index.ts: the API
- * passes KORTIX_PROJECT_AUTO_CLONE / KORTIX_REPO_URL / KORTIX_BRANCH_NAME /
- * KORTIX_DEFAULT_BRANCH / KORTIX_PROJECT_ID / KORTIX_API_URL /
+ * Names must stay aligned with apps/api/src/workspaces: the API
+ * passes KORTIX_WORKSPACE_AUTO_CLONE / KORTIX_REPO_URL / KORTIX_BRANCH_NAME /
+ * KORTIX_DEFAULT_BRANCH / KORTIX_WORKSPACE_ID / KORTIX_API_URL /
  * KORTIX_SERVICE_PORT to Daytona at sandbox creation time. The provider layer
  * injects the sandbox credential as KORTIX_SANDBOX_TOKEN (with KORTIX_TOKEN kept
  * as a back-compat alias for daemons baked before the rename). It is the daemon's
@@ -29,18 +29,18 @@ const Schema = z.object({
   // build preview URLs against this exact port via /proxy/3211 and p3211-* .
   KORTIX_STATIC_PORT: z.coerce.number().int().positive().default(3211),
   KORTIX_WORKSPACE: z.string().default('/workspace'),
-  // Project repo is cloned directly into the workspace. The repo's
+  // Workspace repo is cloned directly into the sandbox filesystem. The repo's
   // Kortix-owned files live under <workspace>/.kortix/ (Dockerfile +
   // opencode config dir) — no intermediate clone-target directory.
-  KORTIX_PROJECT_TARGET: z.string().default('/workspace'),
+  KORTIX_WORKSPACE_TARGET: z.string().default('/workspace'),
   KORTIX_DEFAULT_BRANCH: z.string().default('main'),
   KORTIX_BRANCH_FETCH_ATTEMPTS: z.coerce.number().int().positive().default(60),
   KORTIX_BRANCH_FETCH_DELAY: z.coerce.number().positive().default(0.25),
   KORTIX_DEFAULT_OPENCODE_CONFIG_DIR: z
     .string()
     .default('/ephemeral/kortix-master/opencode'),
-  KORTIX_PROJECT_AUTO_CLONE: BoolFlag.default(false),
-  KORTIX_PROJECT_ID: z.string().optional(),
+  KORTIX_WORKSPACE_AUTO_CLONE: BoolFlag.default(false),
+  KORTIX_WORKSPACE_ID: z.string().optional(),
   KORTIX_API_URL: z.string().optional(),
   KORTIX_REPO_URL: z.string().optional(),
   KORTIX_BRANCH_NAME: z.string().optional(),
@@ -83,13 +83,13 @@ export type Config = {
   opencodeInternalPort: number
   staticPort: number
   workspace: string
-  projectTarget: string
+  workspaceTarget: string
   defaultBranch: string
   branchFetchAttempts: number
   branchFetchDelaySec: number
   defaultOpencodeConfigDir: string
   autoClone: boolean
-  projectId: string | undefined
+  workspaceId: string | undefined
   apiUrl: string | undefined
   repoUrl: string | undefined
   branchName: string | undefined
@@ -110,13 +110,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     KORTIX_OPENCODE_INTERNAL_PORT: env.KORTIX_OPENCODE_INTERNAL_PORT,
     KORTIX_STATIC_PORT: env.KORTIX_STATIC_PORT,
     KORTIX_WORKSPACE: env.KORTIX_WORKSPACE,
-    KORTIX_PROJECT_TARGET: env.KORTIX_PROJECT_TARGET,
+    KORTIX_WORKSPACE_TARGET: env.KORTIX_WORKSPACE_TARGET ?? env.KORTIX_PROJECT_TARGET,
     KORTIX_DEFAULT_BRANCH: env.KORTIX_DEFAULT_BRANCH,
     KORTIX_BRANCH_FETCH_ATTEMPTS: env.KORTIX_BRANCH_FETCH_ATTEMPTS,
     KORTIX_BRANCH_FETCH_DELAY: env.KORTIX_BRANCH_FETCH_DELAY,
     KORTIX_DEFAULT_OPENCODE_CONFIG_DIR: env.KORTIX_DEFAULT_OPENCODE_CONFIG_DIR,
-    KORTIX_PROJECT_AUTO_CLONE: env.KORTIX_PROJECT_AUTO_CLONE,
-    KORTIX_PROJECT_ID: env.KORTIX_PROJECT_ID,
+    KORTIX_WORKSPACE_AUTO_CLONE:
+      env.KORTIX_WORKSPACE_AUTO_CLONE ?? env.KORTIX_PROJECT_AUTO_CLONE,
+    KORTIX_WORKSPACE_ID: env.KORTIX_WORKSPACE_ID ?? env.KORTIX_PROJECT_ID,
     KORTIX_API_URL: env.KORTIX_API_URL,
     KORTIX_REPO_URL: env.KORTIX_REPO_URL,
     KORTIX_BRANCH_NAME: env.KORTIX_BRANCH_NAME,
@@ -135,13 +136,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     opencodeInternalPort: parsed.KORTIX_OPENCODE_INTERNAL_PORT,
     staticPort: parsed.KORTIX_STATIC_PORT,
     workspace: parsed.KORTIX_WORKSPACE,
-    projectTarget: parsed.KORTIX_PROJECT_TARGET,
+    workspaceTarget: parsed.KORTIX_WORKSPACE_TARGET,
     defaultBranch: parsed.KORTIX_DEFAULT_BRANCH,
     branchFetchAttempts: parsed.KORTIX_BRANCH_FETCH_ATTEMPTS,
     branchFetchDelaySec: parsed.KORTIX_BRANCH_FETCH_DELAY,
     defaultOpencodeConfigDir: parsed.KORTIX_DEFAULT_OPENCODE_CONFIG_DIR,
-    autoClone: parsed.KORTIX_PROJECT_AUTO_CLONE,
-    projectId: parsed.KORTIX_PROJECT_ID,
+    autoClone: parsed.KORTIX_WORKSPACE_AUTO_CLONE,
+    workspaceId: parsed.KORTIX_WORKSPACE_ID,
     apiUrl: parsed.KORTIX_API_URL,
     repoUrl: parsed.KORTIX_REPO_URL,
     branchName: parsed.KORTIX_BRANCH_NAME,
@@ -165,9 +166,9 @@ type ManifestFormat = 'yaml' | 'toml'
  * the API and CLI use. Returns null when neither file exists. The daemon has no
  * TOML/YAML parser dependency, so callers regex the returned body per `format`.
  */
-async function readProjectManifest(
+async function readWorkspaceManifest(
   fs: typeof import('node:fs/promises'),
-  projectTarget: string,
+  workspaceTarget: string,
 ): Promise<{ body: string; format: ManifestFormat } | null> {
   const candidates: { file: string; format: ManifestFormat }[] = [
     { file: 'kortix.yaml', format: 'yaml' },
@@ -176,7 +177,7 @@ async function readProjectManifest(
   ]
   for (const { file, format } of candidates) {
     try {
-      return { body: await fs.readFile(`${projectTarget}/${file}`, 'utf8'), format }
+      return { body: await fs.readFile(`${workspaceTarget}/${file}`, 'utf8'), format }
     } catch {}
   }
   return null
@@ -229,7 +230,7 @@ function extractNestedString(
  */
 export async function resolveSandboxOnBoot(cfg: Config): Promise<string | null> {
   const fs = await import('node:fs/promises')
-  const manifest = await readProjectManifest(fs, cfg.projectTarget)
+  const manifest = await readWorkspaceManifest(fs, cfg.workspaceTarget)
   if (!manifest) return null
   return extractNestedString(manifest.body, manifest.format, 'sandbox', 'on_boot')
 }
@@ -244,8 +245,8 @@ export async function resolveSandboxOnBoot(cfg: Config): Promise<string | null> 
  */
 export async function resolveOpencodeConfigDir(cfg: Config): Promise<string> {
   const fs = await import('node:fs/promises')
-  const relConfigDir = await readOpencodeConfigDirFromManifest(fs, cfg.projectTarget)
-  const candidate = `${cfg.projectTarget}/${relConfigDir}`
+  const relConfigDir = await readOpencodeConfigDirFromManifest(fs, cfg.workspaceTarget)
+  const candidate = `${cfg.workspaceTarget}/${relConfigDir}`
   for (const filename of ['opencode.jsonc', 'opencode.json']) {
     try {
       const stat = await fs.stat(`${candidate}/${filename}`)
@@ -271,10 +272,10 @@ export async function resolveOpencodeConfigDir(cfg: Config): Promise<string> {
  */
 async function readOpencodeConfigDirFromManifest(
   fs: typeof import('node:fs/promises'),
-  projectTarget: string,
+  workspaceTarget: string,
 ): Promise<string> {
   const fallback = '.kortix/opencode'
-  const manifest = await readProjectManifest(fs, projectTarget)
+  const manifest = await readWorkspaceManifest(fs, workspaceTarget)
   if (!manifest) return fallback
   const rawValue = extractNestedString(manifest.body, manifest.format, 'opencode', 'config_dir')
   if (!rawValue) return fallback

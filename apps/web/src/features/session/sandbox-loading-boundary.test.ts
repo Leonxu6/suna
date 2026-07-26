@@ -3,16 +3,16 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const boundarySource = readFileSync(join(import.meta.dir, 'sandbox-loading-boundary.tsx'), 'utf8');
-const projectLayoutSource = readFileSync(
-  join(import.meta.dir, '../../app/(app)/projects/[id]/layout.tsx'),
+const workspaceLayoutSource = readFileSync(
+  join(import.meta.dir, '../../app/(app)/workspaces/[id]/layout.tsx'),
   'utf8',
 );
-const projectAccessSource = readFileSync(
-  join(import.meta.dir, '../../components/projects/project-access-boundary.tsx'),
+const workspaceAccessSource = readFileSync(
+  join(import.meta.dir, '../../components/workspaces/workspace-access-boundary.tsx'),
   'utf8',
 );
-const projectHomeSource = readFileSync(
-  join(import.meta.dir, '../workspace/project-layout/project-home.tsx'),
+const workspaceHomeSource = readFileSync(
+  join(import.meta.dir, '../workspace/workspace-layout/workspace-home.tsx'),
   'utf8',
 );
 
@@ -23,29 +23,29 @@ describe('session navigation loading boundaries', () => {
     expect(boundarySource).not.toContain('min-h-[50vh]');
   });
 
-  test('the project shell cannot be replaced by a route-wide sandbox fallback', () => {
-    expect(projectLayoutSource).not.toContain('SandboxLoadingBoundary');
-    expect(projectLayoutSource).toContain('<ProjectAccessBoundary projectId={projectId}>');
-    expect(projectLayoutSource).toContain('<SessionCacheWarmer projectId={projectId} />');
-    expect(projectLayoutSource).toContain('<ProjectShell projectId={projectId}>');
+  test('the workspace shell cannot be replaced by a route-wide sandbox fallback', () => {
+    expect(workspaceLayoutSource).not.toContain('SandboxLoadingBoundary');
+    expect(workspaceLayoutSource).toContain('<WorkspaceAccessBoundary workspaceId={workspaceId}>');
+    expect(workspaceLayoutSource).toContain('<SessionCacheWarmer workspaceId={workspaceId} />');
+    expect(workspaceLayoutSource).toContain('<WorkspaceShell workspaceId={workspaceId}>');
   });
 
-  test('first project access still keeps its intentional full-page loader', () => {
-    expect(projectAccessSource).toContain('function ProjectAccessLoading()');
-    expect(projectAccessSource).toContain('<KortixHyperLogo');
-    expect(projectAccessSource).toContain('min-h-screen');
+  test('first workspace access still keeps its intentional full-page loader', () => {
+    expect(workspaceAccessSource).toContain('function WorkspaceAccessLoading()');
+    expect(workspaceAccessSource).toContain('<KortixHyperLogo');
+    expect(workspaceAccessSource).toContain('min-h-screen');
   });
 
-  test('the access boundary uses the lightweight project route', () => {
-    expect(projectAccessSource).toContain('getProject(projectId');
-    expect(projectAccessSource).not.toContain('getProjectDetail(projectId');
+  test('the access boundary uses the lightweight workspace route', () => {
+    expect(workspaceAccessSource).toContain('getWorkspace(workspaceId');
+    expect(workspaceAccessSource).not.toContain('getWorkspaceDetail(workspaceId');
   });
 
-  test('project home does not start the members query before Customize opens', () => {
-    expect(projectAccessSource).toContain("queryKey: ['project-access-boundary', projectId]");
-    expect(projectAccessSource).not.toContain("queryKey: ['project-access', projectId]");
-    expect(projectHomeSource).not.toContain("queryKey: ['project-access', projectId]");
-    expect(projectHomeSource).not.toContain('listProjectAccess(projectId');
-    expect(projectHomeSource).toContain('const PROJECT_SETUP_TILES');
+  test('workspace home does not start the members query before Customize opens', () => {
+    expect(workspaceAccessSource).toContain("queryKey: ['workspace-access-boundary', workspaceId]");
+    expect(workspaceAccessSource).not.toContain("queryKey: ['workspace-access', workspaceId]");
+    expect(workspaceHomeSource).not.toContain("queryKey: ['workspace-access', workspaceId]");
+    expect(workspaceHomeSource).not.toContain('listWorkspaceAccess(workspaceId');
+    expect(workspaceHomeSource).toContain('const WORKSPACE_SETUP_TILES');
   });
 });

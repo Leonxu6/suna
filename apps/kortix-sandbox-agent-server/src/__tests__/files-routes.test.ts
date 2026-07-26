@@ -22,13 +22,13 @@ function baseConfig(): Config {
     opencodeInternalPort: 4096,
     staticPort: 3211,
     workspace: WORKSPACE,
-    projectTarget: WORKSPACE,
+    workspaceTarget: WORKSPACE,
     defaultBranch: 'main',
     branchFetchAttempts: 60,
     branchFetchDelaySec: 0.25,
     defaultOpencodeConfigDir: '/ephemeral/opencode',
     autoClone: false,
-    projectId: 'project-1',
+    workspaceId: 'workspace-1',
     apiUrl: 'http://api.test/v1',
     repoUrl: undefined,
     branchName: undefined,
@@ -285,7 +285,7 @@ describe('daemon file read + list + status + find routes', () => {
     await fs.writeFile(`${WS}/new.txt`, 'brand new\n') // untracked → added
     await fs.writeFile(`${WS}/ignored.txt`, 'do not track\n') // gitignored
 
-    const cfg: Config = { ...baseConfig(), workspace: WS, projectTarget: WS }
+    const cfg: Config = { ...baseConfig(), workspace: WS, workspaceTarget: WS }
     const app = buildOpencodeApp(cfg, fakeOpencode(), Date.now())
     server = Bun.serve({ port: 0, fetch: app.fetch })
     base = `http://127.0.0.1:${server.port}`

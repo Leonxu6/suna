@@ -7,7 +7,7 @@
  * - Credits (total, daily, monthly, extra)
  * - Subscription (tier, status, billing period)
  * - Available models
- * - Limits (projects, threads, concurrent runs)
+ * - Limits (workspaces, threads, concurrent runs)
  *
  * Replaces: useSubscription, useCreditBalance, useBillingStatus, useScheduledChanges
  */

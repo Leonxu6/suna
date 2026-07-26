@@ -8,9 +8,9 @@ import { Input } from '@/components/ui/input';
 import Loading from '@/components/ui/loading';
 import { successToast } from '@/components/ui/toast';
 import { ProviderLogo } from '@/features/providers/provider-branding';
-import { refreshProjectProviderState } from '@kortix/sdk/react';
+import { refreshWorkspaceProviderState } from '@kortix/sdk/react';
 import type { LlmProviderEntry } from '@/lib/llm-providers';
-import { upsertProjectSecret } from '@kortix/sdk';
+import { upsertWorkspaceSecret } from '@kortix/sdk';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ExternalLink, Info, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -19,19 +19,19 @@ import { type FormEvent, useMemo, useState } from 'react';
 import { ChatGptSubscriptionConnect } from './chatgpt-subscription-connect';
 import { envVarPlaceholder, helpHostnameFromUrl, prettyFieldLabel } from './utils';
 
-// LLM provider credentials are ALWAYS project-wide. A per-user "Only me" key is
+// LLM provider credentials are ALWAYS workspace-wide. A per-user "Only me" key is
 // invisible to the LLM gateway's shared-row resolution, so every model turn
 // dies with "No upstream configured" while the picker still shows the provider
 // as connected (2026-07-07 prod incident). The server rejects personal
 // overrides for provider env vars; this form never offers the choice.
 
 export function ApiKeyConnectForm({
-  projectId,
+  workspaceId,
   provider,
   onBack,
   onConnected,
 }: {
-  projectId: string;
+  workspaceId: string;
   provider: LlmProviderEntry;
   onBack: () => void;
   onConnected: (providerId: string) => void;
@@ -46,7 +46,7 @@ export function ApiKeyConnectForm({
   const upsert = useMutation({
     mutationFn: async () => {
       for (const envVar of provider.envVars) {
-        await upsertProjectSecret(projectId, {
+        await upsertWorkspaceSecret(workspaceId, {
           name: envVar,
           value: values[envVar] ?? '',
         });
@@ -54,8 +54,8 @@ export function ApiKeyConnectForm({
     },
     onSuccess: () => {
       successToast(`${provider.label} connected`);
-      queryClient.invalidateQueries({ queryKey: ['project-secrets', projectId] });
-      refreshProjectProviderState(queryClient, projectId, { expectProviderId: provider.id });
+      queryClient.invalidateQueries({ queryKey: ['workspace-secrets', workspaceId] });
+      refreshWorkspaceProviderState(queryClient, workspaceId, { expectProviderId: provider.id });
       onConnected(provider.id);
     },
     onError: (err) => setError(err instanceof Error ? err.message : 'Failed to save credentials'),
@@ -85,7 +85,7 @@ export function ApiKeyConnectForm({
         onClick={onBack}
       >
         <ChevronLeft className="size-3.5 shrink-0" />
-        {tHardcodedUi.raw('componentsProjectsProjectProviderModal.line767JsxTextBackToProviders')}
+        {tHardcodedUi.raw('componentsWorkspacesWorkspaceProviderModal.line767JsxTextBackToProviders')}
       </Button>
 
       {/* Provider identity — logo, name, and exactly what gets stored. */}
@@ -108,7 +108,7 @@ export function ApiKeyConnectForm({
       </div>
 
       {provider.id === 'openai' && (
-        <ChatGptSubscriptionConnect projectId={projectId} onConnected={onConnected} />
+        <ChatGptSubscriptionConnect workspaceId={workspaceId} onConnected={onConnected} />
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -146,7 +146,7 @@ export function ApiKeyConnectForm({
           </FieldGroup>
 
           <FieldDescription className="text-xs">
-            Project-wide — every member of this project can use this provider.
+            Workspace-wide — every member of this workspace can use this provider.
           </FieldDescription>
 
           {provider.helpUrl && helpHostname && (
@@ -158,7 +158,7 @@ export function ApiKeyConnectForm({
             >
               <ExternalLink className="size-3 shrink-0" />
               {tHardcodedUi.raw(
-                'componentsProjectsProjectProviderModal.line827JsxTextGetCredentialsFrom',
+                'componentsWorkspacesWorkspaceProviderModal.line827JsxTextGetCredentialsFrom',
               )}{' '}
               {helpHostname}
             </a>
@@ -174,7 +174,7 @@ export function ApiKeyConnectForm({
               <>
                 <Loading className="size-3.5 shrink-0" />
                 {tHardcodedUi.raw(
-                  'componentsProjectsProjectProviderModal.line847JsxTextConnecting',
+                  'componentsWorkspacesWorkspaceProviderModal.line847JsxTextConnecting',
                 )}
               </>
             ) : (
@@ -191,7 +191,7 @@ export function ApiKeyConnectForm({
 
         <InfoBanner tone="warning" icon={Info}>
           {tHardcodedUi.raw(
-            'autoComponentsProjectsProjectProviderModalJsxTextASandboxPicks96cfb428',
+            'autoComponentsWorkspacesWorkspaceProviderModalJsxTextASandboxPicks96cfb428',
           )}
         </InfoBanner>
       </form>
@@ -199,7 +199,7 @@ export function ApiKeyConnectForm({
       <p className="text-muted-foreground flex items-center gap-1.5 px-1 text-xs">
         <ShieldCheck className="size-3.5 shrink-0" />
         {tHardcodedUi.raw(
-          'componentsProjectsProjectProviderModal.line856JsxTextValuesAreEncryptedAtRestAes256Gcm',
+          'componentsWorkspacesWorkspaceProviderModal.line856JsxTextValuesAreEncryptedAtRestAes256Gcm',
         )}
       </p>
     </div>

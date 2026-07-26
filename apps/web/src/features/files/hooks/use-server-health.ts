@@ -38,13 +38,13 @@ export function useServerHealth(options?: { enabled?: boolean }) {
 }
 
 /**
- * Get current project info from the active OpenCode server.
+ * Get current workspace info from the active OpenCode server.
  *
- * CONSOLIDATED: Now uses the same React Query key as useRuntimeCurrentProject
- * (runtimeKeys.currentProject()) to share cache and prevent duplicate fetches.
- * Previously used a different key ['opencode-server', 'project', serverUrl]
+ * CONSOLIDATED: Now uses the same React Query key as useRuntimeCurrentWorkspace
+ * (runtimeKeys.currentWorkspace()) to share cache and prevent duplicate fetches.
+ * Previously used a different key ['opencode-server', 'workspace', serverUrl]
  * which caused independent duplicate requests.
  */
-export function useCurrentProject(options?: { enabled?: boolean }) {
+export function useCurrentWorkspace(options?: { enabled?: boolean }) {
   return useRuntimeProjectInfo(options);
 }

@@ -10,7 +10,7 @@
  *     on what actually reached "Kortix" — in particular, that `Authorization`
  *     is ALWAYS `Bearer <the wrapper key>`, never an end-user session token,
  *     and that the wrapper's own `lumen_session` cookie never leaks upstream.
- *  2. Behave like a real (if minimal) Kortix API: a projects store, secrets,
+ *  2. Behave like a real (if minimal) Kortix API: a workspaces store, secrets,
  *     gateway cost rows, cli-token minting, and the `/p/...` sandbox-runtime
  *     proxy surface (generic passthrough + one SSE stream + one echoing
  *     "message" endpoint) — enough surface for every flow the whitelabel app
@@ -19,7 +19,7 @@
 
 export interface RecordedRequest {
   method: string;
-  path: string; // pathname + search, e.g. "/v1/projects/proj_1"
+  path: string; // pathname + search, e.g. "/v1/workspaces/proj_1"
   authorization: string | null;
   cookie: string | null;
   acceptEncoding: string | null;
@@ -28,8 +28,8 @@ export interface RecordedRequest {
   body: unknown;
 }
 
-export interface MockProject {
-  project_id: string;
+export interface MockWorkspace {
+  workspace_id: string;
   account_id: string;
   name: string;
   repo_url: string;
@@ -57,47 +57,47 @@ export interface MockUpstream {
   /** Any request that carried a `Cookie` header (the proxy should always strip it). */
   cookieViolations: RecordedRequest[];
   reset(): void;
-  /** Directly seed a project into the mock's store (bypassing `/provision`) —
-   *  used to simulate a project that exists upstream but this wrapper user
+  /** Directly seed a workspace into the mock's store (bypassing `/provision`) —
+   *  used to simulate a workspace that exists upstream but this wrapper user
    *  never provisioned, to prove per-user filtering actually filters. */
-  seedProject(overrides?: Partial<MockProject>): MockProject;
-  seedGatewaySessions(projectId: string, rows: GatewaySessionRow[]): void;
-  /** Make GET /v1/projects/:id/gateway/sessions fail (500) for this project id. */
-  failGatewayFor(projectId: string): void;
-  /** Make POST /v1/projects/:id/cli-token return HTTP 200 with a body MISSING
+  seedWorkspace(overrides?: Partial<MockWorkspace>): MockWorkspace;
+  seedGatewaySessions(workspaceId: string, rows: GatewaySessionRow[]): void;
+  /** Make GET /v1/workspaces/:id/gateway/sessions fail (500) for this workspace id. */
+  failGatewayFor(workspaceId: string): void;
+  /** Make POST /v1/workspaces/:id/cli-token return HTTP 200 with a body MISSING
    *  `secret_key` — a malformed success the wrapper must surface as an error,
    *  never as a 200 carrying an undefined token. */
-  malformCliTokenFor(projectId: string): void;
+  malformCliTokenFor(workspaceId: string): void;
   stop(): void;
 }
 
-let projectCounter = 0;
+let workspaceCounter = 0;
 let tokenCounter = 0;
 
 export function createMockUpstream(expectedAuthToken: string): MockUpstream {
-  const projects = new Map<string, MockProject>();
+  const workspaces = new Map<string, MockWorkspace>();
   const secrets = new Map<string, Array<{ name: string; value?: string }>>();
   const gatewaySessions = new Map<string, GatewaySessionRow[]>();
-  const failingGatewayProjects = new Set<string>();
-  const malformedCliTokenProjects = new Set<string>();
+  const failingGatewayWorkspaces = new Set<string>();
+  const malformedCliTokenWorkspaces = new Set<string>();
   const activeIntervals = new Set<ReturnType<typeof setInterval>>();
 
   let requests: RecordedRequest[] = [];
   let authViolations: RecordedRequest[] = [];
   let cookieViolations: RecordedRequest[] = [];
 
-  function makeProject(overrides: Partial<MockProject> = {}): MockProject {
-    projectCounter += 1;
-    // UUID-shaped like real Kortix project ids — the app validates ids with
-    // isValidProjectId before recording ownership or building upstream URLs,
+  function makeWorkspace(overrides: Partial<MockWorkspace> = {}): MockWorkspace {
+    workspaceCounter += 1;
+    // UUID-shaped like real Kortix workspace ids — the app validates ids with
+    // isValidWorkspaceId before recording ownership or building upstream URLs,
     // so a non-UUID mock id would be (correctly) rejected.
     const id =
-      overrides.project_id ?? `00000000-0000-4000-8000-${String(projectCounter).padStart(12, '0')}`;
+      overrides.workspace_id ?? `00000000-0000-4000-8000-${String(workspaceCounter).padStart(12, '0')}`;
     const now = new Date().toISOString();
     return {
-      project_id: id,
+      workspace_id: id,
       account_id: 'acct_test',
-      name: overrides.name ?? `Mock Project ${projectCounter}`,
+      name: overrides.name ?? `Mock Workspace ${workspaceCounter}`,
       repo_url: `https://git.kortix.test/${id}`,
       default_branch: 'main',
       manifest_path: 'kortix.yaml',
@@ -149,19 +149,19 @@ export function createMockUpstream(expectedAuthToken: string): MockUpstream {
 
       const p = url.pathname.replace(/^\/v1\//, '');
 
-      // ── projects: bare collection ──────────────────────────────────────
-      if (p === 'projects' && method === 'GET') {
-        return Response.json([...projects.values()]);
+      // ── workspaces: bare collection ──────────────────────────────────────
+      if (p === 'workspaces' && method === 'GET') {
+        return Response.json([...workspaces.values()]);
       }
-      if (p === 'projects/provision' && method === 'POST') {
+      if (p === 'workspaces/provision' && method === 'POST') {
         const reqBody = (body as { name?: string } | undefined) ?? {};
-        const project = makeProject({ name: reqBody.name ?? 'New project' });
-        projects.set(project.project_id, project);
-        return Response.json(project, { status: 201 });
+        const workspace = makeWorkspace({ name: reqBody.name ?? 'New workspace' });
+        workspaces.set(workspace.workspace_id, workspace);
+        return Response.json(workspace, { status: 201 });
       }
 
-      // ── projects: scoped to one id ──────────────────────────────────────
-      const secretsMatch = p.match(/^projects\/([^/]+)\/secrets$/);
+      // ── workspaces: scoped to one id ──────────────────────────────────────
+      const secretsMatch = p.match(/^workspaces\/([^/]+)\/secrets$/);
       if (secretsMatch) {
         const [, id] = secretsMatch;
         if (method === 'GET') return Response.json(secrets.get(id) ?? []);
@@ -174,20 +174,20 @@ export function createMockUpstream(expectedAuthToken: string): MockUpstream {
         }
       }
 
-      const gatewayMatch = p.match(/^projects\/([^/]+)\/gateway\/sessions$/);
+      const gatewayMatch = p.match(/^workspaces\/([^/]+)\/gateway\/sessions$/);
       if (gatewayMatch && method === 'GET') {
         const [, id] = gatewayMatch;
-        if (failingGatewayProjects.has(id)) {
+        if (failingGatewayWorkspaces.has(id)) {
           return Response.json({ error: 'gateway unavailable' }, { status: 500 });
         }
         return Response.json({ sessions: gatewaySessions.get(id) ?? [] });
       }
 
-      const cliTokenMatch = p.match(/^projects\/([^/]+)\/cli-token$/);
+      const cliTokenMatch = p.match(/^workspaces\/([^/]+)\/cli-token$/);
       if (cliTokenMatch && method === 'POST') {
         const [, id] = cliTokenMatch;
         tokenCounter += 1;
-        if (malformedCliTokenProjects.has(id)) {
+        if (malformedCliTokenWorkspaces.has(id)) {
           // HTTP 200 but no `secret_key` — the route must NOT pass this
           // through as a success.
           return Response.json({ token_id: `tok_${tokenCounter}` });
@@ -198,9 +198,9 @@ export function createMockUpstream(expectedAuthToken: string): MockUpstream {
         });
       }
 
-      const sessionStartMatch = p.match(/^projects\/([^/]+)\/sessions\/([^/]+)\/start$/);
+      const sessionStartMatch = p.match(/^workspaces\/([^/]+)\/sessions\/([^/]+)\/start$/);
       if (sessionStartMatch && method === 'POST') {
-        const [, projectId, sessionId] = sessionStartMatch;
+        const [, workspaceId, sessionId] = sessionStartMatch;
         const now = new Date().toISOString();
         const externalId = `session-${sessionId}`;
         return Response.json({
@@ -213,7 +213,7 @@ export function createMockUpstream(expectedAuthToken: string): MockUpstream {
           sandbox: {
             sandbox_id: sessionId,
             session_id: sessionId,
-            project_id: projectId,
+            workspace_id: workspaceId,
             account_id: 'acct_test',
             provider: 'daytona',
             external_id: externalId,
@@ -228,28 +228,28 @@ export function createMockUpstream(expectedAuthToken: string): MockUpstream {
         });
       }
 
-      const projectDetailMatch = p.match(/^projects\/([^/]+)$/);
-      if (projectDetailMatch) {
-        const [, id] = projectDetailMatch;
-        const project = projects.get(id);
+      const workspaceDetailMatch = p.match(/^workspaces\/([^/]+)$/);
+      if (workspaceDetailMatch) {
+        const [, id] = workspaceDetailMatch;
+        const workspace = workspaces.get(id);
         if (method === 'GET') {
-          if (!project) return Response.json({ error: 'Not found' }, { status: 404 });
+          if (!workspace) return Response.json({ error: 'Not found' }, { status: 404 });
           // Deliberately set an upstream cookie here so tests can assert the
           // proxy strips it before it reaches the browser.
-          return Response.json(project, {
+          return Response.json(workspace, {
             headers: { 'set-cookie': 'upstream_session=leak-me; Path=/' },
           });
         }
       }
 
-      // Any other `projects/:id/...` sub-path (sessions, files, connectors, …) —
+      // Any other `workspaces/:id/...` sub-path (sessions, files, connectors, …) —
       // generic forwarded-OK, recorded for assertion.
-      if (/^projects\/[^/]+(\/.*)?$/.test(p)) {
+      if (/^workspaces\/[^/]+(\/.*)?$/.test(p)) {
         return Response.json({ ok: true, path: p, method });
       }
 
-      // ── executor/projects/:id/... ─────────────────────────────────────
-      if (/^executor\/projects\/[^/]+(\/.*)?$/.test(p)) {
+      // ── executor/workspaces/:id/... ─────────────────────────────────────
+      if (/^executor\/workspaces\/[^/]+(\/.*)?$/.test(p)) {
         return Response.json({ ok: true, path: p, method });
       }
 
@@ -339,19 +339,19 @@ export function createMockUpstream(expectedAuthToken: string): MockUpstream {
       authViolations = [];
       cookieViolations = [];
     },
-    seedProject(overrides) {
-      const project = makeProject(overrides);
-      projects.set(project.project_id, project);
-      return project;
+    seedWorkspace(overrides) {
+      const workspace = makeWorkspace(overrides);
+      workspaces.set(workspace.workspace_id, workspace);
+      return workspace;
     },
-    seedGatewaySessions(projectId, rows) {
-      gatewaySessions.set(projectId, rows);
+    seedGatewaySessions(workspaceId, rows) {
+      gatewaySessions.set(workspaceId, rows);
     },
-    failGatewayFor(projectId) {
-      failingGatewayProjects.add(projectId);
+    failGatewayFor(workspaceId) {
+      failingGatewayWorkspaces.add(workspaceId);
     },
-    malformCliTokenFor(projectId) {
-      malformedCliTokenProjects.add(projectId);
+    malformCliTokenFor(workspaceId) {
+      malformedCliTokenWorkspaces.add(workspaceId);
     },
     stop() {
       for (const interval of activeIntervals) clearInterval(interval);

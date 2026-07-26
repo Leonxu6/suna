@@ -213,7 +213,7 @@ const HTML_PREVIEW_CONTENT = `<!doctype html>
 // memory-search (full rebuilds), agent-spawn/agent-status (bypasser family),
 // an executor call (tokens + OutputBlock), session-stats + dcp-compress (one
 // representative each), triggers' non-bracket fallback path (OutputBlock,
-// not the parsed row list), and project-delete (chrome-only, no output).
+// not the parsed row list), and the Workspace delete tool (chrome-only, no output).
 // ---------------------------------------------------------------------------
 // NOTE: parseMemoryEntryOutput's Tool/Prompt/Session/Created regexes don't
 // stop at a following "Facts:" label, so whichever of those fields sits
@@ -511,7 +511,7 @@ const GROUPS: Group[] = [
             {
               todos: [
                 {
-                  content: 'Create project directory and generate palette',
+                  content: 'Create workspace directory and generate palette',
                   status: 'completed',
                   priority: 'high',
                 },
@@ -763,7 +763,7 @@ const GROUPS: Group[] = [
       },
       {
         label: 'project_delete',
-        node: part('project_delete', done({ project: 'kortix-marketing-site' }, '')),
+        node: part('project_delete', done({ workspace: 'kortix-marketing-site' }, '')),
       },
     ],
   },

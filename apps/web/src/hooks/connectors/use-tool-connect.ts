@@ -36,11 +36,11 @@ function withPipedreamOverlayEscape(): () => void {
   };
 }
 
-export function useToolConnect(projectId: string, onConnected: () => void) {
+export function useToolConnect(workspaceId: string, onConnected: () => void) {
   return useMutation({
     mutationFn: async (slug: string) => {
       try {
-        await createConnector(projectId, {
+        await createConnector(workspaceId, {
           slug,
           provider: 'pipedream',
           app: slug,
@@ -50,12 +50,12 @@ export function useToolConnect(projectId: string, onConnected: () => void) {
       } catch {
       }
 
-      const { token, app } = await pipedreamConnect(projectId, slug);
+      const { token, app } = await pipedreamConnect(workspaceId, slug);
       if (!token || !app) throw new Error('This app is not available to connect right now');
 
       const { createFrontendClient } = await import('@pipedream/sdk/browser');
       const pd = createFrontendClient({
-        externalUserId: `${projectId}:${slug}`,
+        externalUserId: `${workspaceId}:${slug}`,
         tokenCallback: async () => ({ token, connect_link_url: undefined, expires_at: '' }) as any,
       });
 
@@ -77,7 +77,7 @@ export function useToolConnect(projectId: string, onConnected: () => void) {
       }
 
       if (!connected) return { slug, connected: false };
-      await pipedreamFinalize(projectId, slug);
+      await pipedreamFinalize(workspaceId, slug);
       return { slug, connected: true };
     },
     onSuccess: (res) => {

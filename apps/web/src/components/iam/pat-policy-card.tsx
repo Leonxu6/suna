@@ -2,7 +2,7 @@
 
 // PAT lifecycle policy on the Settings tab. Caps how long a CLI Personal
 // Access Token can live, requires expiry on every mint, and auto-revokes
-// idle tokens. Project-scoped tokens (sandbox-injected) are exempt.
+// idle tokens. Workspace-scoped tokens (sandbox-injected) are exempt.
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';

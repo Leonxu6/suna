@@ -47,7 +47,7 @@ const approval = (
   risk: 'high',
   status,
   source: 'web',
-  project: 'P',
+  workspace: 'P',
   agent: 'A',
   actor: { name: 'A', initials: 'A' },
   createdAt: '2020-01-01T00:00:00Z',
@@ -63,7 +63,7 @@ const change = (id: string, status: ReviewStatus): ReviewItem => ({
   risk: 'low',
   status,
   source: 'web',
-  project: 'P',
+  workspace: 'P',
   agent: 'A',
   actor: { name: 'A', initials: 'A' },
   createdAt: '2020-01-01T00:00:00Z',
@@ -248,11 +248,11 @@ describe('filterItems', () => {
 });
 
 describe('matchesQuery', () => {
-  test('matches title, summary, project and agent case-insensitively; empty matches all', () => {
-    const item = change('c1', 'needs_you'); // title 'c1', project 'P', agent 'A'
+  test('matches title, summary, workspace and agent case-insensitively; empty matches all', () => {
+    const item = change('c1', 'needs_you'); // title 'c1', workspace 'P', agent 'A'
     expect(matchesQuery(item, '')).toBe(true);
     expect(matchesQuery(item, 'c1')).toBe(true);
-    expect(matchesQuery(item, 'p')).toBe(true); // project P
+    expect(matchesQuery(item, 'p')).toBe(true); // workspace P
     expect(matchesQuery(item, 'zzz')).toBe(false);
   });
 });

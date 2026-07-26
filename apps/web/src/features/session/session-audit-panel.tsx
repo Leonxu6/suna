@@ -28,14 +28,14 @@ import { Check, ShieldCheck, X } from 'lucide-react';
 import { useState } from 'react';
 
 export function SessionAuditPanel({
-  projectId,
-  projectSessionId,
+  workspaceId,
+  workspaceSessionId,
 }: {
-  projectId?: string;
-  projectSessionId?: string;
+  workspaceId?: string;
+  workspaceSessionId?: string;
 }) {
-  const { data, isLoading, isError, refetch } = useSessionAudit(projectId, projectSessionId);
-  const resolve = useResolveApproval(projectId, projectSessionId);
+  const { data, isLoading, isError, refetch } = useSessionAudit(workspaceId, workspaceSessionId);
+  const resolve = useResolveApproval(workspaceId, workspaceSessionId);
   const [busy, setBusy] = useState<Record<string, 'approve' | 'deny'>>({});
 
   const actions = data?.actions ?? [];

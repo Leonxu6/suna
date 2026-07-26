@@ -1,13 +1,13 @@
-import type { ChangeRequest } from '@/features/project-files/api/change-requests';
-import type { ProjectCommit } from '@kortix/sdk';
+import type { ChangeRequest } from '@/features/workspace-files/api/change-requests';
+import type { WorkspaceCommit } from '@kortix/sdk';
 
 export const KORTIX_AGENT_EMAIL = 'agent@kortix.ai';
 
-export function commitTime(c: ProjectCommit): number {
+export function commitTime(c: WorkspaceCommit): number {
   return Number(new Date(c.committed_at || c.authored_at).getTime()) || Date.now();
 }
 
-export function isKortixAgent(c: ProjectCommit): boolean {
+export function isKortixAgent(c: WorkspaceCommit): boolean {
   if (c.author_email?.trim().toLowerCase() === KORTIX_AGENT_EMAIL) return true;
   const name = c.author_name?.trim().toLowerCase();
   return name === 'kortix agent' || name === 'cortex agent';
@@ -37,10 +37,10 @@ export function dayLabel(ts: number, referenceDate = new Date()): string {
 }
 
 export type TimelineItem =
-  | { kind: 'checkpoint'; commit: ProjectCommit; at: number; key: string }
+  | { kind: 'checkpoint'; commit: WorkspaceCommit; at: number; key: string }
   | { kind: 'cr'; cr: ChangeRequest; at: number; key: string };
 
-export function buildTimeline(commits: ProjectCommit[], crs: ChangeRequest[]): TimelineItem[] {
+export function buildTimeline(commits: WorkspaceCommit[], crs: ChangeRequest[]): TimelineItem[] {
   return [
     ...commits.map((commit) => ({
       kind: 'checkpoint' as const,

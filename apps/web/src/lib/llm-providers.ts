@@ -1,5 +1,5 @@
 /**
- * LLM-provider catalog for the per-project Provider Modal.
+ * LLM-provider catalog for the per-workspace Provider Modal.
  *
  * *** DATA SOURCE — baked SEED, live OVERRIDE ***
  * The module initializes from a slim BAKED snapshot of models.dev's
@@ -17,11 +17,11 @@
  * `applyLiveLlmProviderCatalog` (called by `useLiveLlmProviderCatalog`, in
  * this section's `use-live-catalog.ts`) lets a caller push the SAME live,
  * hourly-refreshed catalog every other gateway endpoint already reads
- * (served via `GET /projects/:id/llm-catalog/providers`) over this baked
+ * (served via `GET /workspaces/:id/llm-catalog/providers`) over this baked
  * seed — reassigning the exported bindings below (ES module bindings are
  * live: existing `import { LLM_PROVIDERS }` call sites read the CURRENT
  * value on every access, no re-import needed). Until a live fetch lands (or
- * on a project whose caller doesn't fetch it, e.g. non-browser contexts),
+ * on a workspace whose caller doesn't fetch it, e.g. non-browser contexts),
  * the baked seed is what's served — never a hard failure.
  *
  * Provider display names, doc URLs, and hints are rendered VERBATIM from
@@ -33,7 +33,7 @@
  * duplicates ("Moonshot" / "Moonshot") was exactly the kind of drift this
  * module no longer introduces.
  *
- * "Connecting" a provider writes its env vars to `project_secrets`. Sessions
+ * "Connecting" a provider writes its env vars to `workspace_secrets`. Sessions
  * pick those up as env vars at sandbox boot — so connecting Anthropic here is
  * exactly equivalent to setting ANTHROPIC_API_KEY on the Secrets page, just
  * with a friendlier flow.
@@ -100,7 +100,7 @@ export interface LlmProviderEntry {
   /** Display name. */
   label: string;
   /**
-   * Env vars the connect form collects and writes to project_secrets — the
+   * Env vars the connect form collects and writes to workspace_secrets — the
    * PRIMARY auth method's fields (see `authRequirement`), not necessarily
    * the raw models.dev `env` list. Most providers have exactly one; some
    * (Azure, Bedrock) need multiple.
@@ -284,7 +284,7 @@ export function getLlmProviderCatalogRevision(): number {
 }
 
 /**
- * Push a live-fetched catalog (from `GET /projects/:id/llm-catalog/providers`)
+ * Push a live-fetched catalog (from `GET /workspaces/:id/llm-catalog/providers`)
  * over the baked seed. Reassigns `LLM_PROVIDERS`/`LLM_PROVIDER_BY_ID`/
  * `LLM_PROVIDER_BY_ENV_VAR`/`LLM_CATALOG_META` and notifies subscribers so a
  * component using `useLlmProviderCatalogRevision()` re-renders. Safe to call

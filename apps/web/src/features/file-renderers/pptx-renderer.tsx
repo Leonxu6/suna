@@ -21,7 +21,7 @@ interface PptxRendererProps {
   fileName: string;
   className?: string;
   sandboxId?: string;
-  project?: {
+  workspace?: {
     sandbox?: {
       id?: string;
       sandbox_url?: string;

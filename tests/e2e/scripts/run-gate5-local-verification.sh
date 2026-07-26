@@ -186,11 +186,11 @@ run_check v1_playwright_spec_guards bash -lc '
   grep -q "Provisioning session" "apps/web/src/app/projects/[id]/sessions/[sessionId]/page.tsx"
   grep -q "Provisioning session" tests/e2e/specs/10-production-golden-paths.spec.ts
   grep -q "sidebarSessionLink.click" tests/e2e/specs/10-production-golden-paths.spec.ts
-  grep -q "getByRole.*link.*Kortix" tests/e2e/specs/08-accounts-project-access.spec.ts
-  grep -q "ownerSession.user.email" tests/e2e/specs/08-accounts-project-access.spec.ts
-  grep -q "uiInvitedEmail" tests/e2e/specs/08-accounts-project-access.spec.ts
-  grep -q "Invite sent to" tests/e2e/specs/08-accounts-project-access.spec.ts
-  grep -q "uiInvitedAccounts" tests/e2e/specs/08-accounts-project-access.spec.ts
+  grep -q "getByRole.*link.*Kortix" tests/e2e/specs/08-accounts-workspace-access.spec.ts
+  grep -q "ownerSession.user.email" tests/e2e/specs/08-accounts-workspace-access.spec.ts
+  grep -q "uiInvitedEmail" tests/e2e/specs/08-accounts-workspace-access.spec.ts
+  grep -q "Invite sent to" tests/e2e/specs/08-accounts-workspace-access.spec.ts
+  grep -q "uiInvitedAccounts" tests/e2e/specs/08-accounts-workspace-access.spec.ts
 '
 run_check v1_legacy_script_guards bash -lc '
   set -euo pipefail

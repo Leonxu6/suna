@@ -4,7 +4,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 /**
  * Currently selected account/team — mirrors the web app's useCurrentAccountStore.
- * Persisted so the projects screen reopens on the same account.
+ * Persisted so the workspaces screen reopens on the same account.
  */
 interface CurrentAccountState {
   selectedAccountId: string | null;

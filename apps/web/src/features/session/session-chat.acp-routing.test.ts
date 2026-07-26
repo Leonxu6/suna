@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('./session-chat.tsx', import.meta.url), 'utf8');
 const sessionPageSource = readFileSync(
-  new URL('../../app/(app)/projects/[id]/sessions/[sessionId]/page.tsx', import.meta.url),
+  new URL('../../app/(app)/workspaces/[id]/sessions/[sessionId]/page.tsx', import.meta.url),
   'utf8',
 );
 

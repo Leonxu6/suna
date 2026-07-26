@@ -84,11 +84,11 @@ describe('toggle-panel-mode command palette item', () => {
   });
 });
 
-describe('project sessions command palette item', () => {
-  test('falls back to the canonical project sessions page', () => {
+describe('workspace sessions command palette item', () => {
+  test('falls back to the canonical workspace sessions page', () => {
     const sessionsItem = paletteItems.find((item) => item.id === 'proj-sessions');
 
     expect(sessionsItem).toBeDefined();
-    expect(sessionsItem!.href).toBe('/projects/{projectId}/sessions');
+    expect(sessionsItem!.href).toBe('/workspaces/{workspaceId}/sessions');
   });
 });

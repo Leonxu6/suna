@@ -7,14 +7,14 @@ import type { Capabilities, Env } from './env';
 
 export type Capability = keyof Capabilities;
 
-export type ProjectRole = 'user' | 'editor' | 'manager';
+export type WorkspaceRole = 'user' | 'editor' | 'manager';
 
 /** A provisioned identity with the data flows assert against. */
 export interface Principal extends Identity {
   userId?: string;
   email?: string;
   accountId?: string;
-  projectId?: string;
+  workspaceId?: string;
   role?: string;
 }
 
@@ -32,14 +32,14 @@ export interface Principals {
   DENY_USER: Principal;
   NONMEMBER: Principal;
   PAT_ACCT: Principal;
-  PAT_PROJ: Principal;
+  PAT_WORKSPACE: Principal;
   APIKEY: Principal;
   ANON: Principal;
   /** The run-scoped team account id everything is provisioned under. */
   accountId: string;
 }
 
-export interface CreatedProject {
+export interface CreatedWorkspace {
   id: string;
   name: string;
   slug?: string;
@@ -47,7 +47,7 @@ export interface CreatedProject {
 
 export interface CreatedSession {
   id: string;
-  projectId: string;
+  workspaceId: string;
 }
 
 /** A team account with member/role provisioning, for IAM + access flows. */
@@ -56,31 +56,31 @@ export interface TeamFixture {
   id: string;
   /** Synthesize a user, add to this account at the given role, return its principal. */
   addMember(role: 'admin' | 'member'): Promise<Principal>;
-  /** Grant a project role to an account member (PUT access). */
-  grantProjectRole(projectId: string, userId: string, role: ProjectRole): Promise<void>;
-  /** Provision a project owned by this team account. */
-  project(opts?: { name?: string; seed?: boolean }): Promise<CreatedProject>;
+  /** Grant a workspace role to an account member (PUT access). */
+  grantWorkspaceRole(workspaceId: string, userId: string, role: WorkspaceRole): Promise<void>;
+  /** Provision a workspace owned by this team account. */
+  workspace(opts?: { name?: string; seed?: boolean }): Promise<CreatedWorkspace>;
 }
 
 /** Fixture sugar bound to the current run (auto-tracked for teardown). */
 export interface Fixtures {
   /**
-   * Create a fresh run-scoped project (default: OWNER's personal account).
+   * Create a fresh run-scoped workspace (default: OWNER's personal account).
    * `seed: true` seeds the starter (initial commit on the default branch) so a
    * sandbox can materialize the repo — REQUIRED for any flow that boots a
-   * session/sandbox. Unseeded projects (the default) are an empty repo, fine for
+   * session/sandbox. Unseeded workspaces (the default) are an empty repo, fine for
    * metadata/boundary flows and much cheaper.
    */
-  project(opts?: { name?: string; accountId?: string; seed?: boolean }): Promise<CreatedProject>;
+  workspace(opts?: { name?: string; accountId?: string; seed?: boolean }): Promise<CreatedWorkspace>;
   /**
-   * A single shared, READ-ONLY project provisioned once per run and reused — use
-   * this in flows that only READ a project (never mutate its manifest/name/state),
+   * A single shared, READ-ONLY workspace provisioned once per run and reused — use
+   * this in flows that only READ a workspace (never mutate its manifest/name/state),
    * so the suite doesn't create one real GitHub repo per flow (avoids GitHub's
-   * secondary rate limit). Mutating flows must use project() for isolation.
+   * secondary rate limit). Mutating flows must use workspace() for isolation.
    */
-  sharedProject(): Promise<CreatedProject>;
-  /** Create a session in a project (provisions a real sandbox). */
-  session(project: CreatedProject, opts?: { prompt?: string }): Promise<CreatedSession>;
+  sharedWorkspace(): Promise<CreatedWorkspace>;
+  /** Create a session in a workspace (provisions a real sandbox). */
+  session(workspace: CreatedWorkspace, opts?: { prompt?: string }): Promise<CreatedSession>;
   /** Mint a fresh run-scoped account-scoped PAT. */
   pat(opts?: { name?: string }): Promise<string>;
   /** Create a team account with member/role helpers (auto-torn-down). */
@@ -118,7 +118,7 @@ export interface FlowContext {
   env: Env;
   /** A unit of capture/timing/assertion. */
   step<T>(name: string, fn: () => Promise<T>): Promise<T>;
-  /** Register a resource for LIFO teardown. `meta` carries parent ids (e.g. projectId for a session). */
+  /** Register a resource for LIFO teardown. `meta` carries parent ids (e.g. workspaceId for a session). */
   track(kind: string, id: string, meta?: Record<string, any>): void;
   /** Self-skip the flow with a reason (counts as skip, not fail). */
   skip(reason: string): never;

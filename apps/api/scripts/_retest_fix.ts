@@ -39,7 +39,7 @@ const created: string[] = [];
 const runs: number[] = [];
 for (let n = 1; n <= N; n++) {
   const t0 = now();
-  const ses: any = await (await fetch(`${BASE}/v1/projects/${PROJECT}/sessions`, {
+  const ses: any = await (await fetch(`${BASE}/v1/workspaces/${PROJECT}/sessions`, {
     method: 'POST', headers: H, body: JSON.stringify({ provider: 'platinum', branch_already_created: false }),
   })).json();
   if (!ses.session_id) { console.log(`[#${n}] session FAIL ${JSON.stringify(ses).slice(0, 200)}`); continue; }

@@ -2,7 +2,7 @@
  * useSandboxPoller — monitors provisioning progress via HTTP polling.
  *
  * Adapted from the web frontend's useSandboxPoller hook.
- * Uses HTTP polling against the current project-session sandbox API instead
+ * Uses HTTP polling against the current Workspace-session sandbox API instead
  * of the removed legacy /platform/sandbox lifecycle endpoints.
  *
  * Includes time-based interpolation between stages for smooth progress animation.
@@ -17,7 +17,7 @@ import {
   STAGE_DURATION_MS,
   type ProvisioningStageInfo,
 } from './provisioning-stages';
-import { findProjectSessionSandbox } from './client';
+import { findWorkspaceSessionSandbox } from './client';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -185,7 +185,7 @@ export function useSandboxPoller(opts: UseSandboxPollerOpts = {}) {
   const fetchStatus = useCallback(async (): Promise<StatusResponse | null> => {
     if (!sandboxId) return null;
     try {
-      const row = await findProjectSessionSandbox(sandboxId || externalId || undefined);
+      const row = await findWorkspaceSessionSandbox(sandboxId || externalId || undefined);
       if (!row) {
         return { status: 'not_found', stage: null, stageProgress: 0, stageMessage: 'Session not found', machineInfo: null, stages: null, startedAt: null };
       }
@@ -208,7 +208,7 @@ export function useSandboxPoller(opts: UseSandboxPollerOpts = {}) {
           ? 'Ready'
           : status === 'error'
             ? row.session.error || 'Provisioning failed'
-            : 'Provisioning project session...';
+            : 'Provisioning workspace session...';
 
       return {
         status: status === 'active'

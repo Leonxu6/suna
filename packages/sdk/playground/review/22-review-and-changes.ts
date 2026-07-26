@@ -2,27 +2,27 @@
  * 22 — human-in-the-loop surfaces: change requests, the Review Center inbox,
  * pending executor approvals, and sessions needing input. All reads.
  *
- * Run (from packages/sdk):  bun run playground/review/22-review-and-changes.ts [projectId]
+ * Run (from packages/sdk):  bun run playground/review/22-review-and-changes.ts [workspaceId]
  */
-import { makeKortix, pickProjectId, run } from "../_shared";
+import { makeKortix, pickWorkspaceId, run } from "../_shared";
 
 run("review-and-changes", async () => {
   const kortix = makeKortix();
-  const projectId = await pickProjectId(kortix, process.argv[2]);
-  const project = kortix.project(projectId);
+  const workspaceId = await pickWorkspaceId(kortix, process.argv[2]);
+  const workspace = kortix.workspace(workspaceId);
 
-  const changeRequests = await project.changeRequests.list();
+  const changeRequests = await workspace.changeRequests.list();
   console.log(
     `✓ changeRequests.list(): ${JSON.stringify(changeRequests).slice(0, 250)}…`,
   );
 
-  const review = await project.review.list();
+  const review = await workspace.review.list();
   console.log(`✓ review.list(): ${JSON.stringify(review).slice(0, 250)}…`);
 
-  const approvals = await project.approvals.list();
+  const approvals = await workspace.approvals.list();
   console.log(`✓ approvals.list(): ${JSON.stringify(approvals).slice(0, 200)}`);
 
-  const needingInput = await project.approvals.sessionsNeedingInput();
+  const needingInput = await workspace.approvals.sessionsNeedingInput();
   console.log(
     `✓ approvals.sessionsNeedingInput(): ${JSON.stringify(needingInput).slice(0, 200)}`,
   );

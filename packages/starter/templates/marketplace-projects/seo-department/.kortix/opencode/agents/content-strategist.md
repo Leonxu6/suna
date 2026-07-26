@@ -28,6 +28,6 @@ the editorial backlog focused on revenue-relevant opportunities.
 
 ## Guardrails
 
-Do not publish live content without approval unless the project memory says
+Do not publish live content without approval unless the workspace memory says
 auto-publishing is enabled. Do not create doorway pages, spun pages, hidden text,
 fake reviews, or unsupported claims. Quality and usefulness beat volume.

@@ -3,7 +3,7 @@
 // holds two flavours of action codes:
 //
 //   1. Middleware-logged HTTP rows. The action is the literal request
-//      line, e.g. "POST /v1/projects/abc-…/group-grants". UUIDs make
+//      line, e.g. "POST /v1/workspaces/abc-…/group-grants". UUIDs make
 //      them long and unreadable; we parse the path shape and map it.
 //
 //   2. IAM detail rows. Code like "iam.group.create" /
@@ -50,9 +50,9 @@ const IAM_ACTION_MAP: Record<
   'iam.member.super_admin.grant':  { title: 'Granted super-admin',      kind: 'grant'  },
   'iam.member.super_admin.revoke': { title: 'Revoked super-admin',      kind: 'revoke' },
   'iam.member.role.change':   { title: 'Changed member role',           kind: 'update' },
-  'iam.project.group.attach': { title: 'Attached group to project',     kind: 'attach' },
-  'iam.project.group.detach': { title: 'Detached group from project',   kind: 'detach' },
-  'iam.project.group.update': { title: 'Changed group role on project', kind: 'update' },
+  'iam.workspace.group.attach': { title: 'Attached group to workspace',     kind: 'attach' },
+  'iam.workspace.group.detach': { title: 'Detached group from workspace',   kind: 'detach' },
+  'iam.workspace.group.update': { title: 'Changed group role on workspace', kind: 'update' },
   'iam.member.invite':        { title: 'Invited member',                kind: 'create' },
   'iam.member.remove':        { title: 'Removed member',                kind: 'delete' },
   'iam.mfa_required.enable':  { title: 'Required MFA for the account',  kind: 'update' },
@@ -84,9 +84,9 @@ const IAM_ACTION_MAP: Record<
 // Each entry checks against (method, segments) of the parsed path. First
 // match wins. `segments` is the path after /v1/ with UUIDs replaced by
 // the literal token `:id`, so e.g.
-//   POST /v1/projects/abc-…/group-grants
+//   POST /v1/workspaces/abc-…/group-grants
 // becomes
-//   ['projects', ':id', 'group-grants']
+//   ['workspaces', ':id', 'group-grants']
 
 type PathSegments = string[];
 type HttpPatternHandler = (
@@ -96,22 +96,22 @@ type HttpPatternHandler = (
 ) => HumanizedAuditAction | null;
 
 const HTTP_PATTERNS: HttpPatternHandler[] = [
-  // ── Project group-grants ─────────────────────────────────────────
+  // ── Workspace group-grants ─────────────────────────────────────────
   (m, s) => {
-    if (s[0] === 'projects' && s[2] === 'group-grants') {
+    if (s[0] === 'workspaces' && s[2] === 'group-grants') {
       if (m === 'POST' && s.length === 3)
-        return { title: 'Attached group to project', kind: 'attach' };
+        return { title: 'Attached group to workspace', kind: 'attach' };
       if (m === 'PATCH' && s.length === 4)
-        return { title: 'Changed group role on project', kind: 'update' };
+        return { title: 'Changed group role on workspace', kind: 'update' };
       if (m === 'DELETE' && s.length === 4)
-        return { title: 'Detached group from project', kind: 'detach' };
+        return { title: 'Detached group from workspace', kind: 'detach' };
     }
     return null;
   },
-  // ── Project secrets ──────────────────────────────────────────────
+  // ── Workspace secrets ──────────────────────────────────────────────
   (m, s, raw) => {
-    if (s[0] === 'projects' && s[2] === 'secrets') {
-      // /v1/projects/:id/secrets/NAME[/personal]
+    if (s[0] === 'workspaces' && s[2] === 'secrets') {
+      // /v1/workspaces/:id/secrets/NAME[/personal]
       const name = s[3] && s[3] !== ':id' ? s[3] : null;
       const personal = s[4] === 'personal';
       if (m === 'PUT') {
@@ -131,40 +131,40 @@ const HTTP_PATTERNS: HttpPatternHandler[] = [
       if (m === 'POST' && raw.endsWith(':rotate')) {
         return { title: 'Rotated secret', detail: name ?? undefined, kind: 'update' };
       }
-      // POST /v1/projects/:id/secrets with name in body (not in path).
+      // POST /v1/workspaces/:id/secrets with name in body (not in path).
       // The name isn't recoverable from the URL so we just label the
       // action and rely on the before/after diff for the detail.
       if (m === 'POST' && s.length === 3) {
-        return { title: 'Set project secret', kind: 'update' };
+        return { title: 'Set workspace secret', kind: 'update' };
       }
     }
     return null;
   },
-  // ── Project access (direct members + pending invites) ───────────
+  // ── Workspace access (direct members + pending invites) ───────────
   (m, s) => {
-    if (s[0] === 'projects' && s[2] === 'access') {
+    if (s[0] === 'workspaces' && s[2] === 'access') {
       // Bootstrap-grant pending-invite endpoints. The DELETE is the
       // Revoke action on the Pending Invitations card.
       if (s[3] === 'pending-invites') {
-        if (m === 'GET') return { title: 'Listed pending project invites', kind: 'read' };
+        if (m === 'GET') return { title: 'Listed pending workspace invites', kind: 'read' };
         if (m === 'DELETE')
-          return { title: 'Revoked pending project invitation', kind: 'revoke' };
+          return { title: 'Revoked pending workspace invitation', kind: 'revoke' };
       }
       if (m === 'POST' && s[3] === 'invite')
-        return { title: 'Invited project member', kind: 'create' };
+        return { title: 'Invited workspace member', kind: 'create' };
       if (m === 'PUT' && s.length === 4)
-        return { title: 'Changed project member role', kind: 'update' };
+        return { title: 'Changed workspace member role', kind: 'update' };
       if (m === 'DELETE' && s.length === 4)
-        return { title: 'Removed project member', kind: 'delete' };
+        return { title: 'Removed workspace member', kind: 'delete' };
     }
     return null;
   },
-  // ── Project sessions ─────────────────────────────────────────────
-  // POST /v1/projects/:id/sessions[/:sessionId/...] — every interactive
+  // ── Workspace sessions ─────────────────────────────────────────────
+  // POST /v1/workspaces/:id/sessions[/:sessionId/...] — every interactive
   // run lands here, so we get a lot of these. Friendly title beats raw
   // method+path in a long audit list.
   (m, s) => {
-    if (s[0] === 'projects' && s[2] === 'sessions') {
+    if (s[0] === 'workspaces' && s[2] === 'sessions') {
       const tail = s.slice(3); // after /sessions
       if (m === 'POST' && tail.length === 0)
         return { title: 'Started session', kind: 'create' };
@@ -179,9 +179,9 @@ const HTTP_PATTERNS: HttpPatternHandler[] = [
     }
     return null;
   },
-  // ── Project triggers ─────────────────────────────────────────────
+  // ── Workspace triggers ─────────────────────────────────────────────
   (m, s) => {
-    if (s[0] === 'projects' && s[2] === 'triggers') {
+    if (s[0] === 'workspaces' && s[2] === 'triggers') {
       if (m === 'POST' && s.length === 3) return { title: 'Created trigger', kind: 'create' };
       if (m === 'PATCH' && s.length === 4) return { title: 'Updated trigger', kind: 'update' };
       if (m === 'DELETE' && s.length === 4) return { title: 'Deleted trigger', kind: 'delete' };
@@ -189,12 +189,12 @@ const HTTP_PATTERNS: HttpPatternHandler[] = [
     }
     return null;
   },
-  // ── Project lifecycle ────────────────────────────────────────────
+  // ── Workspace lifecycle ────────────────────────────────────────────
   (m, s) => {
-    if (s[0] === 'projects') {
-      if (m === 'POST' && s.length === 1) return { title: 'Created project', kind: 'create' };
-      if (m === 'PATCH' && s.length === 2) return { title: 'Updated project', kind: 'update' };
-      if (m === 'DELETE' && s.length === 2) return { title: 'Deleted project', kind: 'delete' };
+    if (s[0] === 'workspaces') {
+      if (m === 'POST' && s.length === 1) return { title: 'Created workspace', kind: 'create' };
+      if (m === 'PATCH' && s.length === 2) return { title: 'Updated workspace', kind: 'update' };
+      if (m === 'DELETE' && s.length === 2) return { title: 'Deleted workspace', kind: 'delete' };
     }
     return null;
   },
@@ -222,7 +222,7 @@ const HTTP_PATTERNS: HttpPatternHandler[] = [
     return null;
   },
   // ── IAM policy templates ─────────────────────────────────────────
-  // Templates are baked-in role bundles ("project-readonly-auditor",
+  // Templates are baked-in role bundles ("workspace-readonly-auditor",
   // "billing-only", etc) — applying one creates the underlying group
   // grants in a single shot, so we surface both the verb and which
   // template was applied.
@@ -251,14 +251,14 @@ const HTTP_PATTERNS: HttpPatternHandler[] = [
     }
     return null;
   },
-  // ── IAM members (super-admin, groups, project access, effective probe) ──
+  // ── IAM members (super-admin, groups, workspace access, effective probe) ──
   (m, s) => {
     if (s[0] === 'accounts' && s[2] === 'iam' && s[3] === 'members') {
       const tail = s.slice(4); // after /members/:userId
       if (tail[1] === 'super-admin')
         return { title: 'Set super-admin status', kind: 'grant' };
-      if (tail[1] === 'project-access')
-        return { title: 'Listed project access', kind: 'read' };
+      if (tail[1] === 'workspace-access')
+        return { title: 'Listed workspace access', kind: 'read' };
       if (tail[1] === 'groups') return { title: 'Listed member groups', kind: 'read' };
       if (tail[1]?.startsWith('effective'))
         return { title: 'Checked effective permissions', kind: 'read' };
@@ -280,8 +280,8 @@ const HTTP_PATTERNS: HttpPatternHandler[] = [
         if (m === 'POST') return { title: 'Added member to group', kind: 'attach' };
         if (m === 'DELETE') return { title: 'Removed member from group', kind: 'detach' };
       }
-      if (tail[1] === 'project-grants')
-        return { title: 'Listed group project access', kind: 'read' };
+      if (tail[1] === 'workspace-grants')
+        return { title: 'Listed group workspace access', kind: 'read' };
     }
     return null;
   },
@@ -382,7 +382,7 @@ function kindFromMethod(method: string): HumanizedAuditAction['kind'] {
 }
 
 /**
- * Render a friendly resource pill: "Project · 8fb490fe" / "Group · Engineering".
+ * Render a friendly resource pill: "Workspace · 8fb490fe" / "Group · Engineering".
  * Resource type comes from the audit_events row; the id is shortened
  * to the first 8 chars so it stays scannable.
  */

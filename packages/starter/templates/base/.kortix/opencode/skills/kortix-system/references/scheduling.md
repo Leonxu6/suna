@@ -6,7 +6,7 @@ This page is the **how to think about it** companion to `kortix-yaml.md`
 deciding *whether and how* to schedule work, not just what fields exist.
 
 Kortix runs work on a schedule through **triggers** — a small, durable piece
-of config in the project's `kortix.yaml`. When a trigger fires, the platform
+of config in the workspace's `kortix.yaml`. When a trigger fires, the platform
 spins up a session and hands the agent a prompt, exactly as if a teammate had
 typed it. There is no separate "scheduler tool" to call at runtime; you
 *declare* a trigger, and the platform's sweep fires it for you.
@@ -95,8 +95,8 @@ Two practical consequences of a `fresh` run:
 - It has **no memory of your chat.** If a reminder must reference "what we
   just discussed," either put that context directly into the `prompt`, or
   use `reuse`.
-- It runs as project automation, not your live chat. Drive everything it
-  needs from the `prompt` plus the project's connectors and secrets.
+- It runs as workspace automation, not your live chat. Drive everything it
+  needs from the `prompt` plus the workspace's connectors and secrets.
 
 ## Notifying the user
 
@@ -187,9 +187,9 @@ keeps firing (and keeps costing runs):
 - **Stop permanently:** remove the `triggers:` entry from `kortix.yaml` and
   land the change (CR). One-off `run_at` triggers don't auto-remove after
   firing — they just go dormant; delete the entry to tidy up.
-- **Stop *all* of a project's triggers at once:** use the project-level
+- **Stop *all* of a workspace's triggers at once:** use the workspace-level
   `triggers_paused` kill-switch (dashboard) — see `kortix-yaml.md`'s
-  "Project-wide kill switch" section. Right tool when the same repo is
+  "Workspace-wide kill switch" section. Right tool when the same repo is
   deployed to two environments and only one should fire.
 - **A trigger that vanished** that you didn't remove was almost certainly
   deleted by the user in the dashboard — don't recreate it unless they ask.
@@ -214,7 +214,7 @@ on a zero-ticket night.
 
 **"Watch our GitHub repo and draft release notes whenever we ship."**
 → Webhook trigger with `secret_env: WEBHOOK_GITHUB_SECRET`; point GitHub's
-webhook at `POST /v1/webhooks/projects/<project_id>/<slug>` (GitHub's
+webhook at `POST /v1/webhooks/workspaces/<project_id>/<slug>` (GitHub's
 `X-Hub-Signature-256` is accepted natively — see `kortix-yaml.md`'s
 signature section). Prompt reads `{{ body.release.* }}`, drafts notes,
 opens a CR.

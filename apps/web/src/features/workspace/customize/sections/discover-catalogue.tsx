@@ -52,10 +52,10 @@ function connectorSlug(item: DiscoverIntegration, variant: DiscoverIntegrationVa
 }
 
 export function DiscoverCatalogue({
-  projectId,
+  workspaceId,
   onAdded,
 }: {
-  projectId: string;
+  workspaceId: string;
   onAdded: (slug?: string) => void;
 }) {
   const [q, setQ] = useState('');
@@ -71,10 +71,10 @@ export function DiscoverCatalogue({
   const pipedreamEnabled = connectorsEnabled && connectStatus.data?.configured === true;
 
   const integrationsQuery = useInfiniteQuery({
-    queryKey: ['discover-integrations', projectId, deferredQuery],
+    queryKey: ['discover-integrations', workspaceId, deferredQuery],
     queryFn: ({ pageParam }) =>
       listDiscoverIntegrations(
-        projectId,
+        workspaceId,
         deferredQuery || undefined,
         pageParam as string | undefined,
       ),
@@ -83,19 +83,19 @@ export function DiscoverCatalogue({
     staleTime: 5 * 60_000,
   });
   const pipedreamQuery = useInfiniteQuery({
-    queryKey: ['discover-pipedream-oauth', projectId, deferredQuery],
+    queryKey: ['discover-pipedream-oauth', workspaceId, deferredQuery],
     queryFn: ({ pageParam }) =>
-      listPipedreamApps(projectId, deferredQuery || undefined, pageParam as string | undefined),
+      listPipedreamApps(workspaceId, deferredQuery || undefined, pageParam as string | undefined),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => (last.hasMore ? last.nextCursor : undefined),
     staleTime: 60_000,
     enabled: pipedreamEnabled,
   });
   const detailQuery = useQuery({
-    queryKey: ['discover-integration-detail', projectId, selectedIntegration?.id],
+    queryKey: ['discover-integration-detail', workspaceId, selectedIntegration?.id],
     queryFn: () =>
       selectedIntegration
-        ? getDiscoverIntegration(projectId, selectedIntegration.id)
+        ? getDiscoverIntegration(workspaceId, selectedIntegration.id)
         : Promise.reject(new Error('No integration selected')),
     enabled: Boolean(selectedIntegration),
     staleTime: 15 * 60_000,
@@ -112,7 +112,7 @@ export function DiscoverCatalogue({
 
   const addPipedream = useMutation({
     mutationFn: (app: { slug: string; name: string }) =>
-      createConnector(projectId, {
+      createConnector(workspaceId, {
         slug: app.slug,
         provider: 'pipedream',
         app: app.slug,
@@ -151,7 +151,7 @@ export function DiscoverCatalogue({
         ...(template.endpoint ? { endpoint: template.endpoint } : {}),
         ...(auth ? { auth } : {}),
       };
-      await createConnector(projectId, draft);
+      await createConnector(workspaceId, draft);
       return { slug, name: variant.name };
     },
     onSuccess: ({ slug, name }) => {

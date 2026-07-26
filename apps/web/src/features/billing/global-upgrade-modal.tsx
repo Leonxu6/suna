@@ -97,7 +97,7 @@ export function UpgradePlansModal({
   const handleSubscribe = () => {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     createPerSeat.mutate({
-      success_url: `${origin}/projects?team_signup=success`,
+      success_url: `${origin}/workspaces?team_signup=success`,
       cancel_url: typeof window !== 'undefined' ? window.location.href : `${origin}/`,
     });
   };

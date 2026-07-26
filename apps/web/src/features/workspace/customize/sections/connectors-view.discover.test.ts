@@ -7,9 +7,9 @@ const discoverPath = join(import.meta.dir, 'discover-catalogue.tsx');
 const discoverSource = existsSync(discoverPath) ? readFileSync(discoverPath, 'utf8') : '';
 
 describe('feature-flagged Discover connector marketplace', () => {
-  test('keeps Easy Connect and adds Discover only for explicit project opt-in', () => {
+  test('keeps Easy Connect and adds Discover only for explicit workspace opt-in', () => {
     expect(connectorsSource).toContain(
-      'projectQuery.data?.project?.experimental?.connectors_api_discover === true',
+      'workspaceQuery.data?.workspace?.experimental?.connectors_api_discover === true',
     );
     expect(connectorsSource).toContain('<TabsTrigger value="apps">{easyConnectLabel}</TabsTrigger>',
     );
@@ -25,7 +25,7 @@ describe('feature-flagged Discover connector marketplace', () => {
     expect(connectorsSource).toContain(
       "const defaultTab = !easyConnectDisabled ? 'apps' : discoverEnabled ? 'discover' : 'channels';",
     );
-    expect(connectorsSource).toContain('<AppCatalogue projectId={projectId} onAdded={onAdded} />');
+    expect(connectorsSource).toContain('<AppCatalogue workspaceId={workspaceId} onAdded={onAdded} />');
   });
 
   test('renders direct records before separately labelled Pipedream OAuth entries', () => {
@@ -41,7 +41,7 @@ describe('feature-flagged Discover connector marketplace', () => {
 
   test('opens direct records as source variants instead of routing through Pipedream', () => {
     expect(discoverSource).toContain(
-      'getDiscoverIntegration(projectId, selectedIntegration.id)');
+      'getDiscoverIntegration(workspaceId, selectedIntegration.id)');
     expect(discoverSource).toContain('variant.connector');
     expect(discoverSource).toContain('Configure manually');
   });

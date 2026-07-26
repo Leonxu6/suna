@@ -145,19 +145,19 @@ describe('gateway routing editor helpers', () => {
     ).toEqual(['glm-5.2']);
   });
 
-  test('the header selector reads and writes the project default scope', () => {
-    expect(gatewayViewSource).toContain('modelDefaults.projectDefault');
-    expect(gatewayViewSource).toContain('.setProjectDefault(m)');
-    expect(gatewayViewSource).toContain('useProjectModels(projectId)');
+  test('the header selector reads and writes the workspace default scope', () => {
+    expect(gatewayViewSource).toContain('modelDefaults.workspaceDefault');
+    expect(gatewayViewSource).toContain('.setWorkspaceDefault(m)');
+    expect(gatewayViewSource).toContain('useWorkspaceModels(workspaceId)');
     expect(gatewayViewSource).not.toContain('useRuntimeProviders');
     expect(gatewayViewSource).not.toContain('modelDefaults.setAccountDefault');
     expect(gatewayViewSource).toContain('modelDefaults.isUpdating');
-    expect(gatewayViewSource).toContain("errorToast('Could not update the project default')");
+    expect(gatewayViewSource).toContain("errorToast('Could not update the workspace default')");
   });
 
   test('default changes refresh routing and the shared compact picker cache', () => {
-    expect(modelDefaultsSource).toContain("['gateway-routing-policy', projectId]");
-    expect(modelDefaultsSource).toContain("['project-model-picker', projectId]");
+    expect(modelDefaultsSource).toContain("['gateway-routing-policy', workspaceId]");
+    expect(modelDefaultsSource).toContain("['workspace-model-picker', workspaceId]");
   });
 
   test('an effective-default refetch does not overwrite an unsaved routing draft', () => {
@@ -178,20 +178,20 @@ describe('gateway routing editor helpers', () => {
     ).not.toBe(editablePolicySignature(policy));
   });
 
-  test('routing cannot race a pending project-default write', () => {
-    expect(gatewayViewSource).toContain('projectDefaultPending={modelDefaults.isUpdating}');
-    expect(routingSource).toContain('projectDefaultPending: boolean');
-    expect(routingSource).toContain('projectDefaultPending ||');
+  test('routing cannot race a pending workspace-default write', () => {
+    expect(gatewayViewSource).toContain('workspaceDefaultPending={modelDefaults.isUpdating}');
+    expect(routingSource).toContain('workspaceDefaultPending: boolean');
+    expect(routingSource).toContain('workspaceDefaultPending ||');
     expect(gatewayViewSource).toContain('useIsMutating');
-    expect(gatewayViewSource).toContain('gatewayRoutingPolicyKey(projectId)');
+    expect(gatewayViewSource).toContain('gatewayRoutingPolicyKey(workspaceId)');
   });
 
-  test('routing freezes edits in flight and refreshes the shared project default after save', () => {
+  test('routing freezes edits in flight and refreshes the shared workspace default after save', () => {
     expect(routingSource).toContain('const controlsDisabled =');
     expect(routingSource).toContain('routing.set.isPending ||');
     expect(routingSource).toContain('routing.reset.isPending ||');
-    expect(routingSource).toContain("queryKey: ['model-defaults', projectId]");
-    expect(routingSource).toContain("queryKey: ['project-model-picker', projectId]");
+    expect(routingSource).toContain("queryKey: ['model-defaults', workspaceId]");
+    expect(routingSource).toContain("queryKey: ['workspace-model-picker', workspaceId]");
   });
 
   test('renders a capability-gated generation-controls panel for the resolved primary model', () => {

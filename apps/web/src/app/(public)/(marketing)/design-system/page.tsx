@@ -3087,7 +3087,7 @@ export default function BrandPage() {
               </h2>
               <p className="text-muted-foreground mb-8 text-base leading-relaxed">
                 {tHardcodedUi.raw(
-                  'appHomeDesignSystemPage.line2205JsxTextSmallCompositionPiecesUsedInsideProjectPagesIssue',
+                  'appHomeDesignSystemPage.line2205JsxTextSmallCompositionPiecesUsedInsideWorkspacePagesIssue',
                 )}
               </p>
 
@@ -3259,7 +3259,7 @@ export default function BrandPage() {
                   {tHardcodedUi.raw('appHomeDesignSystemPage.line2319JsxTextNoColouredBackgrounds')}
                   <code>EntityAvatar</code>
                   {tHardcodedUi.raw(
-                    'appHomeDesignSystemPage.line2320JsxTextRendersARoundedSquareTileForAccountsProjects',
+                    'appHomeDesignSystemPage.line2320JsxTextRendersARoundedSquareTileForAccountsWorkspaces',
                   )}
                 </ComponentDesc>
                 <DemoContainer className="space-y-5">
@@ -3362,7 +3362,7 @@ export default function BrandPage() {
                             </span>
                             <span>
                               {tHardcodedUi.raw(
-                                'appHomeDesignSystemPage.line2371JsxTextText4Projects',
+                                'appHomeDesignSystemPage.line2371JsxTextText4Workspaces',
                               )}
                             </span>
                           </InlineMeta>

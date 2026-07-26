@@ -21,7 +21,7 @@ const Hero = () => {
 
   const handleLaunch = useCallback(() => {
     trackCtaSignup();
-    window.location.href = user ? '/projects' : '/auth';
+    window.location.href = user ? '/workspaces' : '/auth';
   }, [user]);
 
   return (

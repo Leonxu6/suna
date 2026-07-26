@@ -41,7 +41,7 @@ describe('/api/preview-url', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        projectId: '00000000-0000-4000-8000-000000000001',
+        workspaceId: '00000000-0000-4000-8000-000000000001',
         sessionId: SESSION_ID,
         preview: { port: 3000, path: '/' },
       }),
@@ -49,10 +49,10 @@ describe('/api/preview-url', () => {
     expect(res.status).toBe(401);
   });
 
-  test('authenticated but unowned project is 403', async () => {
+  test('authenticated but unowned workspace is 403', async () => {
     const email = uniqueEmail('preview-unowned');
     const token = await loginUser(app, email, DEMO_PASSWORD);
-    const other = mock.seedProject({ name: 'Not mine' });
+    const other = mock.seedWorkspace({ name: 'Not mine' });
 
     const res = await fetch(`${app.baseUrl}/api/preview-url`, {
       method: 'POST',
@@ -61,7 +61,7 @@ describe('/api/preview-url', () => {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        projectId: other.project_id,
+        workspaceId: other.workspace_id,
         sessionId: SESSION_ID,
         preview: { port: 3000, path: '/' },
       }),
@@ -79,7 +79,7 @@ describe('/api/preview-url', () => {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        projectId: 'not-a-project',
+        workspaceId: 'not-a-workspace',
         sessionId: '',
         preview: { port: 0, path: '/' },
       }),
@@ -87,11 +87,11 @@ describe('/api/preview-url', () => {
     expect(res.status).toBe(400);
   });
 
-  test('owned project returns one final preview URL through server-side SDK calls', async () => {
+  test('owned workspace returns one final preview URL through server-side SDK calls', async () => {
     const email = uniqueEmail('preview-owned');
     const token = await loginUser(app, email, DEMO_PASSWORD);
 
-    const project = await createTestKortix(app, token).projects.provision({
+    const workspace = await createTestKortix(app, token).workspaces.provision({
       name: 'Preview Owned',
     });
 
@@ -103,7 +103,7 @@ describe('/api/preview-url', () => {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        projectId: project.project_id,
+        workspaceId: workspace.workspace_id,
         sessionId: SESSION_ID,
         preview: { port: 3000, path: '/docs?section=setup' },
       }),
@@ -121,7 +121,7 @@ describe('/api/preview-url', () => {
     expect(previewUrl.port).toBe(new URL(mock.url).port);
     expect(previewUrl.pathname).toBe('/docs');
     expect(previewUrl.searchParams.get('section')).toBe('setup');
-    expect(previewUrl.searchParams.get('token')).toContain(`kortix_pat_test_${project.project_id}`);
+    expect(previewUrl.searchParams.get('token')).toContain(`kortix_pat_test_${workspace.workspace_id}`);
     expect(typeof data.tokenId).toBe('string');
     expect(data.token).toBeUndefined();
     expect(data.upstream).toBeUndefined();
@@ -144,7 +144,7 @@ describe('/api/preview-url', () => {
     const email = uniqueEmail('preview-localhost');
     const token = await loginUser(app, email, DEMO_PASSWORD);
 
-    const project = await createTestKortix(app, token).projects.provision({
+    const workspace = await createTestKortix(app, token).workspaces.provision({
       name: 'Preview Localhost',
     });
 
@@ -155,7 +155,7 @@ describe('/api/preview-url', () => {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        projectId: project.project_id,
+        workspaceId: workspace.workspace_id,
         sessionId: '10000000-0000-4000-8000-000000000002',
         targetUrl: 'http://localhost:4173/demo?tab=activity',
       }),
@@ -169,17 +169,17 @@ describe('/api/preview-url', () => {
     expect(previewUrl.port).toBe(new URL(mock.url).port);
     expect(previewUrl.pathname).toBe('/demo');
     expect(previewUrl.searchParams.get('tab')).toBe('activity');
-    expect(previewUrl.searchParams.get('token')).toContain(`kortix_pat_test_${project.project_id}`);
+    expect(previewUrl.searchParams.get('token')).toContain(`kortix_pat_test_${workspace.workspace_id}`);
   });
 
   test('a malformed token response is a 502, never a URL without authentication', async () => {
     const email = uniqueEmail('preview-malformed');
     const token = await loginUser(app, email, DEMO_PASSWORD);
 
-    const project = await createTestKortix(app, token).projects.provision({
+    const workspace = await createTestKortix(app, token).workspaces.provision({
       name: 'Preview Malformed',
     });
-    mock.malformCliTokenFor(project.project_id);
+    mock.malformCliTokenFor(workspace.workspace_id);
 
     const res = await fetch(`${app.baseUrl}/api/preview-url`, {
       method: 'POST',
@@ -188,7 +188,7 @@ describe('/api/preview-url', () => {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        projectId: project.project_id,
+        workspaceId: workspace.workspace_id,
         sessionId: '10000000-0000-4000-8000-000000000003',
         preview: { port: 3000, path: '/' },
       }),
@@ -220,7 +220,7 @@ describe('/api/preview-url in direct mode', () => {
   });
 
   test('caller token resolves the final URL without wrapper auth or ownership state', async () => {
-    const projectId = '20000000-0000-4000-8000-000000000001';
+    const workspaceId = '20000000-0000-4000-8000-000000000001';
     const sessionId = '20000000-0000-4000-8000-000000000002';
     const response = await fetch(`${app.baseUrl}/api/preview-url`, {
       method: 'POST',
@@ -229,7 +229,7 @@ describe('/api/preview-url in direct mode', () => {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        projectId,
+        workspaceId,
         sessionId,
         preview: { port: 8080, path: '/health' },
       }),
@@ -245,7 +245,7 @@ describe('/api/preview-url in direct mode', () => {
     const previewUrl = new URL(data.url);
     expect(previewUrl.hostname).toBe(`p8080-session-${sessionId}.localhost`);
     expect(previewUrl.pathname).toBe('/health');
-    expect(previewUrl.searchParams.get('token')).toContain(`kortix_pat_test_${projectId}`);
+    expect(previewUrl.searchParams.get('token')).toContain(`kortix_pat_test_${workspaceId}`);
     expect(typeof data.tokenId).toBe('string');
     expect(data.token).toBeUndefined();
     expect(data.upstream).toBeUndefined();

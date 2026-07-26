@@ -23,7 +23,7 @@ export class ResourceStack {
   }
 
   async teardown(): Promise<void> {
-    // LIFO so children (sessions) go before parents (projects/accounts).
+    // LIFO so children (sessions) go before parents (workspaces/accounts).
     for (const r of this.items.reverse()) {
       try {
         await this.delete(r);
@@ -37,15 +37,20 @@ export class ResourceStack {
   private async delete(r: TrackedResource): Promise<void> {
     switch (r.kind) {
       case "session":
-        await this.admin.del("/v1/projects/:projectId/sessions/:id", {
-          params: { projectId: r.meta?.projectId, id: r.id },
+        await this.admin.del("/v1/workspaces/:workspaceId/sessions/:id", {
+          params: { workspaceId: r.meta?.workspaceId, id: r.id },
         });
         break;
-      case "project":
-        await this.admin.del("/v1/projects/:id", { params: { id: r.id }, query: { purge: true } });
+      case "workspace":
+        await this.admin.del("/v1/workspaces/:id", { params: { id: r.id }, query: { purge: true } });
         break;
       case "token":
         await this.admin.del("/v1/accounts/tokens/:id", { params: { id: r.id } });
+        break;
+      case "cli-token":
+        await this.admin.del("/v1/workspaces/:workspaceId/cli-token/:id", {
+          params: { workspaceId: r.meta?.workspaceId, id: r.id },
+        });
         break;
       case "member":
         await this.admin.del("/v1/accounts/:accountId/members/:userId", {

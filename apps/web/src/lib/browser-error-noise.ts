@@ -284,7 +284,7 @@ const PAPER_SHADER_NULL_CONTEXT_NOISE_PATTERNS = [
   // exact full JSC message (per-method), so a generic JSC `null is not an
   // object (evaluating '<other expr>')` throw does NOT match. Seen as pattern
   // `a8754de5…` (1 occurrence, 0 users) from Chrome 150 on iOS 26.5.2 on
-  // `/projects/:id/sessions/:sessionId`, the fourth engine variant of this
+  // `/workspaces/:id/sessions/:sessionId`, the fourth engine variant of this
   // class after V8 (#4544), old JSC, and SpiderMonkey (#5172).
   "null is not an object (evaluating 'this.gl.getSupportedExtensions')",
   "null is not an object (evaluating 'this.gl.getAttribLocation')",
@@ -1503,8 +1503,8 @@ export function isAndroidWebViewNativeBridgePostEventNoise(input: {
 // Search App 415/425), across 7 different releases spanning 2.5 months — i.e.
 // browser/engine noise on iOS, NOT a deterministic app regression (which would
 // spike on one release across all browsers with identified users). Fires on the
-// marketing site (`/`, `/auth`) AND post-login surfaces (`/projects/…`,
-// `/projects/…/sessions/…`), so no route guard contains it.
+// marketing site (`/`, `/auth`) AND post-login surfaces (`/workspaces/…`,
+// `/workspaces/…/sessions/…`), so no route guard contains it.
 //
 // `RangeError: Maximum call stack size exceeded.` is ALSO the exact message a
 // real first-party infinite recursion produces — so this matcher is anchored on
@@ -1534,7 +1534,7 @@ export function isAndroidWebViewNativeBridgePostEventNoise(input: {
 // in first-party `apps/web/src/…` source. Better Stack pattern
 // 366115d4c931a6352fe8f334ff1b366f6d4b2ce9c192769ac681831354521e30
 // (Kortix Frontend prod, application_id 2346967): 1 occurrence, 0 identified
-// users, 2026-07-15 09:36:41 UTC, route `/projects/:id/sessions/:sessionId`,
+// users, 2026-07-15 09:36:41 UTC, route `/workspaces/:id/sessions/:sessionId`,
 // Chrome 142 / Windows 10. A transient third-party render loop, not a
 // deterministic app regression (single occurrence, no identified users, no
 // first-party frame, no spike on a release across browsers).
@@ -1792,7 +1792,7 @@ export function isEmbedPdfTilingTileDestructureNoise(input: {
 // (Kortix Frontend prod, application_id 2346967): 1 occurrence ever (90-day
 // window), 0 identified users (anonymous), single release
 // `22e12080d2b37642aa92a839da6b37f30fc21b9d`, 2026-07-20 11:53:33 UTC, route
-// `/projects/:id/sessions/:sessionId` (co-worker session page actively polling
+// `/workspaces/:id/sessions/:sessionId` (co-worker session page actively polling
 // `prompt_async` + UI clicks to remove queued messages — a state-heavy surface
 // that maximises scheduler churn), Firefox 152.0 on Generic Linux, mechanism
 // `auto.browser.global_handlers.onerror` (UNCAUGHT global error — never reached
@@ -1980,7 +1980,7 @@ export function isNonErrorUndefinedRejectionNoise(input: {
 // (Kortix Frontend prod, application_id 2346967): `OperationError`, 2
 // occurrences EVER across a 90-day window (first 2026-04-28 18:41:18 UTC on
 // `https://www.kortix.com/instances` Chrome/Win, last 2026-07-22 18:26:35 UTC
-// on `https://kortix.com/projects/<id>` reached from Google account sign-in
+// on `https://kortix.com/workspaces/<id>` reached from Google account sign-in
 // Chrome/Edge/Win), 0 identified users (anonymous), mechanism
 // `auto.browser.global_handlers.onunhandledrejection` (`handled:false` —
 // UNCAUGHT, never reached a React error boundary). The exception payload is
@@ -2179,7 +2179,7 @@ export function isConnectionClosedNoise(input: {
 // `network error` (lowercase, bare), 1 occurrence / 0 identified users, last
 // 2026-07-23 16:53:55 UTC, release
 // `470fe6f3c88460212c3b187f6f86fb4ad456c4d6` (v0.10.13), transaction
-// `/projects/:id/sessions/:sessionId` (co-worker session page), mechanism
+// `/workspaces/:id/sessions/:sessionId` (co-worker session page), mechanism
 // `auto.browser.global_handlers.onunhandledrejection` (`handled:false` —
 // UNCAUGHT, never reached a React error boundary), Chrome 150 on Generic
 // Linux. Stack frames: ZERO — `stacktrace.frames` is an empty array, no
@@ -2880,7 +2880,7 @@ export function shouldIgnoreSentryBrowserNoise(event: {
   //
   // This was previously scoped to `/auth` only, but the same browser behaviour
   // fires everywhere the user navigates — the marketing site (`/`, `/pt`, ...)
-  // and the post-login `/projects` landing — so the route guard let real
+  // and the post-login `/workspaces` landing — so the route guard let real
   // browser noise through to error tracking. Suppress this class globally.
   //
   // NOTE: this only covers the *recoverable* #418/#423 hydration-text class

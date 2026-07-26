@@ -221,7 +221,7 @@ function normalizeDetail(kind: ReviewKind, row: ApiReviewItem): ReviewItem['deta
 
 export function mapApiReviewItem(
   row: ApiReviewItem,
-  projectName: string,
+  workspaceName: string,
   sessionLabels: Record<string, string> = {},
 ): ReviewItem {
   const kind = row.kind as ReviewKind;
@@ -247,7 +247,7 @@ export function mapApiReviewItem(
     risk: row.risk,
     status: row.status as ReviewStatus,
     source: row.source,
-    project: projectName,
+    workspace: workspaceName,
     agent,
     actor: { name: agent, initials: agentInitials(agent) },
     createdAt: row.created_at,

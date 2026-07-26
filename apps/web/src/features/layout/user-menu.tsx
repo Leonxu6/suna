@@ -204,7 +204,7 @@ export function UserMenu({
           </>
         )}
 
-        <DropdownMenuItem onClick={() => deferAfterClose(() => router.push('/projects'))}>
+        <DropdownMenuItem onClick={() => deferAfterClose(() => router.push('/workspaces'))}>
           <HomeSolid />
           Home
         </DropdownMenuItem>

@@ -29,16 +29,16 @@ import { useParams } from 'next/navigation';
 import { useState } from 'react';
 
 export function SessionPendingApprovalsIndicator({ sessionId }: { sessionId: string }) {
-  // Route params: `id` = projectId, `sessionId` = the Kortix (route) session id
+  // Route params: `id` = workspaceId, `sessionId` = the Kortix (route) session id
   // the audit endpoint keys on — distinct from the OpenCode `sessionId` prop we
   // use to drive the panel's tab store.
-  const { id: projectId, sessionId: projectSessionId } = useParams<{
+  const { id: workspaceId, sessionId: workspaceSessionId } = useParams<{
     id: string;
     sessionId: string;
   }>();
 
-  const { data } = useSessionAudit(projectId, projectSessionId, { silent: true });
-  const resolve = useResolveApproval(projectId, projectSessionId);
+  const { data } = useSessionAudit(workspaceId, workspaceSessionId, { silent: true });
+  const resolve = useResolveApproval(workspaceId, workspaceSessionId);
   const [busy, setBusy] = useState<Record<string, 'approve' | 'deny'>>({});
   const [open, setOpen] = useState(false);
 

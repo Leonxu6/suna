@@ -8,7 +8,7 @@ import { useCurrentAccountStore } from '@/stores/current-account-store';
  *
  * Run on logout and whenever a *different* user signs in, so the next account
  * never inherits the previous one's data. Covers, in order:
- *   1. React Query cache — every cached server response (accounts, projects,
+ *   1. React Query cache — every cached server response (accounts, workspaces,
  *      sessions, billing, …). This is the big one that was missing.
  *   2. The persisted "current account" selection (zustand + its localStorage).
  *   3. Remaining per-user localStorage (models, agents, sandbox/tab state).

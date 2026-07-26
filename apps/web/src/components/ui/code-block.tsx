@@ -38,7 +38,7 @@ function CodeBlockCode({
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
   const [mermaidFailed, setMermaidFailed] = useState(false);
 
-  // Project-wide Pierre theme (overridable via `theme` prop).
+  // Workspace-wide Pierre theme (overridable via `theme` prop).
   const themeName = propTheme || resolveShikiThemeName(resolvedTheme);
   const themeInput = propTheme
     ? propTheme

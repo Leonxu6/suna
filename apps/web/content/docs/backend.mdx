@@ -31,7 +31,7 @@ and [Accounts](/docs/accounts).
 ```bash
 export KORTIX_API_URL="https://your-kortix-deployment.com/v1"   # API root, including /v1
 export KORTIX_API_KEY="kortix_pat_…"
-export KORTIX_PROJECT_ID="…"
+export KORTIX_WORKSPACE_ID="…"
 ```
 
 ## 2. Start a session on behalf of a user
@@ -44,7 +44,7 @@ of your end-users. All of them are optional; send only what you need.
 ### Call create with the user's overrides
 
 ```bash
-curl -X POST "$KORTIX_API_URL/projects/$KORTIX_PROJECT_ID/sessions" \
+curl -X POST "$KORTIX_API_URL/workspaces/$KORTIX_WORKSPACE_ID/sessions" \
   -H "Authorization: Bearer $KORTIX_API_KEY" \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: $(uuidgen)" \
@@ -68,7 +68,7 @@ const kortix = createScopedKortix({
   getToken: async () => process.env.KORTIX_API_KEY!,
 });
 
-const session = await kortix.project(projectId).sessions.create({
+const session = await kortix.workspace(workspaceId).sessions.create({
   origin_ref: 'your-app-user-123',
   agent_name: 'support',
   opencode_model: 'anthropic/claude-opus-4-8',
@@ -89,8 +89,8 @@ never races another request's config.
 | --- | --- |
 | `origin_ref` | An opaque id for *your* end-user. Attribution only — it tags the session and usage; it does **not** resolve that user's connectors or secrets by itself. |
 | `connector_bindings` | Map a connector alias → a specific **connection profile** (your end-user's own connected account). Resolved server-side at use time; the credential never enters the sandbox. |
-| `inherit_unbound` | With `connector_bindings` set, keep the project-default fallback for connectors you did *not* bind (instead of all-or-nothing). Only ever inherits the project default. |
-| `secrets` | An allow-list of project secret names to expose to this session. Narrowing only — a session can never see a secret you did not list. |
+| `inherit_unbound` | With `connector_bindings` set, keep the workspace-default fallback for connectors you did *not* bind (instead of all-or-nothing). Only ever inherits the workspace default. |
+| `secrets` | An allow-list of workspace secret names to expose to this session. Narrowing only — a session can never see a secret you did not list. |
 | `opencode_model` | The model this session runs, in `provider/model` form. Validated at create; an unservable model fails fast with `400 INVALID_SESSION_MODEL`. |
 | `agent_name` | Which declared agent handles the session. |
 | `runtime_context` | Arbitrary non-secret key/values passed to the run as context. |
@@ -107,15 +107,15 @@ lands in the sandbox, and one binding can't reach another user's profile. See
 already hold, so the whole flow is headless:
 
 ```ts
-const profile = await kortix.project(projectId).connectors.profiles.reconcile({
+const profile = await kortix.workspace(workspaceId).connectors.profiles.reconcile({
   connector_alias: 'user-mcp',
   owner_type: 'external',        // = your app's user (not a Kortix member/agent)
   owner_id: 'your-app-user-123',
   label: 'MCP for user 123',
 });
-await kortix.project(projectId).connectors.profiles.updateCredential(
+await kortix.workspace(workspaceId).connectors.profiles.updateCredential(
   profile.profile_id, { value: usersOwnToken, kind: 'secret' });
-await kortix.project(projectId).connectors.profiles.activate(profile.profile_id);
+await kortix.workspace(workspaceId).connectors.profiles.activate(profile.profile_id);
 // → bind at create: connector_bindings: { 'user-mcp': { profile_id: profile.profile_id } }
 ```
 
@@ -125,19 +125,19 @@ the consent click is interactive:
 
 ```ts
 // 1. mint this user's own profile
-const profile = await kortix.project(projectId).connectors.profiles.reconcile({
+const profile = await kortix.workspace(workspaceId).connectors.profiles.reconcile({
   connector_alias: 'gmail', owner_type: 'external',
   owner_id: 'your-app-user-123', label: 'Gmail for user 123',
 });
 // 2. get a connect link scoped to THIS user; send them to it
-const { connectUrl } = await kortix.project(projectId)
+const { connectUrl } = await kortix.workspace(workspaceId)
   .connectors.profiles.pipedreamConnect(profile.profile_id, {
     success_redirect_uri: 'https://yourapp.com/connected',
     error_redirect_uri: 'https://yourapp.com/connect-failed',
   });
 // → open connectUrl in the user's browser; they consent to Google/Slack/…
 // 3. after they return, finalize (binds their authorized account)
-await kortix.project(projectId).connectors.profiles.pipedreamFinalize(profile.profile_id);
+await kortix.workspace(workspaceId).connectors.profiles.pipedreamFinalize(profile.profile_id);
 // → bind by reference exactly like the static case
 ```
 
@@ -151,8 +151,8 @@ await kortix.project(projectId).connectors.profiles.pipedreamFinalize(profile.pr
   **All-or-nothing binding.** If a session's `connector_bindings` sets *any* alias,
   every *unbound* alias resolves to null for that session — bind every connector the
   agent needs in the one call, **or** pass `inherit_unbound: true` to keep the
-  project-default fallback for the unbound aliases (so you can override just one
-  connector without re-binding the rest; it only ever inherits the project *default*,
+  workspace-default fallback for the unbound aliases (so you can override just one
+  connector without re-binding the rest; it only ever inherits the workspace *default*,
   never another user's profile). If a user disconnects mid-session (the profile is
   revoked), the connector fails closed rather than falling back to a shared account;
   prompt the user to reconnect.
@@ -164,7 +164,7 @@ A session's runtime lives in a per-session sandbox that boots on first use. Awai
 readiness, open the stream, then send the prompt:
 
 ```ts
-const s = kortix.session(projectId, session.session_id);
+const s = kortix.session(workspaceId, session.session_id);
 await s.ensureReady();                 // boots/resumes the sandbox
 const stream = s.stream({ onEvent: (e) => { /* render tokens/tools */ } });
 await s.send("Summarize this user's new signups.");
@@ -194,7 +194,7 @@ starting a second one. Replaying a key with a **different** body — different
   broker-resolved server-side at call time; `secrets` are injected as a narrowed
   allow-list. The agent's machine never holds an app secret.
 - **Bindings can't cross tenants.** A `profile_id` only resolves for the account and
-  project that owns it; a wrong or foreign id is rejected as not-found.
+  workspace that owns it; a wrong or foreign id is rejected as not-found.
 - **`origin_ref` is attribution, not authorization.** It labels the session and
   usage; it never grants access to a user's data on its own.
 - **Personal connections stay private.** A session that binds a member's personal
@@ -206,6 +206,6 @@ starting a second one. Replaying a key with a **different** body — different
 | --- | --- | --- |
 | `400` | `INVALID_SESSION_MODEL` | `opencode_model` isn't servable for this account. |
 | `400` | `INVALID_SESSION_CONNECTOR_BINDINGS` / `INVALID_SESSION_SECRETS` | Malformed overrides, or a secret/binding cap exceeded. |
-| `404` | `CONNECTOR_PROFILE_NOT_FOUND` | The bound `profile_id` doesn't exist for this project (or isn't yours). |
+| `404` | `CONNECTOR_PROFILE_NOT_FOUND` | The bound `profile_id` doesn't exist for this workspace (or isn't yours). |
 | `409` | `CONNECTOR_PROFILE_INACTIVE` | The bound profile is revoked or the connector is disabled. |
 | `409` | `IDEMPOTENCY_*_CONFLICT` | An `Idempotency-Key` was replayed with a different body. Keep the body identical across retries. |

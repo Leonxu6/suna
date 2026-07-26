@@ -64,7 +64,7 @@ export function isDesktop(): boolean {
  * For routes that don't exist inside the desktop app (docs, marketing, …):
  * on desktop open them in the user's real browser and return true; on web
  * return false so the caller navigates normally. Client-side `router.push`
- * to these routes otherwise just bounces to /projects via middleware, so the
+ * to these routes otherwise just bounces to /workspaces via middleware, so the
  * link appears to "do nothing". `window.open` is routed to the system browser
  * by the Tauri shell's window-open shim.
  */
@@ -95,7 +95,7 @@ export type DesktopShellPlatform = 'macos' | 'other';
 /**
  * Chrome-layout bucket for the desktop shell: macOS puts the window controls
  * top-left (traffic lights), everything else top-right. `null` on the web.
- * Shared by the title-bar surfaces (project shell, session header, tab bar)
+ * Shared by the title-bar surfaces (workspace shell, session header, tab bar)
  * so they indent/align consistently.
  */
 export function desktopShellPlatform(): DesktopShellPlatform | null {

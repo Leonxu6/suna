@@ -52,12 +52,12 @@ import { flow } from "../core/flow";
 flow("SEC-2b", {
   domain: "secrets",
   tags: ["secrets"],
-  routes: ["POST /v1/projects/:id/secrets"],
+  routes: ["POST /v1/workspaces/:id/secrets"],
 }, async (ctx) => {
   const p = await ctx.fixtures.project();              // run-scoped, auto-torn-down
   await ctx.step("reserved name rejected", async () => {
     const r = await ctx.client.as(ctx.P.M_MANAGER)
-      .post("/v1/projects/:id/secrets", { name: "KORTIX_X", value: "v" }, { params: { id: p.id } });
+      .post("/v1/workspaces/:id/secrets", { name: "KORTIX_X", value: "v" }, { params: { id: p.id } });
     r.status(400);
   });
 });

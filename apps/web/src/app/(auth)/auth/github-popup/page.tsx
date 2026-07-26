@@ -29,7 +29,7 @@ export default function GitHubOAuthPopup() {
     let cancelled = false;
 
     // Get return URL from sessionStorage (set by parent component)
-    const returnUrl = sessionStorage.getItem('github-returnUrl') || '/projects';
+    const returnUrl = sessionStorage.getItem('github-returnUrl') || '/workspaces';
 
     const postMessage = (message: AuthMessage) => {
       try {

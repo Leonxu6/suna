@@ -18,8 +18,8 @@ describe('GitHub installation presentation', () => {
 });
 
 describe('GitHub account connection surfaces', () => {
-  const projectModalSource = readFileSync(
-    join(import.meta.dir, '../features/projects/modal/project-create-modal.tsx'),
+  const workspaceModalSource = readFileSync(
+    join(import.meta.dir, '../features/workspaces/modal/workspace-create-modal.tsx'),
     'utf8',
   );
   const accountPageSource = readFileSync(
@@ -28,17 +28,17 @@ describe('GitHub account connection surfaces', () => {
   );
 
   test('keeps the GitHub App install action visible during repository import', () => {
-    expect(projectModalSource).toContain('aria-label="Connect another GitHub account"');
-    expect(projectModalSource).toContain('router.push(`/github/setup?account_id=');
-    expect(projectModalSource).not.toContain('window.location.assign(freshInstallUrl)');
+    expect(workspaceModalSource).toContain('aria-label="Connect another GitHub account"');
+    expect(workspaceModalSource).toContain('router.push(`/github/setup?account_id=');
+    expect(workspaceModalSource).not.toContain('window.location.assign(freshInstallUrl)');
   });
 
   test('presents the three repository sources as one visible decision', () => {
-    expect(projectModalSource).toContain('aria-label="Repository source"');
-    expect(projectModalSource).toContain('Kortix managed');
-    expect(projectModalSource).toContain('Create in GitHub');
-    expect(projectModalSource).toContain('Import from GitHub');
-    expect(projectModalSource).not.toContain('Use managed repository');
+    expect(workspaceModalSource).toContain('aria-label="Repository source"');
+    expect(workspaceModalSource).toContain('Kortix managed');
+    expect(workspaceModalSource).toContain('Create in GitHub');
+    expect(workspaceModalSource).toContain('Import from GitHub');
+    expect(workspaceModalSource).not.toContain('Use managed repository');
   });
 
   test('does not gate account GitHub connections on managed-server status', () => {

@@ -39,7 +39,7 @@ import { isLlmGatewayEnabled } from '@/lib/llm-gateway';
 import type { ProviderModalTab } from '@/stores/provider-modal-store';
 import { useProviderModalStore } from '@/stores/provider-modal-store';
 import { DEFAULT_MANAGED_MODEL_IDS, PROVIDER_LABELS } from '@kortix/llm-catalog';
-import { getProjectDetail, listProjectSecrets } from '@kortix/sdk';
+import { getWorkspaceDetail, listWorkspaceSecrets } from '@kortix/sdk';
 import { useQuery } from '@tanstack/react-query';
 import { shouldShowFreeTag } from './model-tags';
 import type { FlatModel } from './session-chat-input';
@@ -135,8 +135,8 @@ export interface ModelDefaultControls {
   agentName?: string;
   onSetAccountDefault: (model: ModelRef) => void;
   onSetAgentDefault?: (model: ModelRef) => void;
-  /** When set (in-project picker), pin the model as this project's default. */
-  onSetProjectDefault?: (model: ModelRef) => void;
+  /** When set (in-workspace picker), pin the model as this workspace's default. */
+  onSetWorkspaceDefault?: (model: ModelRef) => void;
 }
 
 export interface ModelSelectorProps {
@@ -148,8 +148,8 @@ export interface ModelSelectorProps {
   /**
    * Trigger label shown when `selectedModel` is null. Defaults to "No model"
    * (the chat-input/schedule meaning: falls back to the agent/account/platform
-   * chain). Pass e.g. "Project default" where null specifically means "inherit
-   * the project's configured default" so the pill never implies nothing was
+   * chain). Pass e.g. "Workspace default" where null specifically means "inherit
+   * the workspace's configured default" so the pill never implies nothing was
    * chosen when something concrete will actually run.
    */
   unsetLabel?: string;
@@ -181,30 +181,30 @@ export function ModelSelector({
     showUpgradeOption,
   } = useModelConnectionGate();
 
-  // When mounted under /projects/[id]/..., route model filtering to the
-  // per-project gateway catalog. On every other route (instance dashboard,
+  // When mounted under /workspaces/[id]/..., route model filtering to the
+  // per-workspace gateway catalog. On every other route (instance dashboard,
   // /milano, /berlin, etc.) we filter to native (non-gateway) models.
   const params = useParams<{ id?: string }>();
-  const projectId = typeof params?.id === 'string' ? params.id : null;
-  const projectDetailQuery = useQuery({
-    queryKey: ['project-detail', projectId],
-    queryFn: () => getProjectDetail(projectId as string),
-    enabled: !!projectId,
+  const workspaceId = typeof params?.id === 'string' ? params.id : null;
+  const workspaceDetailQuery = useQuery({
+    queryKey: ['workspace-detail', workspaceId],
+    queryFn: () => getWorkspaceDetail(workspaceId as string),
+    enabled: !!workspaceId,
     staleTime: 30_000,
   });
-  const llmGatewayEnabled = isLlmGatewayEnabled(projectDetailQuery.data?.project);
+  const llmGatewayEnabled = isLlmGatewayEnabled(workspaceDetailQuery.data?.workspace);
   const baseModels = useMemo(() => {
     return llmGatewayEnabled ? models : models.filter((m) => m.providerID !== 'kortix');
   }, [models, llmGatewayEnabled]);
 
-  // Track project secrets whenever we're in a project (not only while the picker
+  // Track workspace secrets whenever we're in a workspace (not only while the picker
   // is open) so connecting/disconnecting a provider flips model visibility live —
   // the connect mutation invalidates this exact key, and an always-subscribed
   // query refetches immediately instead of waiting for the next picker open.
   const secretsQuery = useQuery({
-    queryKey: ['project-secrets', projectId],
-    queryFn: () => listProjectSecrets(projectId as string),
-    enabled: !!projectId && llmGatewayEnabled,
+    queryKey: ['workspace-secrets', workspaceId],
+    queryFn: () => listWorkspaceSecrets(workspaceId as string),
+    enabled: !!workspaceId && llmGatewayEnabled,
     staleTime: 10_000,
   });
   const secretNames = useMemo(() => {
@@ -547,17 +547,17 @@ export function ModelSelector({
                     <Star className="size-3.5 shrink-0" />
                     Set as my default model
                   </button>
-                  {defaultControls.onSetProjectDefault ? (
+                  {defaultControls.onSetWorkspaceDefault ? (
                     <button
                       type="button"
                       onClick={() => {
-                        defaultControls.onSetProjectDefault?.(selectedModel);
+                        defaultControls.onSetWorkspaceDefault?.(selectedModel);
                         setOpen(false);
                       }}
                       className="text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors duration-200"
                     >
                       <FolderGit2 className="size-3.5 shrink-0" />
-                      Set as this project&apos;s default
+                      Set as this workspace&apos;s default
                     </button>
                   ) : null}
                   {defaultControls.agentName && defaultControls.onSetAgentDefault ? (

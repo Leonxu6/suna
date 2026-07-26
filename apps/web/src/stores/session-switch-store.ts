@@ -43,7 +43,7 @@ interface SessionSwitchState {
 }
 
 /**
- * Cross-route client state for project-session navigation. Completion is compare-
+ * Cross-route client state for workspace-session navigation. Completion is compare-
  * and-clear so a slow older route can never clear a newer rapid-click target.
  */
 export const useSessionSwitchStore = create<SessionSwitchState>((set) => ({

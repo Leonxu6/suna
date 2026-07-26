@@ -21,11 +21,11 @@ describe('customize sections', () => {
   });
 
   test('redirects legacy files and changes links into the standalone files surface', () => {
-    expect(legacyCustomizeFilesRedirect('project-1', 'files')).toBe('/projects/project-1/files');
-    expect(legacyCustomizeFilesRedirect('project-1', 'changes')).toBe(
-      '/projects/project-1/files?panel=proposed-changes',
+    expect(legacyCustomizeFilesRedirect('workspace-1', 'files')).toBe('/workspaces/workspace-1/files');
+    expect(legacyCustomizeFilesRedirect('workspace-1', 'changes')).toBe(
+      '/workspaces/workspace-1/files?panel=proposed-changes',
     );
-    expect(legacyCustomizeFilesRedirect('project-1', 'git')).toBeNull();
+    expect(legacyCustomizeFilesRedirect('workspace-1', 'git')).toBeNull();
   });
 
   test('parses every canonical section and rejects unknowns', () => {

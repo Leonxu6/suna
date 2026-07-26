@@ -89,10 +89,10 @@ const QUICK_FILTERS: QuickFilter[] = [
   { label: 'All events', action: '' },
   { label: 'IAM only', action: 'iam.' },
   { label: 'Group changes', action: 'iam.group' },
-  { label: 'Project access', action: 'iam.project.group' },
+  { label: 'Workspace access', action: 'iam.workspace.group' },
   { label: 'Super-admin grants', action: 'iam.member.super_admin' },
-  { label: 'Sessions', action: 'POST /v1/projects' },
-  { label: 'Secrets', action: 'projects' },
+  { label: 'Sessions', action: 'POST /v1/workspaces' },
+  { label: 'Secrets', action: 'workspaces' },
 ];
 
 // resource_type buckets the UI offers as a dropdown. '' = any. These are the
@@ -100,9 +100,9 @@ const QUICK_FILTERS: QuickFilter[] = [
 // any prefix so a caller could pass more.
 const RESOURCE_TYPES: { label: string; value: string }[] = [
   { label: 'Any resource', value: '' },
-  { label: 'Project', value: 'project' },
-  { label: 'Session', value: 'project_session' },
-  { label: 'Secret', value: 'project_secret' },
+  { label: 'Workspace', value: 'workspace' },
+  { label: 'Session', value: 'workspace_session' },
+  { label: 'Secret', value: 'workspace_secret' },
   { label: 'Group', value: 'group' },
   { label: 'Account', value: 'account' },
   { label: 'Audit webhook', value: 'audit_webhook' },

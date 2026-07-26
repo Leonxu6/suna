@@ -35,7 +35,7 @@ import { createExecutorClient } from '@kortix/executor-sdk';
 const executor = createExecutorClient({
   apiUrl: process.env.KORTIX_API_URL!,
   token: process.env.KORTIX_CLI_TOKEN ?? process.env.KORTIX_EXECUTOR_TOKEN!,
-  projectId: process.env.KORTIX_PROJECT_ID,
+  workspaceId: process.env.KORTIX_WORKSPACE_ID ?? process.env.KORTIX_PROJECT_ID,
 });
 
 const tools = await executor.discover('send a slack message');
@@ -60,7 +60,7 @@ import { createExecutorClient } from '@kortix/executor-sdk';
 const executor = createExecutorClient({
   apiUrl: process.env.KORTIX_API_URL!,
   token: process.env.KORTIX_CLI_TOKEN ?? process.env.KORTIX_EXECUTOR_TOKEN!,
-  projectId: process.env.KORTIX_PROJECT_ID,
+  workspaceId: process.env.KORTIX_WORKSPACE_ID ?? process.env.KORTIX_PROJECT_ID,
 });
 
 const unread = await executor.call<{ messages: Array<{ id: string; from: string; text: string }> }>(
@@ -94,9 +94,11 @@ and have the skill tell the agent when to run that script.
 - `describe(tool)` - one tool's schema, risk, and description.
 - `call(connector, action, args)` - execute one gateway call.
 
-`projectId` is optional. When set, the client uses project-explicit gateway
+`workspaceId` is optional. When set, the client uses workspace-explicit gateway
 routes that accept a normal user token or a session token. When omitted, it uses
-the legacy flat routes that derive the project from an in-sandbox session token.
+the legacy flat routes that derive the workspace from an in-sandbox session token.
+
+`projectId` remains a deprecated compatibility option.
 
 ## Runtime Contract
 

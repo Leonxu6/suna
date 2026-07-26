@@ -50,6 +50,7 @@ export function registerAccountRoutes(): void {
           name: accounts.name,
           createdAt: accounts.createdAt,
           updatedAt: accounts.updatedAt,
+          defaultWorkspaceId: accounts.defaultWorkspaceId,
         })
         .from(accountMembers)
         .innerJoin(accounts, eq(accountMembers.accountId, accounts.accountId))
@@ -67,6 +68,7 @@ export function registerAccountRoutes(): void {
             slug: m.accountId.slice(0, 8),
             created_at: m.createdAt?.toISOString() ?? new Date().toISOString(),
             updated_at: m.updatedAt?.toISOString() ?? new Date().toISOString(),
+            default_workspace_id: m.defaultWorkspaceId ?? null,
             account_role: m.accountRole || 'owner',
             is_primary_owner: m.accountRole === 'owner',
           })),
@@ -90,6 +92,7 @@ export function registerAccountRoutes(): void {
             slug: row.accountId.slice(0, 8),
             created_at: row.createdAt.toISOString(),
             updated_at: row.updatedAt.toISOString(),
+            default_workspace_id: row.defaultWorkspaceId ?? null,
             account_role: 'owner',
             is_primary_owner: true,
           },
@@ -162,6 +165,7 @@ export function registerAccountRoutes(): void {
           slug: account.accountId.slice(0, 8),
           created_at: account.createdAt.toISOString(),
           updated_at: account.updatedAt.toISOString(),
+          default_workspace_id: account.defaultWorkspaceId ?? null,
           account_role: 'owner',
           is_primary_owner: true,
         },
@@ -244,6 +248,7 @@ export function registerAccountRoutes(): void {
         mfa_required: row.mfaRequired ?? false,
         created_at: row.createdAt.toISOString(),
         updated_at: row.updatedAt.toISOString(),
+        default_workspace_id: row.defaultWorkspaceId ?? null,
       });
     },
   );

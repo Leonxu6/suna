@@ -6,8 +6,8 @@ import { InfoBanner } from '@/components/ui/info-banner';
 import { Input } from '@/components/ui/input';
 import Loading from '@/components/ui/loading';
 import { errorToast, successToast } from '@/components/ui/toast';
-import { refreshProjectProviderState } from '@kortix/sdk/react';
-import { upsertProjectSecret } from '@kortix/sdk';
+import { refreshWorkspaceProviderState } from '@kortix/sdk/react';
+import { upsertWorkspaceSecret } from '@kortix/sdk';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronLeft, Copy, Info, Plus, TriangleAlert } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
@@ -18,11 +18,11 @@ import type { CustomFormState } from './types';
 import { buildCustomProviderSnippet } from './utils';
 
 export function CustomProviderForm({
-  projectId,
+  workspaceId,
   onBack,
   onDone,
 }: {
-  projectId: string;
+  workspaceId: string;
   onBack: () => void;
   onDone: () => void;
 }) {
@@ -70,10 +70,10 @@ export function CustomProviderForm({
         ? `CUSTOM_${trimmed.providerId.toUpperCase().replace(/-/g, '_')}_API_KEY`
         : null;
       if (secretName) {
-        // LLM provider credentials are always project-wide (see
+        // LLM provider credentials are always workspace-wide (see
         // api-key-connect-form.tsx) — a per-user key is invisible to the
         // gateway's shared-row resolution and breaks every model turn.
-        await upsertProjectSecret(projectId, {
+        await upsertWorkspaceSecret(workspaceId, {
           name: secretName,
           value: trimmed.apiKey,
         });
@@ -92,8 +92,8 @@ export function CustomProviderForm({
     },
     onSuccess: (result) => {
       setSavedSnippet(result);
-      queryClient.invalidateQueries({ queryKey: ['project-secrets', projectId] });
-      refreshProjectProviderState(queryClient, projectId);
+      queryClient.invalidateQueries({ queryKey: ['workspace-secrets', workspaceId] });
+      refreshWorkspaceProviderState(queryClient, workspaceId);
     },
     onError: (err) => setError(err instanceof Error ? err.message : 'Failed to save'),
   });
@@ -129,7 +129,7 @@ export function CustomProviderForm({
         onClick={onBack}
       >
         <ChevronLeft className="size-3.5 shrink-0" />
-        {tHardcodedUi.raw('componentsProjectsProjectProviderModal.line983JsxTextBackToProviders')}
+        {tHardcodedUi.raw('componentsWorkspacesWorkspaceProviderModal.line983JsxTextBackToProviders')}
       </Button>
 
       <div className="bg-popover flex items-center gap-3 rounded-md border px-4 py-3">
@@ -139,12 +139,12 @@ export function CustomProviderForm({
         <div className="min-w-0 flex-1">
           <div className="text-foreground text-sm font-medium">
             {tHardcodedUi.raw(
-              'componentsProjectsProjectProviderModal.line987JsxTextCustomProvider',
+              'componentsWorkspacesWorkspaceProviderModal.line987JsxTextCustomProvider',
             )}
           </div>
           <p className="text-muted-foreground mt-0.5 text-xs text-pretty">
             {tHardcodedUi.raw(
-              'componentsProjectsProjectProviderModal.line989JsxTextConnectAnyOpenaiCompatibleEndpointTheApiKey',
+              'componentsWorkspacesWorkspaceProviderModal.line989JsxTextConnectAnyOpenaiCompatibleEndpointTheApiKey',
             )}{' '}
             <code className="bg-muted rounded px-1 py-0.5 font-mono text-[11px]">
               .opencode/opencode.jsonc
@@ -161,7 +161,7 @@ export function CustomProviderForm({
               <Field>
                 <FieldLabel htmlFor="custom-provider-id">
                   {tHardcodedUi.raw(
-                    'componentsProjectsProjectProviderModal.line1002JsxTextProviderId',
+                    'componentsWorkspacesWorkspaceProviderModal.line1002JsxTextProviderId',
                   )}
                 </FieldLabel>
                 <Input
@@ -179,7 +179,7 @@ export function CustomProviderForm({
               <Field>
                 <FieldLabel htmlFor="custom-display-name">
                   {tHardcodedUi.raw(
-                    'componentsProjectsProjectProviderModal.line1020JsxTextDisplayName',
+                    'componentsWorkspacesWorkspaceProviderModal.line1020JsxTextDisplayName',
                   )}
                 </FieldLabel>
                 <Input
@@ -188,7 +188,7 @@ export function CustomProviderForm({
                   value={form.name}
                   onChange={(e) => setField('name', e.target.value)}
                   placeholder={tHardcodedUi.raw(
-                    'componentsProjectsProjectProviderModal.line1026JsxAttrPlaceholderMyLlm',
+                    'componentsWorkspacesWorkspaceProviderModal.line1026JsxAttrPlaceholderMyLlm',
                   )}
                 />
               </Field>
@@ -196,7 +196,7 @@ export function CustomProviderForm({
 
             <Field>
               <FieldLabel htmlFor="custom-base-url">
-                {tHardcodedUi.raw('componentsProjectsProjectProviderModal.line1033JsxTextBaseUrl')}
+                {tHardcodedUi.raw('componentsWorkspacesWorkspaceProviderModal.line1033JsxTextBaseUrl')}
               </FieldLabel>
               <Input
                 id="custom-base-url"
@@ -210,7 +210,7 @@ export function CustomProviderForm({
 
             <Field>
               <FieldLabel htmlFor="custom-api-key">
-                {tHardcodedUi.raw('componentsProjectsProjectProviderModal.line1045JsxTextApiKey')}{' '}
+                {tHardcodedUi.raw('componentsWorkspacesWorkspaceProviderModal.line1045JsxTextApiKey')}{' '}
                 <span className="text-muted-foreground/60 font-normal">(optional)</span>
               </FieldLabel>
               <Input
@@ -219,13 +219,13 @@ export function CustomProviderForm({
                 value={form.apiKey}
                 onChange={(e) => setField('apiKey', e.target.value)}
                 placeholder={tHardcodedUi.raw(
-                  'componentsProjectsProjectProviderModal.line1052JsxAttrPlaceholderSkSavedAsAProjectSecret',
+                  'componentsWorkspacesWorkspaceProviderModal.line1052JsxAttrPlaceholderSkSavedAsAWorkspaceSecret',
                 )}
                 className="font-mono text-xs"
               />
               {form.apiKey.trim() && (
                 <FieldDescription className="text-xs">
-                  Project-wide — every member of this project can use this provider.
+                  Workspace-wide — every member of this workspace can use this provider.
                 </FieldDescription>
               )}
             </Field>
@@ -234,7 +234,7 @@ export function CustomProviderForm({
               <Field>
                 <FieldLabel htmlFor="custom-model-id">
                   {tHardcodedUi.raw(
-                    'componentsProjectsProjectProviderModal.line1059JsxTextModelId',
+                    'componentsWorkspacesWorkspaceProviderModal.line1059JsxTextModelId',
                   )}
                 </FieldLabel>
                 <Input
@@ -249,7 +249,7 @@ export function CustomProviderForm({
               <Field>
                 <FieldLabel htmlFor="custom-model-name">
                   {tHardcodedUi.raw(
-                    'componentsProjectsProjectProviderModal.line1071JsxTextModelName',
+                    'componentsWorkspacesWorkspaceProviderModal.line1071JsxTextModelName',
                   )}
                 </FieldLabel>
                 <Input
@@ -258,7 +258,7 @@ export function CustomProviderForm({
                   value={form.modelName}
                   onChange={(e) => setField('modelName', e.target.value)}
                   placeholder={tHardcodedUi.raw(
-                    'componentsProjectsProjectProviderModal.line1077JsxAttrPlaceholderFoo7b',
+                    'componentsWorkspacesWorkspaceProviderModal.line1077JsxAttrPlaceholderFoo7b',
                   )}
                 />
               </Field>
@@ -270,7 +270,7 @@ export function CustomProviderForm({
               <>
                 <Loading className="size-3.5 shrink-0" />
                 {tHardcodedUi.raw(
-                  'componentsProjectsProjectProviderModal.line1094JsxTextGenerating',
+                  'componentsWorkspacesWorkspaceProviderModal.line1094JsxTextGenerating',
                 )}
               </>
             ) : (
@@ -334,16 +334,16 @@ function CustomProviderSnippetView({
         {secretName ? (
           <>
             {tHardcodedUi.raw(
-              'componentsProjectsProjectProviderModal.line1136JsxTextYourKeyIsStoredAs',
+              'componentsWorkspacesWorkspaceProviderModal.line1136JsxTextYourKeyIsStoredAs',
             )}{' '}
             <code className="bg-muted rounded px-1 py-0.5 font-mono text-[11px]">{secretName}</code>{' '}
             {tHardcodedUi.raw(
-              'componentsProjectsProjectProviderModal.line1138JsxTextAndWillBeInjectedIntoSessionsAsAn',
+              'componentsWorkspacesWorkspaceProviderModal.line1138JsxTextAndWillBeInjectedIntoSessionsAsAn',
             )}
           </>
         ) : (
           tHardcodedUi.raw(
-            'componentsProjectsProjectProviderModal.line1141JsxTextNoApiKeyWasProvidedTheSnippetBelow',
+            'componentsWorkspacesWorkspaceProviderModal.line1141JsxTextNoApiKeyWasProvidedTheSnippetBelow',
           )
         )}
       </InfoBanner>
@@ -356,7 +356,7 @@ function CustomProviderSnippetView({
       <div className="bg-popover overflow-hidden rounded-md border">
         <div className="border-border/60 flex items-center justify-between gap-3 border-b px-4 py-2.5">
           <span className="text-muted-foreground text-xs">
-            {tHardcodedUi.raw('componentsProjectsProjectProviderModal.line1149JsxTextAddTo')}
+            {tHardcodedUi.raw('componentsWorkspacesWorkspaceProviderModal.line1149JsxTextAddTo')}
             <code className="font-mono">.opencode/opencode.jsonc</code>
           </span>
           <button
@@ -392,13 +392,13 @@ function CustomProviderSnippetView({
 
       <p className="text-muted-foreground px-1 text-xs text-pretty">
         {tHardcodedUi.raw(
-          'componentsProjectsProjectProviderModal.line1168JsxTextPasteThisIntoYourProjectRepoAposS',
+          'componentsWorkspacesWorkspaceProviderModal.line1168JsxTextPasteThisIntoYourWorkspaceRepoAposS',
         )}{' '}
         <code className="bg-muted rounded px-1 py-0.5 font-mono text-[11px]">
           .opencode/opencode.jsonc
         </code>{' '}
         {tHardcodedUi.raw(
-          'componentsProjectsProjectProviderModal.line1170JsxTextAndCommitRestartAnyRunningSessionForThe',
+          'componentsWorkspacesWorkspaceProviderModal.line1170JsxTextAndCommitRestartAnyRunningSessionForThe',
         )}
       </p>
 

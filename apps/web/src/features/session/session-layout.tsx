@@ -36,8 +36,8 @@ import type * as ResizablePrimitive from 'react-resizable-panels';
 
 interface SessionLayoutProps {
   sessionId: string;
-  projectId?: string;
-  projectSessionId?: string;
+  workspaceId?: string;
+  workspaceSessionId?: string;
   children: React.ReactNode;
   bootStage?: SessionStartStage | null;
   transient?: boolean;
@@ -45,8 +45,8 @@ interface SessionLayoutProps {
 
 export const SessionLayout = memo(function SessionLayout({
   sessionId,
-  projectId,
-  projectSessionId,
+  workspaceId,
+  workspaceSessionId,
   children,
   bootStage = null,
   transient = false,
@@ -123,8 +123,8 @@ export const SessionLayout = memo(function SessionLayout({
 
   // Pending-approval count for the "Audit" tab badge. Shares the header nudge's
   // query key so this is one deduped request; skipped while booting/transient.
-  const { data: auditData } = useSessionAudit(projectId, projectSessionId, {
-    enabled: !transient && !booting && !!projectId && !!projectSessionId,
+  const { data: auditData } = useSessionAudit(workspaceId, workspaceSessionId, {
+    enabled: !transient && !booting && !!workspaceId && !!workspaceSessionId,
     silent: true,
   });
   const auditPendingCount = (auditData?.actions ?? []).filter(isPendingAction).length;
@@ -302,20 +302,20 @@ export const SessionLayout = memo(function SessionLayout({
   }, [showBrowser]);
 
   const swappableBody = showAudit ? (
-    <SessionAuditPanel projectId={projectId} projectSessionId={projectSessionId} />
+    <SessionAuditPanel workspaceId={workspaceId} workspaceSessionId={workspaceSessionId} />
   ) : showExplorer ? (
     <SessionFilesExplorer
       chatSessionId={sessionId}
-      projectId={projectId}
-      projectSessionId={projectSessionId}
+      workspaceId={workspaceId}
+      workspaceSessionId={workspaceSessionId}
     />
   ) : (
     <ActionPanel
       sessionId={sessionId}
       messages={messages}
       isSessionBusy={isSessionBusy}
-      projectId={projectId}
-      projectSessionId={projectSessionId}
+      workspaceId={workspaceId}
+      workspaceSessionId={workspaceSessionId}
     />
   );
   const panelBody = (
@@ -324,7 +324,7 @@ export const SessionLayout = memo(function SessionLayout({
         <div className={cn('absolute inset-0', !showTerminal && 'hidden')}>
           <SessionTerminalPanel
             sessionId={sessionId}
-            projectSessionId={projectSessionId ?? undefined}
+            workspaceSessionId={workspaceSessionId ?? undefined}
             hidden={!showTerminal}
           />
         </div>
@@ -333,8 +333,8 @@ export const SessionLayout = memo(function SessionLayout({
         <div className={cn('absolute inset-0', !showBrowser && 'hidden')}>
           <BrowserPanel
             tabId={sessionPreviewTabId(sessionId)}
-            projectId={projectId}
-            projectSessionId={projectSessionId}
+            workspaceId={workspaceId}
+            workspaceSessionId={workspaceSessionId}
           />
         </div>
       )}
@@ -359,8 +359,8 @@ export const SessionLayout = memo(function SessionLayout({
     <SessionStartingLoader
       stage={bootStage ?? 'provisioning'}
       delayMs={0}
-      projectId={projectId}
-      sessionId={projectSessionId}
+      workspaceId={workspaceId}
+      sessionId={workspaceSessionId}
       variant="stepper"
     />
   ) : (

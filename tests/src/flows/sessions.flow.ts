@@ -12,21 +12,21 @@ flow(
     domain: 'sessions',
     requires: ['daytona', 'funded'],
     timeoutMs: 300_000,
-    routes: ['POST /v1/projects/:projectId/sessions'],
+    routes: ['POST /v1/workspaces/:workspaceId/sessions'],
   },
   async (ctx) => {
-    const p = await ctx.fixtures.project({ seed: true });
+    const p = await ctx.fixtures.workspace({ seed: true });
     await ctx.step('create session → 201 provisioning', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          '/v1/projects/:projectId/sessions',
+          '/v1/workspaces/:workspaceId/sessions',
           { initial_prompt: 'noop' },
-          { params: { projectId: p.id } },
+          { params: { workspaceId: p.id } },
         );
       r.status(201);
       const id = r.json<any>()?.session_id ?? r.json<any>()?.id;
-      if (id) ctx.track('session', id, { projectId: p.id });
+      if (id) ctx.track('session', id, { workspaceId: p.id });
     });
   },
 );
@@ -37,14 +37,14 @@ flow(
     domain: 'sessions',
     requires: ['daytona', 'funded'],
     timeoutMs: 120_000,
-    routes: ['GET /v1/projects/:projectId/sessions'],
+    routes: ['GET /v1/workspaces/:workspaceId/sessions'],
   },
   async (ctx) => {
-    const p = await ctx.fixtures.project();
+    const p = await ctx.fixtures.workspace();
     await ctx.step('list sessions', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .get('/v1/projects/:projectId/sessions', { params: { projectId: p.id } });
+        .get('/v1/workspaces/:workspaceId/sessions', { params: { workspaceId: p.id } });
       r.status(200);
     });
   },
@@ -56,24 +56,24 @@ flow(
     domain: 'sessions',
     requires: ['daytona', 'funded'],
     timeoutMs: 300_000,
-    routes: ['GET /v1/projects/:projectId/sessions/:sessionId'],
+    routes: ['GET /v1/workspaces/:workspaceId/sessions/:sessionId'],
   },
   async (ctx) => {
-    const p = await ctx.fixtures.project({ seed: true });
+    const p = await ctx.fixtures.workspace({ seed: true });
     const s = await ctx.fixtures.session(p);
     await ctx.step('get session → 200', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .get('/v1/projects/:projectId/sessions/:sessionId', {
-          params: { projectId: p.id, sessionId: s.id },
+        .get('/v1/workspaces/:workspaceId/sessions/:sessionId', {
+          params: { workspaceId: p.id, sessionId: s.id },
         });
       r.status(200);
     });
     await ctx.step('non-uuid session id → 400', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .get('/v1/projects/:projectId/sessions/:sessionId', {
-          params: { projectId: p.id, sessionId: 'not-a-uuid' },
+        .get('/v1/workspaces/:workspaceId/sessions/:sessionId', {
+          params: { workspaceId: p.id, sessionId: 'not-a-uuid' },
         });
       r.status(400);
     });
@@ -86,18 +86,18 @@ flow(
     domain: 'sessions',
     requires: ['daytona', 'funded'],
     timeoutMs: 300_000,
-    routes: ['POST /v1/projects/:projectId/sessions/:sessionId/start'],
+    routes: ['POST /v1/workspaces/:workspaceId/sessions/:sessionId/start'],
   },
   async (ctx) => {
-    const p = await ctx.fixtures.project({ seed: true });
+    const p = await ctx.fixtures.workspace({ seed: true });
     const s = await ctx.fixtures.session(p);
     await ctx.step('unified start reports the runtime readiness stage', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          '/v1/projects/:projectId/sessions/:sessionId/start',
+          '/v1/workspaces/:workspaceId/sessions/:sessionId/start',
           {},
-          { params: { projectId: p.id, sessionId: s.id } },
+          { params: { workspaceId: p.id, sessionId: s.id } },
         );
       r.status(200).body().exists('$.stage').exists('$.retriable');
     });
@@ -110,16 +110,16 @@ flow(
     domain: 'sessions',
     requires: ['daytona', 'funded'],
     timeoutMs: 300_000,
-    routes: ['DELETE /v1/projects/:projectId/sessions/:sessionId'],
+    routes: ['DELETE /v1/workspaces/:workspaceId/sessions/:sessionId'],
   },
   async (ctx) => {
-    const p = await ctx.fixtures.project({ seed: true });
+    const p = await ctx.fixtures.workspace({ seed: true });
     const s = await ctx.fixtures.session(p);
     await ctx.step('delete session → 200 stopped', async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .del('/v1/projects/:projectId/sessions/:sessionId', {
-          params: { projectId: p.id, sessionId: s.id },
+        .del('/v1/workspaces/:workspaceId/sessions/:sessionId', {
+          params: { workspaceId: p.id, sessionId: s.id },
         });
       r.status(200);
     });
@@ -159,15 +159,15 @@ flow(
     requires: ['daytona', 'funded'],
     timeoutMs: 300_000,
     routes: [
-      'POST /v1/projects/:projectId/sessions',
-      'POST /v1/projects/:projectId/sessions/:sessionId/public-shares',
-      'GET /v1/projects/:projectId/sessions/:sessionId/public-shares',
-      'DELETE /v1/projects/:projectId/sessions/:sessionId/public-shares/:shareId',
+      'POST /v1/workspaces/:workspaceId/sessions',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/public-shares',
+      'GET /v1/workspaces/:workspaceId/sessions/:sessionId/public-shares',
+      'DELETE /v1/workspaces/:workspaceId/sessions/:sessionId/public-shares/:shareId',
       'GET /v1/p/public-share/:token',
     ],
   },
   async (ctx) => {
-    const project = await ctx.fixtures.project({ seed: true });
+    const project = await ctx.fixtures.workspace({ seed: true });
     const session = await ctx.fixtures.session(project);
     const owner = ctx.client.as(ctx.P.OWNER);
 
@@ -175,14 +175,14 @@ flow(
     let token = '';
     await ctx.step('create a preview public share → 201 with token + shape', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/sessions/:sessionId/public-shares',
+        '/v1/workspaces/:workspaceId/sessions/:sessionId/public-shares',
         { preview: { port: 5173, path: '/', label: 'ke2e preview' } },
-        { params: { projectId: project.id, sessionId: session.id } },
+        { params: { workspaceId: project.id, sessionId: session.id } },
       );
       r.status(201)
         .body()
         .has('$.share.session_id', session.id)
-        .has('$.share.project_id', project.id)
+        .has('$.share.workspace_id', project.id)
         .has('$.share.resource_type', 'preview')
         .has('$.share.port', 5173)
         .has('$.share.mode', 'view')
@@ -196,8 +196,8 @@ flow(
     });
 
     await ctx.step('list shows the share → 200', async () => {
-      const r = await owner.get('/v1/projects/:projectId/sessions/:sessionId/public-shares', {
-        params: { projectId: project.id, sessionId: session.id },
+      const r = await owner.get('/v1/workspaces/:workspaceId/sessions/:sessionId/public-shares', {
+        params: { workspaceId: project.id, sessionId: session.id },
       });
       r.status(200).body().has('$.shares[0].share_id', shareId);
     });
@@ -227,9 +227,9 @@ flow(
 
     await ctx.step('revoke the share → 200 with revoked_at set', async () => {
       const r = await owner.del(
-        '/v1/projects/:projectId/sessions/:sessionId/public-shares/:shareId',
+        '/v1/workspaces/:workspaceId/sessions/:sessionId/public-shares/:shareId',
         {
-          params: { projectId: project.id, sessionId: session.id, shareId },
+          params: { workspaceId: project.id, sessionId: session.id, shareId },
         },
       );
       r.status(200).body().has('$.share.share_id', shareId).exists('$.share.revoked_at');
@@ -238,8 +238,8 @@ flow(
     await ctx.step(
       'list still shows the (now revoked) share — revoke does not delete the row',
       async () => {
-        const r = await owner.get('/v1/projects/:projectId/sessions/:sessionId/public-shares', {
-          params: { projectId: project.id, sessionId: session.id },
+        const r = await owner.get('/v1/workspaces/:workspaceId/sessions/:sessionId/public-shares', {
+          params: { workspaceId: project.id, sessionId: session.id },
         });
         r.status(200).body().has('$.shares[0].share_id', shareId).exists('$.shares[0].revoked_at');
       },
@@ -259,9 +259,9 @@ flow(
       'revoking again is idempotent → 200 (no guard against double-revoke)',
       async () => {
         const r = await owner.del(
-          '/v1/projects/:projectId/sessions/:sessionId/public-shares/:shareId',
+          '/v1/workspaces/:workspaceId/sessions/:sessionId/public-shares/:shareId',
           {
-            params: { projectId: project.id, sessionId: session.id, shareId },
+            params: { workspaceId: project.id, sessionId: session.id, shareId },
           },
         );
         r.status(200);
@@ -270,9 +270,9 @@ flow(
 
     await ctx.step('revoking an unknown share id on this session → 404', async () => {
       const r = await owner.del(
-        '/v1/projects/:projectId/sessions/:sessionId/public-shares/:shareId',
+        '/v1/workspaces/:workspaceId/sessions/:sessionId/public-shares/:shareId',
         {
-          params: { projectId: project.id, sessionId: session.id, shareId: crypto.randomUUID() },
+          params: { workspaceId: project.id, sessionId: session.id, shareId: crypto.randomUUID() },
         },
       );
       r.status(404);
@@ -280,9 +280,9 @@ flow(
 
     await ctx.step('malformed (non-uuid) share id → 400', async () => {
       const r = await owner.del(
-        '/v1/projects/:projectId/sessions/:sessionId/public-shares/:shareId',
+        '/v1/workspaces/:workspaceId/sessions/:sessionId/public-shares/:shareId',
         {
-          params: { projectId: project.id, sessionId: session.id, shareId: 'not-a-uuid' },
+          params: { workspaceId: project.id, sessionId: session.id, shareId: 'not-a-uuid' },
         },
       );
       r.status(400);
@@ -292,12 +292,12 @@ flow(
 
 /**
  * SESS-14 — public share access boundary. `canManageSharing = isOwner (the
- * session creator) || canManageProject (manage role: manager/owner/admin)` —
- * projects/lib/access.ts `loadSessionForSharing()`. So a project EDITOR who
+ * session creator) || canManageWorkspace (manage role: manager/owner/admin)` —
+ * workspaces/lib/access.ts `loadSessionForSharing()`. So a project EDITOR who
  * did NOT create the session is denied (403, the sharing-specific message),
  * while a project MANAGER who did NOT create it is allowed (200) via the OR.
  * NONMEMBER is denied earlier, by the account-membership gate in
- * `loadProjectForUser` (throws 403 before the sharing check is ever reached).
+ * `loadWorkspaceForUser` (throws 403 before the sharing check is ever reached).
  * ANON never reaches the handler (401, `supabaseAuth`).
  *
  * `loadSessionForSharing` is deliberately NOT `loadVisibleSession` (the
@@ -305,11 +305,11 @@ flow(
  * public-shares routes used to call `loadVisibleSession`, whose
  * `isSessionVisibleTo` check hides a default-`private` session from everyone
  * but its creator — including a project manager with no adminBypass. That
- * made the `canManageProject` half of the OR unreachable: the route 404'd on
+ * made the `canManageWorkspace` half of the OR unreachable: the route 404'd on
  * the visibility gate before ever computing `canManageSharing`, and a plain
  * editor got the same 404 instead of the informative 403 this spec expects.
  * `loadSessionForSharing` loads the same row but only computes
- * isOwner/canManageProject — no content-visibility check — since managing
+ * isOwner/canManageWorkspace — no content-visibility check — since managing
  * share links is a project-management action, not a "can you read this
  * conversation" one.
  */
@@ -320,39 +320,39 @@ flow(
     requires: ['daytona', 'funded'],
     timeoutMs: 300_000,
     routes: [
-      'POST /v1/projects/:projectId/sessions',
-      'POST /v1/projects/:projectId/sessions/:sessionId/public-shares',
-      'GET /v1/projects/:projectId/sessions/:sessionId/public-shares',
-      'DELETE /v1/projects/:projectId/sessions/:sessionId/public-shares/:shareId',
+      'POST /v1/workspaces/:workspaceId/sessions',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/public-shares',
+      'GET /v1/workspaces/:workspaceId/sessions/:sessionId/public-shares',
+      'DELETE /v1/workspaces/:workspaceId/sessions/:sessionId/public-shares/:shareId',
     ],
   },
   async (ctx) => {
     const team = await ctx.fixtures.team();
-    const p = await team.project({ seed: true });
+    const p = await team.workspace({ seed: true });
     const editor = await team.addMember('member');
-    await team.grantProjectRole(p.id, editor.userId!, 'editor');
+    await team.grantWorkspaceRole(p.id, editor.userId!, 'editor');
     const manager = await team.addMember('member');
-    await team.grantProjectRole(p.id, manager.userId!, 'manager');
+    await team.grantWorkspaceRole(p.id, manager.userId!, 'manager');
 
     const owner = ctx.client.as(ctx.P.OWNER);
     let sessionId = '';
     await ctx.step('OWNER (the account owner) creates the session — session creator', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/sessions',
+        '/v1/workspaces/:workspaceId/sessions',
         { initial_prompt: 'noop' },
-        { params: { projectId: p.id } },
+        { params: { workspaceId: p.id } },
       );
       r.status(201);
       sessionId = r.json<any>()?.session_id ?? r.json<any>()?.id;
-      ctx.track('session', sessionId, { projectId: p.id });
+      ctx.track('session', sessionId, { workspaceId: p.id });
     });
 
     let shareId = '';
     await ctx.step('the creator can create a public share', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/sessions/:sessionId/public-shares',
+        '/v1/workspaces/:workspaceId/sessions/:sessionId/public-shares',
         { preview: { port: 3000 } },
-        { params: { projectId: p.id, sessionId } },
+        { params: { workspaceId: p.id, sessionId } },
       );
       r.status(201);
       shareId = r.json<any>()?.share?.share_id;
@@ -363,8 +363,8 @@ flow(
       async () => {
         const r = await ctx.client
           .as(editor)
-          .get('/v1/projects/:projectId/sessions/:sessionId/public-shares', {
-            params: { projectId: p.id, sessionId },
+          .get('/v1/workspaces/:workspaceId/sessions/:sessionId/public-shares', {
+            params: { workspaceId: p.id, sessionId },
           });
         r.status(403);
       },
@@ -375,9 +375,9 @@ flow(
         const r = await ctx.client
           .as(editor)
           .post(
-            '/v1/projects/:projectId/sessions/:sessionId/public-shares',
+            '/v1/workspaces/:workspaceId/sessions/:sessionId/public-shares',
             { preview: { port: 3000 } },
-            { params: { projectId: p.id, sessionId } },
+            { params: { workspaceId: p.id, sessionId } },
           );
         r.status(403);
       },
@@ -385,19 +385,19 @@ flow(
     await ctx.step("a project EDITOR cannot revoke someone else's share → 403", async () => {
       const r = await ctx.client
         .as(editor)
-        .del('/v1/projects/:projectId/sessions/:sessionId/public-shares/:shareId', {
-          params: { projectId: p.id, sessionId, shareId },
+        .del('/v1/workspaces/:workspaceId/sessions/:sessionId/public-shares/:shareId', {
+          params: { workspaceId: p.id, sessionId, shareId },
         });
       r.status(403);
     });
 
     await ctx.step(
-      'a project MANAGER (not the creator) CAN list shares → 200 (isOwner || canManageProject)',
+      'a project MANAGER (not the creator) CAN list shares → 200 (isOwner || canManageWorkspace)',
       async () => {
         const r = await ctx.client
           .as(manager)
-          .get('/v1/projects/:projectId/sessions/:sessionId/public-shares', {
-            params: { projectId: p.id, sessionId },
+          .get('/v1/workspaces/:workspaceId/sessions/:sessionId/public-shares', {
+            params: { workspaceId: p.id, sessionId },
           });
         r.status(200).body().has('$.shares[0].share_id', shareId);
       },
@@ -406,16 +406,16 @@ flow(
     await ctx.step('NONMEMBER → 403 (no account membership at all)', async () => {
       const r = await ctx.client
         .as(ctx.P.NONMEMBER)
-        .get('/v1/projects/:projectId/sessions/:sessionId/public-shares', {
-          params: { projectId: p.id, sessionId },
+        .get('/v1/workspaces/:workspaceId/sessions/:sessionId/public-shares', {
+          params: { workspaceId: p.id, sessionId },
         });
       r.status(403);
     });
     await ctx.step('ANON → 401', async () => {
       const r = await ctx.client
         .as(ctx.P.ANON)
-        .get('/v1/projects/:projectId/sessions/:sessionId/public-shares', {
-          params: { projectId: p.id, sessionId },
+        .get('/v1/workspaces/:workspaceId/sessions/:sessionId/public-shares', {
+          params: { workspaceId: p.id, sessionId },
         });
       r.status(401);
     });
@@ -435,16 +435,16 @@ flow(
     domain: 'sessions',
     requires: ['daytona', 'funded'],
     timeoutMs: 300_000,
-    routes: ['GET /v1/projects/:projectId/sessions/:sessionId/audit'],
+    routes: ['GET /v1/workspaces/:workspaceId/sessions/:sessionId/audit'],
   },
   async (ctx) => {
-    const p = await ctx.fixtures.project({ seed: true });
+    const p = await ctx.fixtures.workspace({ seed: true });
     const s = await ctx.fixtures.session(p);
     const owner = ctx.client.as(ctx.P.OWNER);
 
     await ctx.step('read the session audit trail → 200 (empty on a fresh session)', async () => {
-      const r = await owner.get('/v1/projects/:projectId/sessions/:sessionId/audit', {
-        params: { projectId: p.id, sessionId: s.id },
+      const r = await owner.get('/v1/workspaces/:workspaceId/sessions/:sessionId/audit', {
+        params: { workspaceId: p.id, sessionId: s.id },
       });
       r.status(200)
         .body()
@@ -454,14 +454,14 @@ flow(
         .exists('$.audit_access');
     });
     await ctx.step('non-uuid session id → 400', async () => {
-      const r = await owner.get('/v1/projects/:projectId/sessions/:sessionId/audit', {
-        params: { projectId: p.id, sessionId: 'not-a-uuid' },
+      const r = await owner.get('/v1/workspaces/:workspaceId/sessions/:sessionId/audit', {
+        params: { workspaceId: p.id, sessionId: 'not-a-uuid' },
       });
       r.status(400);
     });
     await ctx.step('invalid limit (below 1) → 400', async () => {
-      const r = await owner.get('/v1/projects/:projectId/sessions/:sessionId/audit', {
-        params: { projectId: p.id, sessionId: s.id },
+      const r = await owner.get('/v1/workspaces/:workspaceId/sessions/:sessionId/audit', {
+        params: { workspaceId: p.id, sessionId: s.id },
         query: { limit: '0' },
       });
       r.status(400);
@@ -469,16 +469,16 @@ flow(
     await ctx.step('NONMEMBER → 403', async () => {
       const r = await ctx.client
         .as(ctx.P.NONMEMBER)
-        .get('/v1/projects/:projectId/sessions/:sessionId/audit', {
-          params: { projectId: p.id, sessionId: s.id },
+        .get('/v1/workspaces/:workspaceId/sessions/:sessionId/audit', {
+          params: { workspaceId: p.id, sessionId: s.id },
         });
       r.status(403);
     });
     await ctx.step('ANON → 401', async () => {
       const r = await ctx.client
         .as(ctx.P.ANON)
-        .get('/v1/projects/:projectId/sessions/:sessionId/audit', {
-          params: { projectId: p.id, sessionId: s.id },
+        .get('/v1/workspaces/:workspaceId/sessions/:sessionId/audit', {
+          params: { workspaceId: p.id, sessionId: s.id },
         });
       r.status(401);
     });
@@ -523,14 +523,14 @@ flow(
     requires: ['daytona', 'funded'],
     timeoutMs: 300_000,
     routes: [
-      'POST /v1/projects/:projectId/sessions/:sessionId/public-shares',
-      'DELETE /v1/projects/:projectId/sessions/:sessionId/public-shares/:shareId',
+      'POST /v1/workspaces/:workspaceId/sessions/:sessionId/public-shares',
+      'DELETE /v1/workspaces/:workspaceId/sessions/:sessionId/public-shares/:shareId',
       'GET /v1/public/session-shares/:shareId',
       'GET /v1/public/session-shares/:shareId/messages',
     ],
   },
   async (ctx) => {
-    const project = await ctx.fixtures.project({ seed: true });
+    const project = await ctx.fixtures.workspace({ seed: true });
     const session = await ctx.fixtures.session(project);
     const owner = ctx.client.as(ctx.P.OWNER);
     const anon = ctx.client.as(ctx.P.ANON);
@@ -538,9 +538,9 @@ flow(
     let shareId = '';
     await ctx.step('create a preview public share → 201', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/sessions/:sessionId/public-shares',
+        '/v1/workspaces/:workspaceId/sessions/:sessionId/public-shares',
         { preview: { port: 5173, path: '/', label: 'ke2e session-share' } },
-        { params: { projectId: project.id, sessionId: session.id } },
+        { params: { workspaceId: project.id, sessionId: session.id } },
       );
       r.status(201);
       shareId = r.json<any>()?.share?.share_id;
@@ -598,9 +598,9 @@ flow(
 
     await ctx.step('revoke the share → 200', async () => {
       const r = await owner.del(
-        '/v1/projects/:projectId/sessions/:sessionId/public-shares/:shareId',
+        '/v1/workspaces/:workspaceId/sessions/:sessionId/public-shares/:shareId',
         {
-          params: { projectId: project.id, sessionId: session.id, shareId },
+          params: { workspaceId: project.id, sessionId: session.id, shareId },
         },
       );
       r.status(200);
@@ -632,44 +632,44 @@ flow(
     domain: 'sessions',
     requires: ['daytona', 'funded'],
     timeoutMs: 300_000,
-    routes: ['GET /v1/projects/:projectId/sessions/:sessionId/previews'],
+    routes: ['GET /v1/workspaces/:workspaceId/sessions/:sessionId/previews'],
   },
   async (ctx) => {
-    const p = await ctx.fixtures.project({ seed: true });
+    const p = await ctx.fixtures.workspace({ seed: true });
     const s = await ctx.fixtures.session(p);
     const owner = ctx.client.as(ctx.P.OWNER);
 
     await ctx.step('list preview candidates → 200', async () => {
-      const r = await owner.get('/v1/projects/:projectId/sessions/:sessionId/previews', {
-        params: { projectId: p.id, sessionId: s.id },
+      const r = await owner.get('/v1/workspaces/:workspaceId/sessions/:sessionId/previews', {
+        params: { workspaceId: p.id, sessionId: s.id },
       });
       r.status(200).body().exists('$.candidates');
     });
     await ctx.step('non-uuid session id → 400', async () => {
-      const r = await owner.get('/v1/projects/:projectId/sessions/:sessionId/previews', {
-        params: { projectId: p.id, sessionId: 'not-a-uuid' },
+      const r = await owner.get('/v1/workspaces/:workspaceId/sessions/:sessionId/previews', {
+        params: { workspaceId: p.id, sessionId: 'not-a-uuid' },
       });
       r.status(400);
     });
     await ctx.step('unknown session → 404', async () => {
-      const r = await owner.get('/v1/projects/:projectId/sessions/:sessionId/previews', {
-        params: { projectId: p.id, sessionId: crypto.randomUUID() },
+      const r = await owner.get('/v1/workspaces/:workspaceId/sessions/:sessionId/previews', {
+        params: { workspaceId: p.id, sessionId: crypto.randomUUID() },
       });
       r.status(404);
     });
     await ctx.step('NONMEMBER → 403', async () => {
       const r = await ctx.client
         .as(ctx.P.NONMEMBER)
-        .get('/v1/projects/:projectId/sessions/:sessionId/previews', {
-          params: { projectId: p.id, sessionId: s.id },
+        .get('/v1/workspaces/:workspaceId/sessions/:sessionId/previews', {
+          params: { workspaceId: p.id, sessionId: s.id },
         });
       r.status(403);
     });
     await ctx.step('ANON → 401', async () => {
       const r = await ctx.client
         .as(ctx.P.ANON)
-        .get('/v1/projects/:projectId/sessions/:sessionId/previews', {
-          params: { projectId: p.id, sessionId: s.id },
+        .get('/v1/workspaces/:workspaceId/sessions/:sessionId/previews', {
+          params: { workspaceId: p.id, sessionId: s.id },
         });
       r.status(401);
     });

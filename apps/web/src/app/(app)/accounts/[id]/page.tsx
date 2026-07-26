@@ -8,6 +8,7 @@ import {
   CreditCard,
   ExternalLink,
   Fingerprint,
+  FolderKanban,
   GitBranch,
   Github,
   Info,
@@ -35,7 +36,7 @@ import { IdentityIntro } from '@/components/iam/identity-intro';
 import { MfaRequiredCard } from '@/components/iam/mfa-required-card';
 import { PatPolicyCard } from '@/components/iam/pat-policy-card';
 import { PermissionsHelpPopover } from '@/components/iam/permissions-help-popover';
-import { ACCOUNT_ROLE_DESCRIPTORS } from '@/components/iam/project-role-descriptors';
+import { ACCOUNT_ROLE_DESCRIPTORS } from '@/components/iam/workspace-role-descriptors';
 import { RolesTab } from '@/components/iam/roles-tab';
 import { ScimCard } from '@/components/iam/scim-card';
 import { ServiceAccountsCard } from '@/components/iam/service-accounts-card';
@@ -167,6 +168,7 @@ const VALID_TABS = [
   'audit',
 ] as const;
 type AccountSection = (typeof VALID_TABS)[number];
+type AccountNavSection = AccountSection | 'workspaces';
 
 // Three labeled groups: day-to-day account plumbing, money, and the
 // enterprise IAM surface (Groups / Roles / Identity / Audit all share the
@@ -174,10 +176,15 @@ type AccountSection = (typeof VALID_TABS)[number];
 // heading instead of being scattered across the rail and the Settings tab).
 const NAV_GROUPS: Array<{
   label?: string;
-  items: Array<{ id: AccountSection; label: string; icon: LucideIcon | IconMynauiType | IconType }>;
+  items: Array<{
+    id: AccountNavSection;
+    label: string;
+    icon: LucideIcon | IconMynauiType | IconType;
+  }>;
 }> = [
   {
     items: [
+      { id: 'workspaces', label: 'Workspaces', icon: FolderKanban },
       { id: 'members', label: 'Members', icon: Users },
       { id: 'git', label: 'Git', icon: GitBranch },
       { id: 'tokens', label: 'Tokens', icon: KeyRound },
@@ -259,7 +266,7 @@ function rememberGitHubSetupReturn(path: string) {
   try {
     window.localStorage.setItem('kortix:github_setup_return', path);
   } catch {
-    // Non-critical: the setup page falls back to the project import flow.
+    // Non-critical: the setup page falls back to the workspace import flow.
   }
 }
 
@@ -422,13 +429,15 @@ export default function AccountSettingsPage() {
               className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:gap-0.5 lg:overflow-visible lg:pb-0"
             >
               {NAV_GROUPS.map((group, gi) => {
-                const items = group.items.filter((item) => sectionVisible[item.id]);
+                const items = group.items.filter(
+                  (item) => item.id === 'workspaces' || sectionVisible[item.id],
+                );
                 if (items.length === 0) return null;
                 return (
                   <div key={group.label ?? gi} className="contents lg:block lg:space-y-0.5">
                     {gi > 0 ? <div className="hidden lg:block lg:h-4" aria-hidden /> : null}
                     {group.label ? (
-                      // Same label dialect as the project sidebar's group
+                      // Same label dialect as the workspace sidebar's group
                       // headings. Hidden on the mobile horizontal strip —
                       // there the items flow as one row of chips.
                       <p className="text-muted-foreground/60 hidden px-2.5 pb-1 text-xs font-medium tracking-wider uppercase lg:block">
@@ -436,12 +445,18 @@ export default function AccountSettingsPage() {
                       </p>
                     ) : null}
                     {items.map((item) => {
-                      const active = item.id === activeSection;
+                      const active = item.id !== 'workspaces' && item.id === activeSection;
                       return (
                         <button
                           key={item.id}
                           type="button"
-                          onClick={() => navigate(item.id)}
+                          onClick={() => {
+                            if (item.id === 'workspaces') {
+                              router.push(`/accounts/${accountId}/workspaces`);
+                              return;
+                            }
+                            navigate(item.id);
+                          }}
                           aria-current={active ? 'page' : undefined}
                           className={cn(
                             'flex h-8 shrink-0 cursor-pointer items-center gap-2.5 rounded-sm px-2.5 text-sm whitespace-nowrap transition-colors lg:w-full',
@@ -863,7 +878,7 @@ function GitHubConnectionCard({
         open={Boolean(disconnectTarget)}
         onOpenChange={(open) => !open && setDisconnectTarget(null)}
         title="Disconnect GitHub"
-        description={`New imports from ${disconnectTarget?.ownerLogin ?? 'this GitHub account'} will stop working until it is connected again. Existing projects keep their repository link.`}
+        description={`New imports from ${disconnectTarget?.ownerLogin ?? 'this GitHub account'} will stop working until it is connected again. Existing workspaces keep their repository link.`}
         confirmLabel="Disconnect"
         onConfirm={() => {
           if (disconnectTarget) {
@@ -985,7 +1000,7 @@ function DangerZoneCard() {
         <div className="min-w-0">
           <p className="text-foreground text-sm font-medium">Delete account</p>
           <p className="text-muted-foreground mt-0.5 text-xs">
-            Permanently deletes this account and all its projects.
+            Permanently deletes this account and all its workspaces.
           </p>
         </div>
         <Button variant="outline" size="sm" disabled title="Coming soon" className="shrink-0">
@@ -1409,11 +1424,11 @@ function MembersCard({
                   const metaParts: string[] = [`Joined ${formatDate(member.joined_at)}`];
                   if (
                     member.account_role === 'member' &&
-                    typeof member.explicit_project_count === 'number' &&
-                    member.explicit_project_count > 0
+                    typeof member.explicit_workspace_count === 'number' &&
+                    member.explicit_workspace_count > 0
                   ) {
                     metaParts.push(
-                      `${member.explicit_project_count} project${member.explicit_project_count === 1 ? '' : 's'}`,
+                      `${member.explicit_workspace_count} workspace${member.explicit_workspace_count === 1 ? '' : 's'}`,
                     );
                   }
                   if (member.groups && member.groups.length > 0) {
@@ -1666,7 +1681,7 @@ function MembersCard({
         description={
           <span>
             You&apos;ll lose access to{' '}
-            <span className="text-foreground font-medium">{account.name}</span> and its projects.
+            <span className="text-foreground font-medium">{account.name}</span> and its workspaces.
           </span>
         }
         confirmLabel="Leave"

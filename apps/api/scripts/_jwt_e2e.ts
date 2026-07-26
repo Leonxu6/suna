@@ -8,14 +8,14 @@ const CAP = Number(process.env.CAP || 200000); // ms
 const now = () => Date.now();
 
 const t0 = now();
-const ses: any = await (await fetch(`${BASE}/v1/projects/${PID}/sessions`, { method: 'POST', headers: H, body: JSON.stringify({ branch_already_created: false }) })).json();
+const ses: any = await (await fetch(`${BASE}/v1/workspaces/${PID}/sessions`, { method: 'POST', headers: H, body: JSON.stringify({ branch_already_created: false }) })).json();
 if (!ses.session_id) { console.log('CREATE_FAILED:', JSON.stringify(ses).slice(0, 300)); process.exit(1); }
 console.log(`session-created +${now() - t0}ms (${ses.session_id})`);
 
 // poll sandbox row like the FE
 let sbx: any = null;
 while (now() - t0 < CAP) {
-  sbx = await (await fetch(`${BASE}/v1/projects/${PID}/sessions/${ses.session_id}/sandbox`, { headers: H })).json().catch(() => null);
+  sbx = await (await fetch(`${BASE}/v1/workspaces/${PID}/sessions/${ses.session_id}/sandbox`, { headers: H })).json().catch(() => null);
   if (sbx?.status === 'active' && sbx?.external_id) break;
   await Bun.sleep(150);
 }
@@ -35,7 +35,7 @@ while (now() - t0 < CAP) {
 console.log(`runtime-ready=${ready} +${now() - t0}ms health=${JSON.stringify(lastHealth).slice(0, 220)}`);
 
 if (ready) {
-  const e: any = await (await fetch(`${BASE}/v1/projects/${PID}/sessions/${ses.session_id}/ensure-opencode`, { method: 'POST', headers: H, body: '{}' })).json();
+  const e: any = await (await fetch(`${BASE}/v1/workspaces/${PID}/sessions/${ses.session_id}/ensure-opencode`, { method: 'POST', headers: H, body: '{}' })).json();
   console.log(`ensure +${now() - t0}ms (${e?.ensure?.reason ?? '?'}) pin=${(e?.opencode_session_id ?? '').slice(0, 12)}`);
   console.log(`USABLE in ${now() - t0}ms  sbx=${sbx.external_id}`);
 } else {

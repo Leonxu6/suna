@@ -7,7 +7,7 @@
  * `fetch`/`Response`/`WebSocket`, which the SDK's own isomorphic code relies
  * on meaning the browser/DOM shape). Picked up automatically by
  * `examples/tsconfig.json`'s `"include": ["*.ts"]` (a `.d.ts` file matches that
- * glob). A real Bun project should just depend on `@types/bun` directly
+ * glob). A real Bun workspace should just depend on `@types/bun` directly
  * instead of copying this.
  */
 declare const Bun: {

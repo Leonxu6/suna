@@ -4,7 +4,7 @@
  * the active step. Callers pass route TEMPLATES with `/v1/...` and `:param`
  * placeholders so coverage aggregation is exact and unambiguous.
  *
- *   await client.as(P.OWNER).get("/v1/projects/:id", { params: { id } }).then(r => r.status(200))
+ *   await client.as(P.OWNER).get("/v1/workspaces/:id", { params: { id } }).then(r => r.status(200))
  */
 import { currentRecorder } from './context';
 import { assert, BodyAssert } from './expect';

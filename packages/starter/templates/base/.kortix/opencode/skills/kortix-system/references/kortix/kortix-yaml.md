@@ -1,9 +1,9 @@
 # `kortix.yaml` — in-depth reference
 
 `kortix.yaml` is the single source of truth for everything the
-Kortix platform reads about a project. It lives at the repo root.
-Any repo with a valid `kortix.yaml` (or, for legacy v1 projects, a
-`kortix.toml`) at the root is a Kortix project.
+Kortix platform reads about a workspace. It lives at the repo root.
+Any repo with a valid `kortix.yaml` (or, for legacy v1 workspaces, a
+`kortix.toml`) at the root is a Kortix workspace.
 
 The platform parser is permissive: it never throws on a bad entry.
 Instead, bad triggers go into an `errors` list returned alongside the
@@ -12,7 +12,7 @@ good ones, so a single typo doesn't break the whole file.
 **This page documents `kortix_version: 2`** — the current, YAML-only
 manifest schema (`agents:` is a governance-only name→block **map**,
 `[[channels]]` is removed outright, per-agent env access is called
-`secrets`). This project's own `kortix.yaml` is on this version — see
+`secrets`). This workspace's own `kortix.yaml` is on this version — see
 the `<canonical-schema>` section of this skill's `SKILL.md` and
 `docs/specs/2026-07-05-agent-first-config-unification.md`. The
 authoritative, always-current structural spec is always the public
@@ -22,12 +22,12 @@ v1), or `https://kortix.com/schema/kortix.schema.json` (both,
 dispatched by `kortix_version`) — also available offline via
 `kortix schema --version 2`.
 
-> **Legacy note — v1 used TOML.** Projects created before v2 shipped
+> **Legacy note — v1 used TOML.** Workspaces created before v2 shipped
 > may still have a `kortix.toml` at the root with `kortix_version: 1`
 > (or no `kortix_version` at all). The platform resolves the manifest
 > by trying `kortix.yaml`, then `kortix.yml`, then falling back to
-> `kortix.toml` — so a v1 TOML project keeps working as-is; nothing
-> breaks. To move a project onto v2, rename `kortix.toml` to
+> `kortix.toml` — so a v1 TOML workspace keeps working as-is; nothing
+> breaks. To move a workspace onto v2, rename `kortix.toml` to
 > `kortix.yaml`, convert its contents to YAML, bump `kortix_version` to
 > `2`, add the now-required `default_agent`, and rework any `[[agents]]`
 > array into the `agents:` map described below (or run `kortix migrate`
@@ -43,8 +43,8 @@ kortix_version: 2
 default_agent: kortix
 
 project:
-  name: my-project
-  description: What this project is.
+  name: my-workspace
+  description: What this workspace is.
 
 # Env vars the runtime needs. `required` is *advisory* — surfaced in
 # the dashboard so the user knows what to set, but not enforced at
@@ -132,7 +132,7 @@ must name a declared, enabled agent.
 | `connectors` | Connector profiles the agent may call. `["slug", …]` \| `"all"` \| `"none"` (default: `none`).   |
 | `secrets`    | Env-var / secret names the agent may read. Same shape (default: `none`).                        |
 | `skills`     | Skill names the agent may load. Same shape (default: `none`).                                   |
-| `kortix_cli` | What it may do via the Kortix CLI/API (project-scoped iam actions). Same shape (default: `none`). |
+| `kortix_cli` | What it may do via the Kortix CLI/API (workspace-scoped iam actions). Same shape (default: `none`). |
 | `workspace`  | `"runtime"` \| `"read"` \| `"branch"` — the git workspace mode granted to the agent.              |
 
 ```yaml
@@ -143,7 +143,7 @@ agents:
     kortix_cli: [project.write, project.cr.open]    # may OPEN a CR, but not merge it
 ```
 
-**Grantable `kortix_cli` actions** (project-scoped only — account-level admin
+**Grantable `kortix_cli` actions** (workspace-scoped only — account-level admin
 actions can never be granted to an agent; run `kortix validate --scopes`):
 `project.read|write|delete`, `project.cr.open|merge`,
 `project.session.read|start|stop|bindings.write`, `project.members.read|manage`,
@@ -188,14 +188,14 @@ self-describing at a glance.
 | Session bootstrap      | `env:` (advisory — surfaced to dashboard, not enforced)              |
 | Session token mint     | `agents:` (per-agent connectors/secrets/skills/kortix_cli scope)     |
 | Agent/model UI         | Server-side agent registry + LLM-gateway model catalog                |
-| Dashboard UI           | All of the above + `project:` + the raw manifest                     |
+| Dashboard UI           | All of the above + `project:` + the raw manifest                       |
 
 Unknown top-level keys are ignored — safe to add your own metadata,
 but the platform won't react to it.
 
 ## `project:`
 
-Project metadata for the dashboard.
+Workspace metadata for the dashboard.
 
 | Key           | Required | Notes                                |
 | ------------- | -------- | ------------------------------------ |
@@ -241,7 +241,7 @@ Omission selects the platform `default` template.
 ### `sandbox.templates`
 
 Optional named alternate sandbox images/Dockerfiles a trigger or
-session can select instead of the project default.
+session can select instead of the workspace default.
 
 ```yaml
 sandbox:
@@ -325,7 +325,7 @@ best-effort.
 Webhooks fire on signed POSTs to:
 
 ```
-POST /v1/webhooks/projects/<project_id>/<slug>
+POST /v1/webhooks/workspaces/<workspace_id>/<slug>
 ```
 
 #### Signature
@@ -390,12 +390,12 @@ would amplify the scheduler tick into a flood of git commits.
 If you need to know when a trigger last fired, check the dashboard,
 not the repo.
 
-### Project-wide kill switch
+### Workspace-wide kill switch
 
 There is no "paused" state for a single trigger — only `enabled`
-on/off, or removing the entry entirely. Separately, the **project**
+on/off, or removing the entry entirely. Separately, the **workspace**
 has a server-side kill-switch, `triggers_paused`, toggled from the
-dashboard: when set, the sweep skips *every* trigger on the project
+dashboard: when set, the sweep skips *every* trigger on the workspace
 and inbound webhooks are ignored, regardless of each trigger's own
 `enabled`. Use it when the same repo is deployed to two environments
 and only one should actually fire.
@@ -412,8 +412,8 @@ and only one should actually fire.
 
 ## Secrets
 
-Per-project, encrypted at rest. The platform uses **AES-256-GCM** with
-**HKDF-derived per-project keys** rooted in the platform's
+Per-workspace, encrypted at rest. The platform uses **AES-256-GCM** with
+**HKDF-derived per-workspace keys** rooted in the platform's
 `API_KEY_SECRET`. Stored in the `project_secrets` table; **never
 inline in the repo**.
 
@@ -430,7 +430,7 @@ inline in the repo**.
    ```
 2. Set the value in the Kortix Secrets Manager (dashboard).
 3. When a session boots, the platform decrypts every secret on the
-   project and injects them as plain env vars into the sandbox.
+   workspace and injects them as plain env vars into the sandbox.
 4. Your agent code reads them like any other env var.
 
 ### Rules

@@ -209,7 +209,7 @@ describe('createConnectorWithOptionalOAuth2', () => {
   test('creates the connector before it stores the OAuth2 credential', async () => {
     const calls: string[] = [];
     await createConnectorWithOptionalOAuth2(
-      'project-1',
+      'workspace-1',
       { slug: 'sharepoint', provider: 'openapi', spec: 'https://example.com/openapi.json' },
       SECRET_FORM,
       {
@@ -219,7 +219,7 @@ describe('createConnectorWithOptionalOAuth2', () => {
         deleteConnector: async () => {
           calls.push('delete');
         },
-        setConnectorCredential: async (_projectId, slug, credential) => {
+        setConnectorCredential: async (_workspaceId, slug, credential) => {
           const method =
             'oauth2' in credential ? credential.oauth2.token_endpoint_auth_method : 'static';
           calls.push(`credential:${slug}:${method}`);
@@ -233,7 +233,7 @@ describe('createConnectorWithOptionalOAuth2', () => {
   test('does not create a credential when OAuth2 is not selected', async () => {
     let credentialCalls = 0;
     await createConnectorWithOptionalOAuth2(
-      'project-1',
+      'workspace-1',
       { slug: 'public-api', provider: 'openapi', spec: 'https://example.com/openapi.json' },
       null,
       {
@@ -254,7 +254,7 @@ describe('createConnectorWithOptionalOAuth2', () => {
 
     await expect(
       createConnectorWithOptionalOAuth2(
-        'project-1',
+        'workspace-1',
         { slug: 'sharepoint', provider: 'openapi', spec: 'https://example.com/openapi.json' },
         SECRET_FORM,
         {

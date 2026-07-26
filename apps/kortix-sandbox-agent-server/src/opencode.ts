@@ -12,7 +12,7 @@ import type { Config } from './config'
 import { buildGitIdentityEnv } from './git'
 import { logger } from './logger'
 import { applyManagedOpencodeEnv } from './managed-opencode-env'
-import { mergeProjectEnv, type ProjectEnvStore } from './project-env'
+import { mergeWorkspaceEnv, type WorkspaceEnvStore } from './workspace-env'
 import {
   AcpConnection,
   buildOpenCodeLaunch,
@@ -119,7 +119,7 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
   // CLI uses to post back to the thread). Contributor #3 keys off it.
   const isSlackSession = !!(env.SLACK_THREAD_TS || env.SLACK_CHANNEL_ID)
   // (4) Server-compiled agent config (kortix_version 2 projects only — see
-  // apps/api/src/projects/lib/compile-agent-config.ts). apps/api compiles the
+  // apps/api/src/workspaces/lib/compile-agent-config.ts). apps/api compiles the
   // manifest's `agents:` map into OpenCode's `agent` map + top-level model
   // server-side and hands it down sealed; the daemon only LAYERS its own
   // session-local overlays (MCP/gateway/Slack below) on top, never composes
@@ -172,11 +172,16 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
           KORTIX_EXECUTOR_TOKEN: executorProxyMode ? EXECUTOR_PROXY_PLACEHOLDER_KEY : executorToken!,
           KORTIX_API_URL: executorProxyMode ? executorProxyUrl! : apiUrl!,
           PATH: '/usr/local/bin:/usr/bin:/bin',
-          // Lets the CLI target the project-explicit gateway route. Optional —
-          // the session token also pins the project for the legacy flat route,
-          // so this is belt-and-suspenders. Project id is session-independent so
+          // Lets the CLI target the workspace-explicit gateway route. Optional.
+          // The session token also pins the workspace for the legacy flat route.
+          // The workspace id is session-independent, so
           // it's safe to bake at seed.
-          ...(env.KORTIX_PROJECT_ID ? { KORTIX_PROJECT_ID: env.KORTIX_PROJECT_ID } : {}),
+          ...((env.KORTIX_WORKSPACE_ID ?? env.KORTIX_PROJECT_ID)
+            ? {
+                KORTIX_WORKSPACE_ID:
+                  env.KORTIX_WORKSPACE_ID ?? env.KORTIX_PROJECT_ID,
+              }
+            : {}),
         },
       },
     }
@@ -835,8 +840,8 @@ async function detectOpencodeBinary(): Promise<string | null> {
 
 async function resolveOpencodeCwd(cfg: Config): Promise<string> {
   try {
-    const project = await stat(cfg.projectTarget)
-    if (project.isDirectory()) return cfg.projectTarget
+    const workspace = await stat(cfg.workspaceTarget)
+    if (workspace.isDirectory()) return cfg.workspaceTarget
   } catch {}
   return cfg.workspace
 }
@@ -847,7 +852,11 @@ export type Opencode = {
   start(): Promise<void>
   stop(signal?: NodeJS.Signals): Promise<void>
   restart(): Promise<void>
-  reconfigure(nextCfg: Config, nextOpencodeConfigDir: string, nextProjectEnv?: ProjectEnvStore): void
+  reconfigure(
+    nextCfg: Config,
+    nextOpencodeConfigDir: string,
+    nextWorkspaceEnv?: WorkspaceEnvStore,
+  ): void
   getPid(): number | null
   getInternalUrl(): string
   getBinaryPath(): string | null
@@ -876,12 +885,12 @@ export interface OpencodeSupervisorOptions {
 export function createOpencodeSupervisor(
   cfg: Config,
   opencodeConfigDir: string,
-  projectEnv?: ProjectEnvStore,
+  workspaceEnv?: WorkspaceEnvStore,
   options: OpencodeSupervisorOptions = {},
 ): Opencode {
   let currentCfg = cfg
   let currentOpencodeConfigDir = opencodeConfigDir
-  let currentProjectEnv = projectEnv
+  let currentWorkspaceEnv = workspaceEnv
   let child: ChildProcess | null = null
   let binaryPath: string | null = null
   let stopping = false
@@ -929,7 +938,9 @@ export function createOpencodeSupervisor(
         err: (err as Error).message,
       })
     }
-    const baseEnv = currentProjectEnv ? mergeProjectEnv(process.env, currentProjectEnv) : process.env
+    const baseEnv = currentWorkspaceEnv
+      ? mergeWorkspaceEnv(process.env, currentWorkspaceEnv)
+      : process.env
     const env: NodeJS.ProcessEnv = applyManagedOpencodeEnv({
       ...baseEnv,
       ...buildGitIdentityEnv(currentCfg),
@@ -1102,7 +1113,11 @@ export function createOpencodeSupervisor(
   }
 
   async function checkReady(): Promise<boolean> {
-    return probeOpencodeSessionApi(`http://127.0.0.1:${currentCfg.opencodeInternalPort}`, currentCfg.projectTarget, 2_000)
+    return probeOpencodeSessionApi(
+      `http://127.0.0.1:${currentCfg.opencodeInternalPort}`,
+      currentCfg.workspaceTarget,
+      2_000,
+    )
   }
 
   function scheduleReadinessProbe() {
@@ -1195,16 +1210,22 @@ export function createOpencodeSupervisor(
       await this.start()
     },
 
-    reconfigure(nextCfg: Config, nextOpencodeConfigDir: string, nextProjectEnv?: ProjectEnvStore) {
+    reconfigure(
+      nextCfg: Config,
+      nextOpencodeConfigDir: string,
+      nextWorkspaceEnv?: WorkspaceEnvStore,
+    ) {
       currentCfg = nextCfg
       currentOpencodeConfigDir = nextOpencodeConfigDir
-      if (nextProjectEnv) currentProjectEnv = nextProjectEnv
+      if (nextWorkspaceEnv) currentWorkspaceEnv = nextWorkspaceEnv
       transport = resolveOpenCodeTransport(
-        nextProjectEnv ? mergeProjectEnv(process.env, nextProjectEnv) : process.env,
+        nextWorkspaceEnv
+          ? mergeWorkspaceEnv(process.env, nextWorkspaceEnv)
+          : process.env,
       )
       state = 'starting'
       logger.info('[opencode] reconfigured', {
-        projectId: nextCfg.projectId,
+        workspaceId: nextCfg.workspaceId,
         opencodeConfigDir: nextOpencodeConfigDir,
       })
     },

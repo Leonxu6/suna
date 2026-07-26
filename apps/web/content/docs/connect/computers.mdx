@@ -14,7 +14,7 @@ Computer Tunnel** in Customize → Experimental.
 
 ## Connect a machine
 
-1. Open the project's Computers page in the dashboard.
+1. Open the workspace's Computers page in the dashboard.
 2. Run the command the page shows you, for example
    `npx --yes @kortix/agent-tunnel@latest connect --api-url <url>`.
 3. Approve the connection.
@@ -32,7 +32,7 @@ Connecting a machine creates one `computer`
 [connector](/docs/connect/connectors) that fronts every machine you connect.
 The agent calls `computer.list_computers` to find machines, then
 `computer.fs.read`, `computer.shell.exec`, or `computer.desktop.cua.*` to act
-on one. You control who can use the `computer` connector from the project's
+on one. You control who can use the `computer` connector from the workspace's
 Connectors page.
 
 A computer has no credential. The live tunnel connection is the credential.

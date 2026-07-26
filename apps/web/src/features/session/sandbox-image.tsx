@@ -41,7 +41,7 @@ export function SandboxImage({ src, alt = 'Image', className, preview }: Sandbox
   const tHardcodedUi = useTranslations('hardcodedUi');
 	const isLocalPath = isLocalSandboxFilePath(src);
 
-	// Strip /workspace/ prefix since the SDK expects paths relative to project root
+	// Strip /workspace/ prefix since the SDK expects paths relative to workspace root
 	const fileContentPath = useMemo(() => {
 		if (!isLocalPath) return null;
 		return src.replace(/^\/workspace\//, '');

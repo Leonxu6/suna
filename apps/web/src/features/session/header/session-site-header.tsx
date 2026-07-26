@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 
-import { sessionDisplayLabel } from '@/components/projects/session-label';
+import { sessionDisplayLabel } from '@/components/workspaces/session-label';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -21,17 +21,17 @@ import { ExportTranscriptModal } from '@/features/session/header/export-transcri
 import { SessionChangesIndicator } from '@/features/session/header/session-changes-indicator';
 import { SessionPendingApprovalsIndicator } from '@/features/session/header/session-pending-approvals-indicator';
 import { openSessionQuickView } from '@/features/session/open-session-quick-view';
-import { RenameSessionModal } from '@/features/workspace/project-sidebar/modal/rename-session-modal';
-import { SessionDeleteModal } from '@/features/workspace/project-sidebar/modal/session-delete-modal';
-import { ShareSessionModal } from '@/features/workspace/project-sidebar/modal/share-session-modal';
+import { RenameSessionModal } from '@/features/workspace/workspace-sidebar/modal/rename-session-modal';
+import { SessionDeleteModal } from '@/features/workspace/workspace-sidebar/modal/session-delete-modal';
+import { ShareSessionModal } from '@/features/workspace/workspace-sidebar/modal/share-session-modal';
 import { desktopPlatform, isDesktop } from '@/lib/desktop';
 import { track } from '@/lib/track';
 import { cn } from '@/lib/utils';
 import { useReadyChip } from '@/stores/kortix-computer-store';
 import {
-  listProjectSessions,
-  restartProjectSession,
-  stopProjectSession,
+  listWorkspaceSessions,
+  restartWorkspaceSession,
+  stopWorkspaceSession,
 } from '@kortix/sdk';
 import { HomeSolid, Pencil, Share, TrashSolid } from '@mynaui/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -92,27 +92,27 @@ export function SessionSiteHeader({
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  // Lifecycle actions (Share / Restart / Delete) operate on the project-level
-  // session, which is only addressable on the `/projects/:id/sessions/:id` route.
-  const projectRoute = pathname?.match(/^\/projects\/([^/]+)\/sessions\/([^/]+)/);
-  const projectId = projectRoute?.[1];
-  const projectSessionId = projectRoute?.[2];
-  const isProjectSession = !!projectId && !!projectSessionId;
+  // Lifecycle actions (Share / Restart / Delete) operate on the workspace-level
+  // session, which is only addressable on the `/workspaces/:id/sessions/:id` route.
+  const workspaceRoute = pathname?.match(/^\/workspaces\/([^/]+)\/sessions\/([^/]+)/);
+  const workspaceId = workspaceRoute?.[1];
+  const workspaceSessionId = workspaceRoute?.[2];
+  const isWorkspaceSession = !!workspaceId && !!workspaceSessionId;
 
-  const { data: projectSessions } = useQuery({
-    queryKey: ['project-sessions', projectId],
-    queryFn: () => listProjectSessions(projectId!),
-    enabled: isProjectSession,
+  const { data: workspaceSessions } = useQuery({
+    queryKey: ['workspace-sessions', workspaceId],
+    queryFn: () => listWorkspaceSessions(workspaceId!),
+    enabled: isWorkspaceSession,
     staleTime: 10_000,
   });
-  const projectSession = projectSessions?.find((s) => s.session_id === projectSessionId) ?? null;
-  const canShare = !!projectSession && projectSession.can_manage_sharing !== false;
+  const workspaceSession = workspaceSessions?.find((s) => s.session_id === workspaceSessionId) ?? null;
+  const canShare = !!workspaceSession && workspaceSession.can_manage_sharing !== false;
 
   const restartMutation = useMutation({
-    mutationFn: () => restartProjectSession(projectId!, projectSessionId!),
+    mutationFn: () => restartWorkspaceSession(workspaceId!, workspaceSessionId!),
     onSuccess: () => {
       successToast('Restarting session…');
-      queryClient.invalidateQueries({ queryKey: ['project-sessions', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['workspace-sessions', workspaceId] });
     },
     onError: (err) => {
       errorToast(err instanceof Error ? err.message : 'Failed to restart session');
@@ -120,16 +120,16 @@ export function SessionSiteHeader({
   });
 
   const stopMutation = useMutation({
-    mutationFn: () => stopProjectSession(projectId!, projectSessionId!),
+    mutationFn: () => stopWorkspaceSession(workspaceId!, workspaceSessionId!),
     onSuccess: () => {
       successToast('Session stopped');
-      queryClient.invalidateQueries({ queryKey: ['project-sessions', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['workspace-sessions', workspaceId] });
     },
     onError: (err) => {
       errorToast(err instanceof Error ? err.message : 'Failed to stop session');
     },
   });
-  const canStop = !!projectSession && projectSession.status === 'running' && canShare;
+  const canStop = !!workspaceSession && workspaceSession.status === 'running' && canShare;
 
   const readyChip = useReadyChip();
 
@@ -147,7 +147,7 @@ export function SessionSiteHeader({
             className={cn(
               'pointer-events-auto flex items-center gap-0.5 transition-[margin] duration-200 ease-linear',
               // Below md the shell floats an always-on sheet opener at this
-              // row's left end (see ProjectSheelLayout) — indent past it.
+              // row's left end (see WorkspaceSheelLayout) — indent past it.
               // 'max-md:ml-[34px]',
               sidebarHidden && 'h-[28px]',
               sidebarHidden && (desktopShell === 'macos' ? 'ml-[96px]' : 'ml-[32px]'),
@@ -168,9 +168,9 @@ export function SessionSiteHeader({
               </Button>
             )}
 
-            {isProjectSession && (
+            {isWorkspaceSession && (
               <Button type="button" variant="ghost" size="icon" className="shrink-0" asChild>
-                <Link href={`/projects/${projectId}`}>
+                <Link href={`/workspaces/${workspaceId}`}>
                   <HomeSolid className="size-4.5" />
                 </Link>
               </Button>
@@ -270,11 +270,11 @@ export function SessionSiteHeader({
                   subordinate (muted text/icon) and pushed down next to
                   Delete. Delete stays the one destructive item and stays
                   last. The conditionals are arranged so a separator can
-                  never lead, trail, or double up: within `isProjectSession`
+                  never lead, trail, or double up: within `isWorkspaceSession`
                   the first two groups always have at least Rename and
                   Restart, and the transcript group is unconditional. */}
               <DropdownMenuContent align="end" className="w-56">
-                {isProjectSession && (
+                {isWorkspaceSession && (
                   <>
                     <DropdownMenuItem
                       className="cursor-pointer"
@@ -338,7 +338,7 @@ export function SessionSiteHeader({
                   Summarize conversation
                 </DropdownMenuItem>
 
-                {isProjectSession && (
+                {isWorkspaceSession && (
                   <>
                     <DropdownMenuSeparator />
 
@@ -397,31 +397,31 @@ export function SessionSiteHeader({
       <ExportTranscriptModal sessionId={sessionId} open={exportOpen} onOpenChange={setExportOpen} />
       <CompactModal sessionId={sessionId} open={compactOpen} onOpenChange={setCompactOpen} />
 
-      {isProjectSession && (
+      {isWorkspaceSession && (
         <>
           <ShareSessionModal
-            projectId={projectId!}
-            session={projectSession}
+            workspaceId={workspaceId!}
+            session={workspaceSession}
             open={shareOpen}
             onOpenChange={setShareOpen}
             onSaved={() =>
-              queryClient.invalidateQueries({ queryKey: ['project-sessions', projectId] })
+              queryClient.invalidateQueries({ queryKey: ['workspace-sessions', workspaceId] })
             }
           />
           <RenameSessionModal
-            projectId={projectId!}
-            sessionId={projectSessionId!}
-            currentName={projectSession ? sessionDisplayLabel(projectSession) : ''}
+            workspaceId={workspaceId!}
+            sessionId={workspaceSessionId!}
+            currentName={workspaceSession ? sessionDisplayLabel(workspaceSession) : ''}
             open={renameOpen}
             onOpenChange={setRenameOpen}
           />
           <SessionDeleteModal
-            projectId={projectId!}
-            sessionId={projectSessionId!}
+            workspaceId={workspaceId!}
+            sessionId={workspaceSessionId!}
             sessionLabel={sessionTitle}
             open={deleteOpen}
             onOpenChange={setDeleteOpen}
-            onDeleted={() => router.push(`/projects/${projectId}`)}
+            onDeleted={() => router.push(`/workspaces/${workspaceId}`)}
           />
         </>
       )}

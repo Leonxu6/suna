@@ -12,7 +12,7 @@ process.env.E2E_SUPABASE_URL ||= 'http://127.0.0.1:54321';
 export default defineConfig({
   testDir: './e2e/specs',
   testMatch: [
-    '**/08-accounts-project-access.spec.ts',
+    '**/08-accounts-workspace-access.spec.ts',
     '**/09-admin-ops.spec.ts',
     '**/12-sandbox-templates.spec.ts',
   ],

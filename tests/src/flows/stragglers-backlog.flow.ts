@@ -23,7 +23,7 @@ flow("SBX-2", { domain: "sandboxes", todo: "no standalone endpoint — manual st
 flow("TRG-6", { domain: "triggers", todo: "internal cron scheduler (setInterval sweep) — no HTTP surface; covered by e2e-triggers-live" }, async () => {});
 
 // TRG-8 — fire→run actor selection + backpressure is internal to fireGitTrigger
-// /createProjectSession; spawning a real session needs the funded capability.
+// /createWorkspaceSession; spawning a real session needs the funded capability.
 // The fire entrypoints' boundaries are covered by the webhook fire flows.
 flow("TRG-8", { domain: "triggers", todo: "internal fire→run (actor=first owner, backpressure) — needs funded session; entrypoint boundaries covered elsewhere" }, async () => {});
 

@@ -2,14 +2,14 @@
  * 28 — the other channels: email installation/mode and the meeting bot's
  * voice catalog. All reads (13-slack-status covers Slack).
  *
- * Run (from packages/sdk):  bun run playground/channels/28-email-and-meet.ts [projectId]
+ * Run (from packages/sdk):  bun run playground/channels/28-email-and-meet.ts [workspaceId]
  */
-import { makeKortix, pickProjectId, run } from "../_shared";
+import { makeKortix, pickWorkspaceId, run } from "../_shared";
 
 run("email-and-meet", async () => {
   const kortix = makeKortix();
-  const projectId = await pickProjectId(kortix, process.argv[2]);
-  const channels = kortix.project(projectId).channels;
+  const workspaceId = await pickWorkspaceId(kortix, process.argv[2]);
+  const channels = kortix.workspace(workspaceId).channels;
 
   const email = await channels.email.installation();
   console.log(`✓ email.installation(): ${JSON.stringify(email).slice(0, 250)}`);

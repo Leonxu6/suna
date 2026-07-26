@@ -66,7 +66,7 @@ export function CreateAccountModal({
           </ModalTitle>
           <ModalDescription>
             {tHardcodedUi.raw(
-              'componentsAccountsCreateAccountModal.line67JsxTextGroupPeopleProjectsAndBillingUnderOneAccount',
+              'componentsAccountsCreateAccountModal.line67JsxTextGroupPeopleWorkspacesAndBillingUnderOneAccount',
             )}
           </ModalDescription>
         </ModalHeader>
@@ -87,7 +87,7 @@ export function CreateAccountModal({
               />
               <p className="text-muted-foreground text-xs">
                 {tHardcodedUi.raw(
-                  'componentsAccountsCreateAccountModal.line81JsxTextYouCanInviteMembersAndAddProjectsAfter',
+                  'componentsAccountsCreateAccountModal.line81JsxTextYouCanInviteMembersAndAddWorkspacesAfter',
                 )}
               </p>
             </div>

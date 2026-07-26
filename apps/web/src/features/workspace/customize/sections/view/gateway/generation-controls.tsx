@@ -3,7 +3,7 @@
 /**
  * Per-model generation-parameter controls (reasoning effort, temperature,
  * top_p, max output tokens) — capability-gated off the live catalog, never
- * hardcoded per model. Shared by the routing section's project-default
+ * hardcoded per model. Shared by the routing section's workspace-default
  * config and the Playground's per-model tuning.
  *
  * *** CAPABILITY DATA SOURCE ***

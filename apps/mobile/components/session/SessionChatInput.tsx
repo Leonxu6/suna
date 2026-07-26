@@ -509,7 +509,7 @@ export function SessionChatInput({
   const placeholderVariants = useMemo(
     () => [
       placeholder,
-      'Ask about any file in this project',
+      'Ask about any file in this workspace',
       'Ask for changed files and diffs',
       'Ask to compact when context is full',
       'Reference files with @',
