@@ -779,3 +779,49 @@ flow(
     });
   },
 );
+
+// WS-34 — the execution lease auth gate.
+//
+// The in-sandbox agent reports active OpenCode work through this route.
+// Only a sandbox token can use it. A workspace principal is not sufficient.
+flow(
+  "WS-34",
+  { domain: "workspaces", routes: ["POST /v1/workspaces/:workspaceId/execution-lease"] },
+  async (ctx) => {
+    const workspace = await ctx.fixtures.sharedWorkspace();
+    const body = { action: "renew", session_id: "e2e-no-such-session" };
+    const params = { workspaceId: workspace.id };
+
+    await ctx.step("ANON → 401", async () => {
+      const response = await ctx.client
+        .as(ctx.P.ANON)
+        .post("/v1/workspaces/:workspaceId/execution-lease", body, { params });
+      response.status(401);
+    });
+
+    await ctx.step("OWNER user session is not a sandbox token → 403", async () => {
+      const response = await ctx.client
+        .as(ctx.P.OWNER)
+        .post("/v1/workspaces/:workspaceId/execution-lease", body, { params });
+      response.status(403);
+    });
+
+    await ctx.step("account PAT is not a sandbox token → 403", async () => {
+      const response = await ctx.client
+        .as(ctx.P.PAT_ACCT)
+        .post("/v1/workspaces/:workspaceId/execution-lease", body, { params });
+      response.status(403);
+    });
+
+    await ctx.step("unknown action → 400 before the token check", async () => {
+      const response = await ctx.client
+        .as(ctx.P.OWNER)
+        .post(
+          "/v1/workspaces/:workspaceId/execution-lease",
+          { action: "steal", session_id: "e2e-no-such-session" },
+          { params },
+        );
+      response.status(400);
+    });
+  },
+);

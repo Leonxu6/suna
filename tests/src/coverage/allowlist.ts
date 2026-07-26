@@ -54,24 +54,6 @@ export const uncoveredAllow: AllowEntry[] = [
       "sandbox-only telemetry sink called by the in-guest boot relay with a sandbox token; not an end-user API route",
   },
   {
-    method: "POST",
-    path: "/v1/workspaces/:*/sessions/:*/voice/prompt",
-    reason:
-      "worker-only HMAC callback from the realtime voice worker; the end-user voice action is exposed through the flow-covered voice MCP",
-  },
-  {
-    method: "POST",
-    path: "/v1/workspaces/:*/sessions/:*/voice/run-command",
-    reason:
-      "worker-only HMAC callback from the realtime voice worker; the end-user voice action is exposed through the flow-covered voice MCP",
-  },
-  {
-    method: "POST",
-    path: "/v1/workspaces/:*/sessions/:*/voice/turns",
-    reason:
-      "worker-only HMAC transcript sink called by the realtime voice worker; not an end-user API route",
-  },
-  {
     method: "PUT",
     path: "/v1/executor/workspaces/:*/connectors/:*/sensitive",
     reason:

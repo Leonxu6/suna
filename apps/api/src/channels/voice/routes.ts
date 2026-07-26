@@ -49,7 +49,11 @@ export const voiceMcpRoutes = makeOpenApiApp();
  * nothing to look up (no in-process call registry — see runtime.ts's
  * `isCallLive` doc for why one used to exist and why it was wrong).
  */
-function buildWorkerContext(c: Context, workspaceId: string, sessionId: string): VoiceMcpContext | null {
+function buildWorkerContext(
+  c: Context,
+  workspaceId: string,
+  sessionId: string,
+): VoiceMcpContext | null {
   const auth = c.req.header('Authorization') ?? '';
   const token = auth.startsWith('Bearer ') ? auth.slice('Bearer '.length) : '';
   if (!verifyCallApiToken(sessionId, token)) return null;
@@ -71,7 +75,8 @@ function buildWorkerContext(c: Context, workspaceId: string, sessionId: string):
     callId,
     askKortix: (request: string) => askKortix(call, request),
     runCommand: (command: string, cwd?: string) => runCommandInSandbox(sessionId, command, cwd),
-    postTurn: (role, text, speaker) => appendTurn({ callId, workspaceId, sessionId }, role, text, speaker),
+    postTurn: (role, text, speaker) =>
+      appendTurn({ callId, workspaceId, sessionId }, role, text, speaker),
   };
 }
 
@@ -81,9 +86,18 @@ voiceMcpRoutes.openapi(
     path: '/{workspaceId}/sessions/{sessionId}/mcp/voice',
     tags: ['channels'],
     summary: "POST .../mcp/voice — the voice worker's MCP (JSON-RPC over streamable HTTP)",
+    // NO `body` schema on purpose, even though this route takes one. Declaring
+    // it makes @hono/zod-openapi install a json validator that runs BEFORE the
+    // handler, and Hono's json validator throws its own 400 ("Malformed JSON in
+    // request body") on a body it cannot parse. That preempted the auth check
+    // below — an UNAUTHENTICATED caller sending `{not json` got a 400 telling it
+    // the token was never even looked at, and the handler's own -32700 branch
+    // was dead code, so an authenticated worker's truncated frame came back as
+    // a plain HTTP error instead of the JSON-RPC parse error its MCP client
+    // parses. Both are fixed by parsing the body ourselves, after the HMAC.
+    // The schema was `z.any()`, so nothing documented is lost.
     request: {
       params: z.object({ workspaceId: z.string(), sessionId: z.string() }),
-      body: { content: { 'application/json': { schema: z.any() } } },
     },
     responses: {
       200: json(z.any(), 'JSON-RPC response'),
@@ -100,7 +114,10 @@ voiceMcpRoutes.openapi(
     try {
       body = await c.req.json();
     } catch {
-      return c.json({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }, 400);
+      return c.json(
+        { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } },
+        400,
+      );
     }
 
     const res = await handleVoiceMcp(ctx, body as Record<string, unknown>);
