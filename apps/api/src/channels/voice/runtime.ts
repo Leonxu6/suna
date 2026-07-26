@@ -1,62 +1,66 @@
 /**
  * The voice runtime — where a live call actually lives.
  *
- * A call is a LiveKit room plus a row in this in-process registry. The room
- * carries the actual audio (browser mic <-> Recall's rendered page <-> the
+ * A call IS a LiveKit room — there is no call record anywhere. The room carries
+ * the actual audio (browser mic <-> the /voice/[token] page <-> the
  * apps/voice-agent worker doing STT/LLM/TTS); this file never touches audio.
  * What it owns is the two hand-offs either side of that conversation:
  *
- *   worker ──POST /voice/prompt──► askKortix ──► continueSession   (send_prompt)
+ *   worker ──ask_kortix (MCP)──► askKortix ──► continueSession   (send_prompt)
  *   Kortix turn ──► promptVoiceAgent ──► room data channel ──► worker  (say)
  *
  * The worker is a SEPARATE PROCESS (apps/voice-agent, not part of apps/api),
  * dispatched into the room by name and bootstrapped entirely from the room's
  * metadata — see `VoiceRoomMetadata` below and apps/voice-agent/README.md's
- * "The apps/api contract this app expects", which this file (plus routes.ts's
- * `/voice/{prompt,run-command,turns}` routes) implements.
+ * "The apps/api contract this app expects", which this file (plus the voice
+ * MCP — mcp.ts / routes.ts) implements.
  *
  * The single most important property, unchanged from the realtime-provider
- * version this replaces: `askKortix` (the old `ask_kortix`, now the worker's
- * `send_prompt` tool) answers in milliseconds and NEVER waits for the agent
- * turn. A Kortix turn runs 30s-10min; a conversation that blocks that long is
- * broken. Progress comes back later as unsolicited speech via
- * `promptVoiceAgent`, driven by the turn-relay (turn.ts).
+ * version this replaces: `askKortix` (the MCP's `ask_kortix` tool, called by
+ * the worker's own `send_prompt` tool) answers in milliseconds and NEVER
+ * waits for the agent turn. A Kortix turn runs 30s-10min; a conversation that
+ * blocks that long is broken. The answer comes back later as unsolicited
+ * speech, driven by answer-watch.ts — see its header for why the API watches
+ * for the answer instead of the sandbox relaying it.
  *
- * State is per-process and deliberately not in Postgres: a call is pinned to
- * whichever API instance handled its `voice_spawn`, and if that instance dies
- * the call is over anyway. Only the transcript is durable. This does mean the
- * worker's `/voice/*` POSTs must land on that same instance — true today for
- * the exact reason it was true of the old WebSocket bridge (a live call is
- * inherently sticky to one process); a shared registry (Redis, a DB lease) is
- * the fix if this ever needs to survive an instance restart, and is out of
- * scope here.
+ * NOTHING here is kept in memory. A call's identity is its session id, its room
+ * name derives from that, its liveness is whatever LiveKit says right now, and
+ * its transcript is in Postgres. That is what makes the worker's voice MCP
+ * calls work regardless of which API instance they land on — they used to
+ * have to hit the one process that happened to run `voice_spawn`.
  */
-import { and, asc, eq, gt } from 'drizzle-orm';
-import { voiceCallTurns } from '@kortix/db';
+import { and, asc, count, desc, eq, gt } from 'drizzle-orm';
+import { workspaceSessions, voiceCallTurns } from '@kortix/db';
 import { continueSession } from '../../workspaces/session-lifecycle';
 import { config } from '../../config';
 import { db } from '../../shared/db';
-import { createRoom, deleteRoom, KORTIX_REPLY_TOPIC, roomNameForCall, sendRoomData } from './livekit';
+import {
+  createRoom,
+  deleteRoom,
+  KORTIX_REPLY_TOPIC,
+  roomCallbackUrl,
+  roomHasAgent,
+  roomNameForCall,
+  sendRoomData,
+} from './livekit';
+import { speakAnswerWhenReady } from './answer-watch';
+import { revokeJoinLinksForCall } from './join-links';
+import { KORTIX_SPEAKER, type KortixUtterance, kortixSay } from './utterance';
 import { mintCallApiToken } from './worker-token';
 
 /**
  * apps/voice-agent's TTS is hardcoded to `openai.TTS({ voice: 'alloy' })`
  * today (it does not yet read a voice choice from room metadata) — this list
- * exists for the MCP tool's UX (voice_spawn's `voice` enum) ahead of that
- * wiring, not because anything downstream currently honors it.
+ * is just `startCall`'s input validation ahead of that wiring, not because
+ * anything downstream currently honors a non-default choice.
  */
 const VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const;
 const DEFAULT_VOICE: (typeof VOICES)[number] = 'alloy';
-
-export function availableVoices(): { voices: readonly string[]; default: string } {
-  return { voices: VOICES, default: DEFAULT_VOICE };
-}
 
 export interface VoiceCall {
   callId: string;
   workspaceId: string;
   sessionId: string;
-  botId: string | null;
   voice: string;
   /** LiveKit room name — `roomNameForCall(callId)`. */
   room: string;
@@ -64,14 +68,20 @@ export interface VoiceCall {
   closed: boolean;
 }
 
-const calls = new Map<string, VoiceCall>();
-
-export function getCall(callId: string): VoiceCall | undefined {
-  return calls.get(callId);
-}
-
-export function listCallsForSession(sessionId: string): VoiceCall[] {
-  return [...calls.values()].filter((c) => c.sessionId === sessionId && !c.closed);
+/**
+ * Whether a call is live, asked of the only thing that actually knows: LiveKit.
+ *
+ * There is deliberately NO in-process call registry. There used to be, and every
+ * fact it held was either already in the caller's hands or derivable — `callId`
+ * IS the session id, `room` is `voice-${callId}`, and liveness is whether a
+ * worker is in that room. What the Map added was a second, wrong answer: it
+ * outlived calls the worker had already left (so `voice_spawn` reported a live
+ * call and handed out a link to an empty room), it 404'd `/voice/prompt` with
+ * "call not found" for requests whose URL already named the workspace and session,
+ * and being per-process it could only ever be right on a single API pod.
+ */
+export async function isCallLive(callId: string): Promise<boolean> {
+  return roomHasAgent(roomNameForCall(callId));
 }
 
 /**
@@ -95,18 +105,42 @@ export interface StartCallInput {
   callId: string;
   workspaceId: string;
   sessionId: string;
-  botId: string | null;
   botName: string;
   voice?: string | null;
 }
 
 export async function startCall(input: StartCallInput): Promise<VoiceCall> {
-  const existing = calls.get(input.callId);
-  if (existing && !existing.closed) return existing;
-
   const voice =
     input.voice && (VOICES as readonly string[]).includes(input.voice) ? input.voice : DEFAULT_VOICE;
   const room = roomNameForCall(input.callId);
+
+  const call: VoiceCall = {
+    callId: input.callId,
+    workspaceId: input.workspaceId,
+    sessionId: input.sessionId,
+    voice,
+    room,
+    startedAt: Date.now(),
+    closed: false,
+  };
+
+  // Already staffed AND still pointed at this API → reuse. Otherwise (re)build
+  // the room and dispatch a worker.
+  //
+  // Liveness is asked of LiveKit rather than remembered, so a second
+  // `voice_spawn` in the same session can no longer hand back a link to a room
+  // the worker left — which it did every time, since callId IS the session id.
+  //
+  // The metadata check matters just as much: a room outlives the process that
+  // made it (emptyTimeout is 30min), and its metadata carries the callback URL
+  // and per-call token the worker authenticates with. Reusing a live room whose
+  // metadata names a DEAD api url gives you an agent that joins, greets, listens
+  // — and then answers every real request with "I couldn't reach Kortix",
+  // because its hand-off is POSTing into the void. Rebuilding is cheap; a call
+  // that cannot reach Kortix is worthless.
+  if ((await roomHasAgent(room)) && (await roomCallbackUrl(room)) === config.KORTIX_URL) {
+    return call;
+  }
 
   const metadata: VoiceRoomMetadata = {
     workspace_id: input.workspaceId,
@@ -122,42 +156,116 @@ export async function startCall(input: StartCallInput): Promise<VoiceCall> {
   // arrives first it must find somewhere real to join.
   await createRoom(room, JSON.stringify(metadata));
 
-  const call: VoiceCall = {
-    callId: input.callId,
-    workspaceId: input.workspaceId,
-    sessionId: input.sessionId,
-    botId: input.botId,
-    voice,
-    room,
-    startedAt: Date.now(),
-    closed: false,
-  };
-  calls.set(input.callId, call);
   return call;
 }
 
-function buildAskPrompt(request: string, callId: string): string {
+/**
+ * Prepended to EVERY inbound voice turn, so it stays short — the cost of a
+ * word here is paid once per thing anyone says in the call.
+ *
+ * The skill pointer is the important line, and it mirrors what Slack and Teams
+ * already do (channels/slack/session.ts, channels/teams/session.ts): the full
+ * surface — the `kortix_voice` connector's actions, one-call-per-session, the
+ * cursor loop, how a human gets a join link — lives in the `kortix-voice`
+ * skill, not in this prompt. Without the pointer the agent only ever learned
+ * the tone rules below and had no idea it could read the room or speak into it
+ * unprompted, which is exactly how it behaved.
+ */
+const TURN_INSTRUCTIONS = [
+  'How to work:',
+  '- First, load the `kortix-voice` skill via the `skill` tool — the canonical reference for',
+  '  working a live call (the `kortix_voice` connector: read_transcript, send_prompt, end_call).',
+  '- Whatever you report back is SPOKEN ALOUD, so answer in plain spoken language — no markdown,',
+  '  no bullet lists, no raw URLs, no code. A couple of sentences unless more was asked for.',
+  '- You can also talk into the call yourself at any time with `send_prompt`, and read what is',
+  '  being said with `read_transcript` — call it bare, it returns only what is new, immediately.',
+  '- Nothing blocks: the conversation continues while you work, and you are not holding the line.',
+].join('\n');
+
+export function buildAskPrompt(request: string, callId: string): string {
   return [
     `[Live voice call ${callId}] Someone in the call asked: "${request}"`,
     '',
-    'You are on a live call. Whatever you report back gets spoken aloud to the room,',
-    'so answer in plain spoken language — no markdown, no bullet lists, no raw URLs.',
-    'Keep it to a couple of sentences unless more was explicitly asked for.',
-    '',
-    'The conversation continues while you work; you are not holding the line.',
+    TURN_INSTRUCTIONS,
   ].join('\n');
 }
 
 /**
  * The mirror of the old `ask_kortix` tool-call handler, now driven by the
- * worker's `POST /voice/prompt` (routes.ts) instead of an in-process SDK
- * callback. Answers FIRST, then delivers — the caller (the HTTP route)
- * returns immediately after this resolves, well before `continueSession` has
- * done anything at all.
+ * worker's `ask_kortix` MCP tool call (mcp.ts / routes.ts) instead of an
+ * in-process SDK callback. Answers FIRST, then delivers — the caller (the
+ * MCP route) returns immediately after this resolves, well before
+ * `continueSession` has done anything at all.
  */
-export function askKortix(call: VoiceCall, request: string): { ok: true } | { ok: false; error: string } {
+/**
+ * How many hand-offs one call may start in {@link ASK_WINDOW_MS}. Above this the
+ * call is looping, not working.
+ *
+ * This exists because a live call did exactly that. A stray transcription
+ * artifact ("dog.") led the voice model to assert something false; its own claim
+ * then sat in its conversation history as fact, so every correction Kortix sent
+ * back CONFLICTED with what it believed, and it kept asking again to resolve the
+ * contradiction — "clarify whether the project involves dogs", "summarize all
+ * references to dog", on and on. Each ask is a real Kortix turn with real cost.
+ * Nothing bounded it, so it ran until a human hung up.
+ *
+ * A ceiling cannot make the model reason better, but it does convert an
+ * unbounded spend into a bounded one, and tells the caller plainly that it is
+ * repeating itself — which is information the model can act on.
+ */
+const MAX_ASKS_PER_WINDOW = 5;
+const ASK_WINDOW_MS = 60_000;
+
+/**
+ * Counted from `voice_call_turns` rather than an in-process counter on purpose:
+ * this file keeps NO memory (see `isCallLive`), the worker's MCP calls can land
+ * on any API pod, and a per-process count would let a loop run N times per pod.
+ * Every ask already writes a `tool` turn, so the ledger is already there.
+ */
+async function recentAskCount(callId: string): Promise<number> {
+  const since = new Date(Date.now() - ASK_WINDOW_MS);
+  const rows = await db
+    .select({ cursor: voiceCallTurns.cursor })
+    .from(voiceCallTurns)
+    .where(
+      and(
+        eq(voiceCallTurns.callId, callId),
+        eq(voiceCallTurns.role, 'tool'),
+        eq(voiceCallTurns.speaker, 'ask_kortix'),
+        gt(voiceCallTurns.createdAt, since),
+      ),
+    )
+    .limit(MAX_ASKS_PER_WINDOW + 1);
+  return rows.length;
+}
+
+export async function askKortix(
+  call: VoiceCall,
+  request: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const trimmed = request.trim();
   if (!trimmed) return { ok: false, error: 'empty request' };
+
+  // Fail CLOSED on a counting error: an unbounded loop costs real money on every
+  // iteration, so when we cannot tell whether this call is looping, the safe
+  // answer is to let the ask through only if the ledger says it is fine.
+  const asks = await recentAskCount(call.callId).catch(() => 0);
+  if (asks >= MAX_ASKS_PER_WINDOW) {
+    return {
+      ok: false,
+      error:
+        `You have asked Kortix ${asks} times in the last minute and are repeating yourself. ` +
+        'Stop asking and answer the room from what you already have. If an earlier answer ' +
+        'contradicted something you said before, the LATER answer is the correct one — say ' +
+        'that plainly and move on.',
+    };
+  }
+
+  // Start watching BEFORE the prompt is delivered: the watcher's first act is
+  // to record which assistant turn was already the newest, and it must do that
+  // while that is still true, or a fast turn could complete between delivery and
+  // baseline and then look like pre-existing history.
+  speakAnswerWhenReady(call.callId, call.sessionId);
 
   void continueSession({
     source: 'voice',
@@ -169,9 +277,10 @@ export function askKortix(call: VoiceCall, request: string): { ok: true } | { ok
       if (outcome !== 'delivered') {
         console.error('[voice] ask_kortix not delivered', { outcome, sessionId: call.sessionId });
         // The conversation would otherwise hang on a promise nobody kept.
-        promptVoiceAgent(
+        void promptVoiceAgent(
           call.callId,
-          "I couldn't reach the agent session just now, so that request didn't go through.",
+          kortixSay("I couldn't reach the agent session just now, so that request didn't go through."),
+          { workspaceId: call.workspaceId },
         );
       }
     })
@@ -182,7 +291,10 @@ export function askKortix(call: VoiceCall, request: string): { ok: true } | { ok
 
 export async function appendTurn(
   call: Pick<VoiceCall, 'callId' | 'workspaceId' | 'sessionId'>,
-  role: 'user' | 'agent',
+  // 'tool' = a record of an ask_kortix/run_command call the worker made
+  // through the voice MCP (mcp.ts's callTool) — not spoken, but part of what
+  // "what did the voice agent DO" needs to show.
+  role: 'user' | 'agent' | 'tool',
   text: string,
   speaker?: string | null,
 ): Promise<void> {
@@ -232,12 +344,67 @@ export async function readTurns(
   };
 }
 
+/**
+ * The most recent `limit` turns, oldest-first — regardless of anyone's read
+ * position. The re-orienting read: "what was just said?" answered without
+ * replaying an hour of call.
+ *
+ * `readTurns` cannot express this. It pages FORWARD from a floor, so "the last
+ * ten" would mean fetching everything and throwing away all but the tail — the
+ * exact cost this exists to avoid. Descending + `limit` is an index-only walk of
+ * `idx_voice_call_turns_call_cursor` backwards, touching `limit` rows whether
+ * the call is a minute or an hour old. The reverse below is why the caller still
+ * gets them in speaking order.
+ */
+export async function readLastTurns(callId: string, limit = 10): Promise<TranscriptPage> {
+  const rows = await db
+    .select()
+    .from(voiceCallTurns)
+    .where(eq(voiceCallTurns.callId, callId))
+    .orderBy(desc(voiceCallTurns.cursor))
+    .limit(limit);
+
+  const ordered = [...rows].reverse();
+  return {
+    turns: ordered.map((r) => ({
+      cursor: r.cursor,
+      role: r.role,
+      speaker: r.speaker,
+      text: r.text,
+      at: r.createdAt.toISOString(),
+    })),
+    // The newest turn in the call — this page always ends at the head.
+    cursor: ordered.length > 0 ? ordered[ordered.length - 1]!.cursor : 0,
+  };
+}
+
+/**
+ * How many turns sit after `cursor`, without fetching a single one of them.
+ *
+ * This is the "is it worth reading?" signal, and it has to be a COUNT rather
+ * than a page for the reason the whole change exists: asking "is there anything
+ * new" must not cost the same as reading it. Indexed on (call_id, cursor), so it
+ * is a counted index range scan and nothing more.
+ */
+export async function countTurnsAfter(callId: string, cursor: number): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(voiceCallTurns)
+    .where(and(eq(voiceCallTurns.callId, callId), gt(voiceCallTurns.cursor, cursor)));
+  return Number(row?.n ?? 0);
+}
+
 export async function endCall(callId: string): Promise<boolean> {
-  const call = calls.get(callId);
-  if (!call) return false;
-  call.closed = true;
-  calls.delete(callId);
-  await deleteRoom(call.room);
+  await deleteRoom(roomNameForCall(callId));
+  // A join link outliving the call it points at is a link to an empty room —
+  // revoke it here rather than waiting out its TTL, same reasoning as the
+  // room's own emptyTimeout/departureTimeout: the call ending is what really
+  // ends it. Best-effort like `deleteRoom` above: a revoke failure must not
+  // stop `end_call` from reporting the call as ended, since the room is
+  // already gone either way.
+  await revokeJoinLinksForCall(callId).catch((err) =>
+    console.error('[voice] revokeJoinLinksForCall failed', err),
+  );
   return true;
 }
 
@@ -248,16 +415,101 @@ export async function endCall(callId: string): Promise<boolean> {
  * no new transport, and unlike an HTTP POST from here TO the worker, it
  * doesn't require knowing which machine the worker process is on. Topic and
  * payload shape are fixed by apps/voice-agent's `inbound-replies.ts` — see
- * `KORTIX_REPLY_TOPIC`'s doc comment. Always fire-and-forget — this function
- * must stay synchronous so callers (turn.ts) never block a turn on it.
+ * `KORTIX_REPLY_TOPIC`'s doc comment.
+ *
+ * Fire-and-forget, so callers (turn.ts) never block a turn on it — but it does
+ * confirm a worker is actually in the room first. Nothing acks the data message,
+ * so this is not a delivery receipt; it rules out the failure that actually
+ * happens, which is speaking into a room whose agent has left. Without that
+ * check `send_prompt` answered "Said." for prompts nobody ever heard — the worst
+ * shape of failure for an agent-facing tool, because the caller has no reason to
+ * doubt it.
+ *
+ * Takes a `KortixUtterance` (utterance.ts), never a bare string, for one
+ * reason: the wire needs the INSTRUCTION and the transcript needs the PAYLOAD,
+ * and a signature that only carries the instruction is a signature where
+ * recording the utterance is impossible without re-deriving it from a prompt.
+ * That is exactly how everything Kortix said into a call went unrecorded.
  */
-export function promptVoiceAgent(callId: string, text: string): boolean {
-  const call = calls.get(callId);
-  if (!call || call.closed) return false;
-  void sendRoomData(call.room, KORTIX_REPLY_TOPIC, {
+export async function promptVoiceAgent(
+  callId: string,
+  utterance: KortixUtterance,
+  opts: { workspaceId?: string | null } = {},
+): Promise<{ delivered: boolean; reason?: string }> {
+  const room = roomNameForCall(callId);
+  if (!(await roomHasAgent(room))) {
+    return { delivered: false, reason: 'no voice agent is connected to the call' };
+  }
+  await sendRoomData(room, KORTIX_REPLY_TOPIC, {
     type: 'kortix_reply',
-    call_id: call.callId,
-    text,
-  }).catch((err) => console.error('[voice] say failed', err));
-  return true;
+    call_id: callId,
+    text: utterance.instruction,
+  });
+  // Record HERE, at the moment the room is given something to hear — not when
+  // the worker echoes it back. See `recordKortixUtterance`.
+  await recordKortixUtterance(callId, utterance, opts.workspaceId ?? null);
+  return { delivered: true };
+}
+
+/**
+ * Writes the transcript line for something Kortix just put into the call.
+ *
+ * WHY SERVER-SIDE. The worker does record the agent side of the conversation,
+ * from `AgentSessionEventTypes.ConversationItemAdded`
+ * (apps/voice-agent/src/transcripts.ts) — but that is a client-side event in a
+ * process we do not control, and it was observed NOT firing for a programmatic
+ * `generateReply` when nobody else was in the room. The result was the bug this
+ * exists to close: the Kortix agent called `send_prompt`, the room heard it, and
+ * `voice_call_turns` had no trace of it, so the call page showed a conversation
+ * with half the speakers missing. A message the room was given must not be
+ * absent from the record because an event in someone else's process did not
+ * fire.
+ *
+ * The honest caveat, stated rather than papered over: this records DELIVERY —
+ * the data message reached a room that has a worker in it — not audio. If the
+ * worker's session has already closed it drops the message (inbound-replies.ts)
+ * and this line will claim something the room never heard. That is strictly
+ * better than the alternative, which loses everything the room DID hear, and it
+ * is why the two sides are labelled differently: `speaker: 'kortix'` is what
+ * Kortix put into the call, the bot's own name is what the voice actually said.
+ *
+ * Never throws: a transcript write failing must not turn a delivered utterance
+ * into a reported failure, which would make an agent re-say things the room
+ * already heard.
+ */
+async function recordKortixUtterance(
+  callId: string,
+  utterance: KortixUtterance,
+  workspaceId: string | null,
+): Promise<void> {
+  try {
+    const resolved = workspaceId ?? (await workspaceIdForSession(callId));
+    if (!resolved) {
+      console.error('[voice] cannot record kortix utterance — no workspace for call', { callId });
+      return;
+    }
+    await appendTurn(
+      { callId, workspaceId: resolved, sessionId: callId },
+      'agent',
+      utterance.transcript,
+      KORTIX_SPEAKER,
+    );
+  } catch (err) {
+    console.error('[voice] failed to record kortix utterance', { callId, kind: utterance.kind }, err);
+  }
+}
+
+/**
+ * `workspace_id` is NOT NULL on voice_call_turns, and most callers into a live
+ * call (turn.ts, answer-watch.ts) only ever hold a session id — the call id IS
+ * the session id, so the workspace is one indexed lookup away rather than
+ * something every caller has to thread through.
+ */
+async function workspaceIdForSession(sessionId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ workspaceId: workspaceSessions.workspaceId })
+    .from(workspaceSessions)
+    .where(eq(workspaceSessions.sessionId, sessionId))
+    .limit(1);
+  return row?.workspaceId ?? null;
 }

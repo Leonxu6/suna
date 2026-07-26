@@ -108,7 +108,7 @@ async function main() {
       err: err instanceof Error ? err.message : String(err),
     })
   }
-  // Make `git push`/`git fetch` against the project remote authenticate
+  // Make `git push` and `git fetch` against the workspace remote authenticate.
   // transparently from any shell the agent uses — no token juggling, no
   // askpass. Best-effort: a sandbox with no managed remote just skips it.
   try {
@@ -123,9 +123,9 @@ async function main() {
   // The opencode config dir lives INSIDE the repo (`<workspace>/.kortix/
   // opencode`), so the repo MUST be materialized before we can resolve which
   // config dir opencode should launch with. Resolving before the clone always
-  // missed the project's opencode.jsonc and silently fell back to the baked
+  // missed the workspace's opencode.jsonc and silently fell back to the baked
   // default dir — so the session ran with NO custom agents/plugins/commands
-  // and not even the project's `default_agent`. Clone first, then resolve.
+  // and not even the workspace's `default_agent`. Clone first, then resolve.
   //
   // opencode is spawned AFTER the clone (not in parallel): OPENCODE_CONFIG_DIR
   // is fixed at spawn time, so the dir has to be known up front. The clone is
@@ -136,7 +136,7 @@ async function main() {
     logger.error('[boot] /dev/shm is not tmpfs — agent secret file would persist to disk; check the sandbox runtime mount')
   }
   if (!writeAgentEnvFile(workspaceEnv)) {
-    logger.error('[boot] failed to write agent secret env file; agent shells will lack project secrets')
+    logger.error('[boot] failed to write agent secret env file; agent shells will lack workspace secrets')
   }
   // ── Serve BEFORE doing any slow work ────────────────────────────────────
   // The proxy (and with it /kortix/health) used to bind only after the clone
@@ -148,7 +148,7 @@ async function main() {
   // opencode at all. So bind first, then clone.
   //
   // The supervisor is created here with the BAKED config dir because the
-  // project's own dir lives inside the repo and isn't known yet; it is
+  // workspace's own dir lives inside the repo and is not known yet; it is
   // reconfigured with the resolved dir below, before the process is ever
   // spawned. `reconfigure` only rewrites state read at spawn time, so this is
   // exactly equivalent to constructing it late.
@@ -191,11 +191,11 @@ async function main() {
   await ensureOpencodeConfigDeps(opencodeConfigDir)
   // Overlay the always-latest managed Kortix skills (kortix-cli + the kortix-*
   // family) so every session has current Kortix context regardless of what the
-  // project repo committed — no project ever goes stale on Kortix internals.
+  // workspace repo committed. No workspace goes stale on Kortix internals.
   await ensureInjectedManagedSkills(opencodeConfigDir)
   bootMark('config-deps')
 
-  // Bind the resolved (possibly project-owned) config dir before the first spawn.
+  // Bind the resolved workspace-owned config directory before the first spawn.
   opencode.reconfigure(cfg, opencodeConfigDir, workspaceEnv)
 
   if (bootState.repoMaterializationError) {
@@ -235,7 +235,7 @@ async function main() {
 
   if (bootState.repoMaterializationError) return
 
-  // Project-declared boot command (`[sandbox] on_boot` in kortix.toml), e.g.
+  // Workspace-declared boot command (`[sandbox] on_boot` in kortix.toml), e.g.
   // `pnpm dev` — run it backgrounded once the repo is materialized + the proxy
   // is up, so a session auto-starts its dev stack with zero manual steps. Best
   // effort: a failure here never affects the agent runtime. Output → a log file
@@ -384,7 +384,6 @@ async function startSessionRuntime(
 ): Promise<void> {
   const leaseContext = executionLeaseContextFromEnv()
   const executionLease = leaseContext ? new ExecutionLeaseReporter(leaseContext) : null
-  executionLease?.discover()
   const onSessionStatus = (opencodeSessionId: string, status: string) => {
     if (status === 'busy' || status === 'retry') executionLease?.markBusy(opencodeSessionId)
     else if (status === 'idle') executionLease?.markInactive(opencodeSessionId)
@@ -414,7 +413,6 @@ async function startSessionRuntime(
   // and this reconcile collapse to a single finalize; a reconnect after the turn
   // relayed is a no-op.
   const onConnected = () => {
-    executionLease?.discover()
     void reconcileExecutionLease(opencode, cfg, executionLease).catch((err) =>
       logger.warn('[execution-lease] status reconcile failed', { err: (err as Error).message }),
     )
@@ -508,9 +506,9 @@ function reloadSessionEnv(paths: string[] = ['/etc/pt-env']): void {
 //
 // ENDPOINT CONTRACT (apps/api, to be added deliberately): GET KORTIX_LLM_CATALOG_URL with
 // `Authorization: Bearer <KORTIX_SANDBOX_TOKEN>` → `{ models: {...} }` ==
-// gatewayModelCatalog(projectId, userId). During seed capture there is NO live
+// gatewayModelCatalog(workspaceId, userId). During seed capture there is NO live
 // sessionSandboxes row (it's a template build), and the token is a type='user'
-// account key, so the route must authorize by validateAccountToken→accountId/projectId,
+// account key, so the route must authorize by validateAccountToken→accountId/workspaceId,
 // NOT by the sandbox-row check clone-credential uses.
 async function prefetchSeedCatalog(cfg: Config): Promise<void> {
   const url = process.env.KORTIX_LLM_CATALOG_URL
@@ -547,10 +545,10 @@ async function runWarmSeedMode(
   // every fork paid that ~3.2s init on its own hot path (the runtime-ready
   // wall). Resolve opencode's config from the scaffold's .kortix/opencode so the
   // seed (and every fork) runs the real agents/plugins, not the baked default.
-  // Project-scoped warm seed: clone the REAL project repo at base so the
+  // Workspace-scoped warm seed: clone the real workspace repo at base so the
   // captured snapshot already has /workspace. A fork then hits materializeRepo's
   // baked-checkout fast path (no in-box clone). Otherwise use the shared
-  // scaffold seed. A failed project clone returns false and degrades to the
+  // scaffold seed. A failed workspace clone returns false and degrades to the
   // scaffold seed.
   const workspaceSeed =
     !!cfg.repoUrl &&
@@ -621,7 +619,7 @@ async function runWarmSeedMode(
   // capture condition gates on the pin file existing, so the snapshot is taken
   // only AFTER this — making forks resume with runtime-ready instant and the
   // backend ensure resolving 'healed' (no first-session init). Only when a seed
-  // (scaffold OR real project repo) materialized; otherwise capture cannot be pinned.
+  // scaffold or real workspace repo materialized. Otherwise, capture cannot be pinned.
   if (materialized) {
     void (async () => {
       const deadline = Date.now() + 5 * 60_000
@@ -676,7 +674,7 @@ async function runWarmSeedMode(
       try { await configureGitCredentialHelper(cfg2, OPENCODE_HOME) } catch {}
       if (cfg2.autoClone) {
         // Clear any seed-clone failure so this retries cleanly. When the seed
-        // pre-cloned the project, materializeRepo hits the baked-checkout fast
+        // pre-cloned the workspace, materializeRepo hits the baked-checkout fast
         // path: set remote + local `git checkout -B <session>` from the cloned
         // base, no network re-clone. Otherwise it clones now.
         bootState.repoMaterializationError = null
@@ -693,8 +691,8 @@ async function runWarmSeedMode(
 
       // The seed opencode process is started before adoption, when it has no
       // session-scoped Executor/CLI/LLM env and may have started before the
-      // project config dir exists. Restart it after adopting the fork env + repo so
-      // OPENCODE_CONFIG_CONTENT includes the Executor MCP and project config.
+      // workspace config directory exists. Restart it after adopting the fork environment and repo.
+      // OPENCODE_CONFIG_CONTENT includes the Executor MCP and workspace config.
       const adoptedOpencodeConfigDir = bootState.repoMaterializationError
         ? cfg2.defaultOpencodeConfigDir
         : await resolveOpencodeConfigDir(cfg2)
@@ -703,7 +701,7 @@ async function runWarmSeedMode(
       )
       // A warm snapshot freezes OpenCode's provider model registry at capture
       // time. Managed/BYOK catalogs can change independently of that snapshot,
-      // so refresh from the now-authenticated project gateway before deciding
+      // so refresh from the now-authenticated workspace gateway before deciding
       // whether the no-restart fast path is safe. OpenCode only reads provider
       // models at process start: a changed catalog requires one controlled
       // restart; an identical catalog keeps the hot-swap path.

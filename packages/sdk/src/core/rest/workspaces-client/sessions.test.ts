@@ -11,6 +11,7 @@ import {
   getSessionAudit,
   getSessionPreviewCandidates,
   getSessionTranscript,
+  getVoiceTranscript,
   listWorkspaceSessions,
   listSessionPublicShares,
   restartWorkspaceSession,
@@ -205,6 +206,19 @@ test('getSessionTranscript builds the query string from limit/chars options', as
 
   await getSessionTranscript('P1', 'S1');
   expect(last().url).toBe('http://test.local/workspaces/P1/sessions/S1/transcript');
+});
+
+test('getVoiceTranscript hits GET .../voice-transcript and builds the query string from cursor/limit', async () => {
+  nextResponse = {
+    status: 200,
+    body: { session_id: 'S1', call_id: 'S1', live: true, cursor: 3, count: 0, turns: [] },
+  };
+  await getVoiceTranscript('P1', 'S1', { cursor: 12, limit: 50 });
+  expect(last().url).toBe('http://test.local/workspaces/P1/sessions/S1/voice-transcript?cursor=12&limit=50');
+  expect(last().method).toBe('GET');
+
+  await getVoiceTranscript('P1', 'S1');
+  expect(last().url).toBe('http://test.local/workspaces/P1/sessions/S1/voice-transcript');
 });
 
 test('updateWorkspaceSession PATCHes the name/metadata input', async () => {

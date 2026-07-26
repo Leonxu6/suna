@@ -213,18 +213,15 @@ test('workspace(id).gateway.routing binds policy CRUD and preview to the workspa
   expect(last().method).toBe('DELETE');
 });
 
-test('workspace(id).channels covers slack, email and meet', async () => {
+test('workspace(id).channels covers slack, email and voice', async () => {
   await kortix.workspace('PID123').channels.slack.installation();
   expect(last().url).toContain('/workspaces/PID123/channels/slack/installation');
 
   await kortix.workspace('PID123').channels.email.mode();
   expect(last().url).toContain('/workspaces/PID123/channels/email/mode');
 
-  await kortix.workspace('PID123').channels.meet.voices();
-  expect(last().url).toContain('/workspaces/PID123/channels/meet/voices');
-
-  await kortix.workspace('PID123').channels.meet.setVoice('voice-1');
-  expect(last().url).toContain('/workspaces/PID123/channels/meet/voice');
+  await kortix.workspace('PID123').channels.voice.setBotName('Kortix');
+  expect(last().url).toContain('/workspaces/PID123/channels/meet/name');
   expect(last().method).toBe('PUT');
 });
 
@@ -570,12 +567,6 @@ test('workspace(id).channels.slack covers file download + upload proxies', async
     contentBase64: 'YWJj',
   });
   expect(last().url).toContain('/workspaces/PID123/channels/slack/file/upload');
-  expect(last().method).toBe('POST');
-});
-
-test('workspace(id).channels.meet.speak posts bot id + text', async () => {
-  await kortix.workspace('PID123').channels.meet.speak('bot-1', 'hello there');
-  expect(last().url).toContain('/workspaces/PID123/channels/meet/speak');
   expect(last().method).toBe('POST');
 });
 

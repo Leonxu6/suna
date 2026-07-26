@@ -135,11 +135,11 @@ export const CUSTOMIZE_SECTION_ACCESS: Record<
   // follows settings (editor+ via customize.write in isCustomizeSectionVisible).
   upgrade: { read: WORKSPACE_ACTIONS.WORKSPACE_READ, write: WORKSPACE_ACTIONS.WORKSPACE_WRITE },
   computers: { read: WORKSPACE_ACTIONS.WORKSPACE_READ, write: WORKSPACE_ACTIONS.WORKSPACE_CONNECTOR_WRITE },
-  // Voice — connector-backed (materializes kortix_voice), so it follows the
-  // connector leaves like channels does.
+  // Voice — a workspace-level setting (the bot's display name), not a connector;
+  // follows the same gate as the sibling channel name route.
   voice: {
-    read: WORKSPACE_ACTIONS.WORKSPACE_CONNECTOR_READ,
-    write: WORKSPACE_ACTIONS.WORKSPACE_CONNECTOR_WRITE,
+    read: WORKSPACE_ACTIONS.WORKSPACE_READ,
+    write: WORKSPACE_ACTIONS.WORKSPACE_CUSTOMIZE_WRITE,
   },
 };
 

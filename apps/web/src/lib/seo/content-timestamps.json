@@ -25,7 +25,7 @@
   "docs:sdk": "2026-07-26T05:54:25+02:00",
   "docs:sdk/react": "2026-07-26T05:54:25+02:00",
   "docs:sdk/reference": "2026-07-26T05:54:25+02:00",
-  "docs:sdk/sessions": "2026-07-26T05:54:25+02:00",
+  "docs:sdk/sessions": "2026-07-26T05:55:39+02:00",
   "docs:work/change-requests": "2026-07-26T05:54:25+02:00",
   "docs:work": "2026-07-26T05:54:25+02:00",
   "docs:work/runtime": "2026-07-26T05:54:25+02:00",
@@ -33,7 +33,7 @@
   "docs:workspace/agents": "2026-07-26T05:54:25+02:00",
   "docs:workspace": "2026-07-26T05:54:25+02:00",
   "docs:workspace/legacy-toml": "2026-07-26T05:54:25+02:00",
-  "docs:workspace/manifest": "2026-07-26T05:54:25+02:00",
+  "docs:workspace/manifest": "2026-07-26T05:55:39+02:00",
   "docs:workspace/models": "2026-07-26T05:54:25+02:00",
   "docs:workspace/secrets": "2026-07-26T05:54:25+02:00"
 }

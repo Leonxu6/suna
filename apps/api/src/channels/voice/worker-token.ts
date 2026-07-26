@@ -5,12 +5,11 @@
  * worker's `Authorization: Bearer` header on every `/voice/{prompt,run-command,
  * turns}` call (routes.ts).
  *
- * Deliberately NOT the old bridge-token module's encrypted envelope: there is
- * no secret payload to protect here, only a call id the worker already has. A
- * plain HMAC over `callId` is enough, stateless like `voice-join.ts`'s session
- * token, and verifiable by any API instance without a DB round trip — the one
- * part of this flow that can't assume it's landing on the process that holds
- * the in-memory call registry.
+ * Deliberately NOT an encrypted envelope: there is no secret payload to
+ * protect here, only a call id the worker already has. A plain HMAC over
+ * `callId` is enough, stateless, and verifiable by any API instance without
+ * a DB round trip — the one part of this flow that can't assume it's landing
+ * on the process that holds the in-memory call registry.
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { config } from '../../config';

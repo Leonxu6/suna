@@ -366,15 +366,16 @@ Tokens stored as encrypted workspace secrets; webhooks public + signature-gated.
 
 ### Voice (live calls) — §VOICE
 
-The agent joins a Google Meet / Zoom / Teams call and holds a real spoken conversation. A Recall.ai bot renders the audio bridge page (`/voice/:token`, public) into the call; the realtime provider WebSocket is held SERVER-side, so no provider credential or session authority ever reaches the Recall-hosted browser. The agent drives it through the voice MCP, never a blocking read. Per-workspace bot name lives in `workspaces.metadata.meet`. Gated platform-wide by `VOICE_ENABLED` and per-workspace by the `voice` experimental flag.
+The agent starts one live voice call for its session and returns a join link. It does not join a third-party meeting. A human opens `/voice/:token` and joins the LiveKit room. `apps/voice-agent` holds the realtime provider connection. The Kortix agent drives the call through the `kortix_voice` Executor connector. Per-workspace bot name lives in `workspaces.metadata.meet`. The workspace `voice` experimental flag gates the connector.
 
-`VOICE-1` `PUT /workspaces/:id/channels/meet/name {name}` → `manage` → sets the bot's display name in the call (default "Kortix").
-`VOICE-2` `POST /workspaces/:id/mcp/voice` — JSON-RPC. `initialize` → server info + tool capability. `tools/list` → exactly `voice_spawn`, `voice_read`, `voice_prompt`, `voice_status`, `voice_end`. No follow/tail/stream tool exists, by design: the agent loop is single-threaded and a blocking read wedges the whole session.
-`VOICE-3` `tools/call voice_spawn {meeting_url, voice?}` → joins THROUGH the executor gateway (so connector policies, approvals, and audit all apply) and returns `{call_id, cursor}` immediately; the call then runs in the background. Missing `meeting_url` → tool error. A gateway denial surfaces as a tool error carrying the gateway's reason, not a JSON-RPC error, so the agent can react to it.
-`VOICE-4` `tools/call voice_read {call_id, cursor}` → returns turns after `cursor` plus a new cursor, and RETURNS IMMEDIATELY — empty when nothing is new. Ordering is by the monotonic `voice_call_turns.cursor`, never `created_at` (two turns can share a millisecond and a wall-clock tie would silently drop one).
-`VOICE-5` `tools/call voice_prompt {call_id, text}` → the Kortix session speaks into a live call (the mirror of the provider's `ask_kortix`); a call that is not live → tool error rather than a silent no-op.
-`VOICE-6` Audio bridge — `GET /v1/voice/bridge/:token` (WebSocket): raw binary PCM s16le both ways. Bad/tampered/cross-workspace token → rejected; expired → rejected distinctly (410 semantics); valid token whose call is not live on this instance → rejected as a routing error, not an auth error. The token authorises relaying audio for ONE call and carries no other authority.
-`VOICE-7` Unauthenticated MCP call → 401. The caller must resolve to a workspace principal with a session.
+`VOICE-1` `PUT /workspaces/:id/channels/meet/name {name}` → `workspace.customize.write` → sets the bot display name (default "Kortix").
+`VOICE-2` `GET /executor/workspaces/:id/catalog` includes `kortix_voice` actions `spawn_room`, `read_transcript`, `send_prompt`, `end_call`, `join_gmeet`, and `join_zoom`. Connector policies, approvals, and audit apply to every call.
+`VOICE-3` `POST /executor/workspaces/:id/call {connector:"kortix_voice",action:"spawn_room",args:{voice?}}` → creates a LiveKit room for the authenticated session and returns `{ok:true,data:{call_id,join_url}}`. `join_gmeet` and `join_zoom` return explicit not-implemented errors.
+`VOICE-4` `read_transcript {}` returns unread turns immediately and advances the server-owned cursor. `mode:"last"|"full"|"cursor"`, `limit`, `peek`, and explicit `cursor` provide alternate reads. Ordering uses the monotonic `voice_call_turns.cursor`.
+`VOICE-5` `send_prompt {text}` speaks into the live call. A call without a live voice agent returns an error.
+`VOICE-6` `end_call {}` ends the call, tears down the LiveKit room, and revokes its join link.
+`VOICE-7` `POST /workspaces/:id/sessions/:sid/mcp/voice` is worker-facing JSON-RPC. The per-call HMAC worker token authenticates it. `tools/list` returns `ask_kortix`, `run_command`, and `post_turn`. A missing or invalid worker token returns 401.
+`VOICE-8` `GET /public/voice-join/:token` exchanges a short join token for `{call_id,url,token}`. `GET /public/voice-join/:token/transcript?cursor=N` returns the durable transcript. Unknown tokens return 404. Expired, revoked, or ended-call tokens return 410.
 
 ---
 

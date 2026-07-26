@@ -259,12 +259,26 @@ function extractAgentsV2(raw: unknown, manifest: ParsedManifest, filename: strin
  * gap — a blank workspace's very first session-create with no agent forced now
  * resolves the same declared default the write path already promises.
  */
-export async function loadWorkspaceAgents(workspace: GitBackedWorkspace): Promise<LoadedAgents> {
+export async function loadWorkspaceAgents(
+  workspace: GitBackedWorkspace,
+  opts?: { rethrowReadErrors?: boolean },
+): Promise<LoadedAgents> {
   const { readManifest, synthesizeBlankManifest } = await import('./triggers');
   let manifest: ParsedManifest | null;
   try {
-    manifest = await readManifest(workspace);
+    manifest = await readManifest(workspace, opts);
   } catch (err) {
+    // FAIL CLOSED for callers that asked to. Both failure modes reaching here —
+    // an unreadable manifest (rethrown by readManifest) and an unparseable one
+    // (parseManifestString throwing) — mean the same thing: we cannot determine
+    // this agent's grant. Neither may be laundered into a permissive answer.
+    //
+    // Swallowing them is a fail-OPEN for the two most common session shapes: an
+    // unreadable manifest becomes a synthesized `secrets: 'all'` manifest below,
+    // and an unparseable one produces the error-carrying result below, which
+    // `grantFromLoadedAgents` resolves to null — i.e. UNRESTRICTED — for the
+    // `default` sentinel. See workspaces/lib/secret-grant.ts.
+    if (opts?.rethrowReadErrors) throw err;
     // The manifest failed to parse before we learned which candidate file it
     // actually was (.yaml/.yml/.toml) — fall back to the workspace's configured
     // manifestPath (best-effort; may be stale for a workspace that switched

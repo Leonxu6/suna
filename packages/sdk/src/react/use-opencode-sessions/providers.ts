@@ -21,6 +21,7 @@ import {
   workspaceLlmCatalogToProviderList,
   providerListHasModels,
 } from '../provider-selection';
+import { shouldLoadWorkspaceModelPicker } from './provider-load-plan';
 
 // ============================================================================
 // Provider Hooks
@@ -40,23 +41,39 @@ export function useOpenCodeProviders() {
   const workspaceGatewayEnabled =
     workspaceId ? workspaceDetailQuery.data?.workspace.experimental?.llm_gateway === true : false;
   const workspaceModeKnown = !workspaceId || workspaceDetailQuery.isSuccess;
-  // BYOK makes the connected model set workspace-specific (a provider connected
-  // in one workspace must NOT leak into another, nor linger after removal), so
-  // the persisted placeholder is scoped per workspace — not the old global scope.
-  const cacheScope = workspaceId
-    ? `proj:${workspaceId}:${workspaceGatewayEnabled ? 'gateway' : 'native'}`
-    : CACHE_SCOPE_GLOBAL;
-  return useQuery<ProviderListResponse>({
-    queryKey: workspaceId
-      ? ['workspace-providers', workspaceId, workspaceGatewayEnabled ? 'gateway' : 'native']
-      : opencodeKeys.providers(),
+  const gatewayCacheScope = workspaceId ? `proj:${workspaceId}:gateway` : CACHE_SCOPE_GLOBAL;
+  const gatewayProvidersQuery = useQuery<ProviderListResponse>({
+    queryKey: ['workspace-providers', workspaceId, 'gateway'],
     queryFn: async () => {
-      if (workspaceId && workspaceGatewayEnabled) {
-        const catalog = await getWorkspaceModelPicker(workspaceId);
-        const providers = workspaceLlmCatalogToProviderList(catalog);
-        setLSCache(LS_PROVIDERS, providers, cacheScope);
-        return providers;
-      }
+      const catalog = await getWorkspaceModelPicker(workspaceId!);
+      const providers = workspaceLlmCatalogToProviderList(catalog);
+      setLSCache(LS_PROVIDERS, providers, gatewayCacheScope);
+      return providers;
+    },
+    placeholderData: () => {
+      const cached = getLSCache<ProviderListResponse>(LS_PROVIDERS, gatewayCacheScope);
+      if (!providerListHasModels(cached)) return undefined;
+      const providers = filterToGatewayProviders(cached as ProviderListResponse);
+      return providerListHasModels(providers) ? providers : undefined;
+    },
+    enabled: shouldLoadWorkspaceModelPicker({
+      workspaceId,
+      workspaceModeKnown,
+      workspaceGatewayEnabled,
+    }),
+    staleTime: Infinity,
+    gcTime: 10 * 60 * 1000,
+    retry: (failureCount) =>
+      (!workspaceModeKnown || workspaceGatewayEnabled) && failureCount < 10,
+    retryDelay: (attempt) => Math.min(1000 * Math.pow(2, attempt), 8000),
+  });
+
+  // BYOK makes the connected model set workspace-specific. A provider connected
+  // in one workspace must not leak into another or remain after removal.
+  const nativeCacheScope = workspaceId ? `proj:${workspaceId}:native` : CACHE_SCOPE_GLOBAL;
+  const nativeProvidersQuery = useQuery<ProviderListResponse>({
+    queryKey: workspaceId ? ['workspace-providers', workspaceId, 'native'] : opencodeKeys.providers(),
+    queryFn: async () => {
       const client = getClient();
       const result = await client.provider.list();
       let rawProviders = normalizeProviderList(unwrap(result));
@@ -91,28 +108,23 @@ export function useOpenCodeProviders() {
       // server id) so a fresh session paints the right models instantly. Only
       // genuine, model-bearing responses reach here, so the placeholder cache
       // is never poisoned with an empty list.
-      setLSCache(LS_PROVIDERS, providers, cacheScope);
+      setLSCache(LS_PROVIDERS, providers, nativeCacheScope);
       return providers;
     },
     // Only ever serve a model-bearing placeholder. A previously-poisoned cache
     // (written before this guard existed) is ignored so it can't paint empty.
     placeholderData: () => {
-      const cached = getLSCache<ProviderListResponse>(LS_PROVIDERS, cacheScope);
+      const cached = getLSCache<ProviderListResponse>(LS_PROVIDERS, nativeCacheScope);
       if (!providerListHasModels(cached)) return undefined;
-      // Old gateway caches may have been persisted before the source filter —
-      // clean them on read, but native-mode workspaces must see the runtime's
-      // actual provider list for v0.9.68/backward-compatible fallback.
-      if (workspaceGatewayEnabled) {
-        const gatewayProviders = filterToGatewayProviders(cached as ProviderListResponse);
-        return providerListHasModels(gatewayProviders) ? gatewayProviders : undefined;
-      }
-      if (workspaceId && !workspaceGatewayEnabled) {
+      if (workspaceId) {
         const nativeProviders = filterToNativeProviders(cached as ProviderListResponse);
         return providerListHasModels(nativeProviders) ? nativeProviders : undefined;
       }
       return cached;
     },
-    enabled: workspaceId ? workspaceModeKnown && (workspaceGatewayEnabled || runtimeReady) : runtimeReady,
+    enabled: workspaceId
+      ? workspaceModeKnown && !workspaceGatewayEnabled && runtimeReady
+      : runtimeReady,
     staleTime: Infinity,
     gcTime: 10 * 60 * 1000,
     // The boot race (sandbox up, providers not yet wired) self-heals: keep
@@ -120,4 +132,5 @@ export function useOpenCodeProviders() {
     retry: (failureCount) => failureCount < 10,
     retryDelay: (attempt) => Math.min(1000 * Math.pow(2, attempt), 8000),
   });
+  return workspaceId && workspaceGatewayEnabled ? gatewayProvidersQuery : nativeProvidersQuery;
 }

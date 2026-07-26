@@ -49,6 +49,8 @@ export {
   chatThreadParticipants,
   chatTurnStreams,
   voiceCallTurns,
+  voiceCallReadCursors,
+  voiceJoinLinks,
   teamsPendingUploads,
   chatEventDedup,
   chatUserIdentities,

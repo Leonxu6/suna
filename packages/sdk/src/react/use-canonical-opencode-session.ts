@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { getWorkspaceSession } from '../core/rest/workspaces-client';
 
+import { resolveSessionPin } from './initial-session-pin';
 import { useOpenCodeSessions, type Session } from './use-opencode-sessions';
 
 /**
@@ -43,10 +44,18 @@ export function useCanonicalOpenCodeSession(params: {
   sessionId: string;
   /** The pin POST /start resolved server-side this render (preferred source). */
   pinFromStart?: string | null;
+  /** A server-authorized pin supplied by the host for pre-readiness cache hydration. */
+  initialPin?: string | null;
   /** Disable the legacy OpenCode REST session list for ACP sessions. */
   listRuntimeSessions?: boolean;
 }): CanonicalOpenCodeSession {
-  const { workspaceId, sessionId, pinFromStart, listRuntimeSessions = true } = params;
+  const {
+    workspaceId,
+    sessionId,
+    pinFromStart,
+    initialPin,
+    listRuntimeSessions = true,
+  } = params;
   const sessionsQuery = useOpenCodeSessions(listRuntimeSessions);
 
   // The Kortix session row carries the authoritative, server-managed pin — used
@@ -60,11 +69,15 @@ export function useCanonicalOpenCodeSession(params: {
   const workspaceSessionQuery = useQuery({
     queryKey: ['workspace-session', workspaceId, sessionId],
     queryFn: () => getWorkspaceSession(workspaceId, sessionId, { showErrors: false }),
-    enabled: !!workspaceId && !!sessionId && !pinFromStart,
+    enabled: !!workspaceId && !!sessionId && !pinFromStart && !initialPin,
     staleTime: 10_000,
   });
   const pin = workspaceSessionQuery.data?.opencode_session_id ?? null;
-  const rootSessionId = pinFromStart ?? pin ?? null;
+  const rootSessionId = resolveSessionPin({
+    startPin: pinFromStart,
+    initialPin,
+    persistedPin: pin,
+  });
 
   return {
     rootSessionId,

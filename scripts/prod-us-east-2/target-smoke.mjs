@@ -242,6 +242,9 @@ WHERE user_id = :'smoke_user_id'::uuid;
 DELETE FROM auth.one_time_tokens
 WHERE user_id = :'smoke_user_id'::uuid;
 
+DELETE FROM auth.flow_state
+WHERE user_id = :'smoke_user_id'::uuid;
+
 DELETE FROM auth.identities
 WHERE user_id = :'smoke_user_id'::uuid;
 
@@ -297,6 +300,8 @@ SELECT json_build_object(
   (SELECT count(*) FROM auth.mfa_factors WHERE user_id = :'smoke_user_id'::uuid),
   'auth.one_time_tokens',
   (SELECT count(*) FROM auth.one_time_tokens WHERE user_id = :'smoke_user_id'::uuid),
+  'auth.flow_state',
+  (SELECT count(*) FROM auth.flow_state WHERE user_id = :'smoke_user_id'::uuid),
   'auth.refresh_tokens',
   (SELECT count(*) FROM auth.refresh_tokens WHERE user_id = :'smoke_user_id'),
   'auth.sessions',

@@ -2,7 +2,6 @@ import { workspaces } from '@kortix/db';
 import { eq } from 'drizzle-orm';
 import {
   listAgentMailInstalls,
-  loadVoiceInstall,
   loadSlackInstall,
   loadTeamsInstall,
 } from '../channels/install-store';
@@ -105,16 +104,17 @@ export async function synthesizeChannelConnectors(
     .where(eq(workspaces.workspaceId, workspaceId))
     .limit(1);
 
-  // Meet (Recall.ai) — gated on the per-workspace `meet` experimental flag. Like
-  // Slack, a resolvable Recall key IS the registration (no OAuth / no [[connectors]]).
+  // Voice — gated on the per-workspace `voice` experimental flag. Unlike
+  // Slack/Teams/email there is no install to check: LiveKit config lives in
+  // this API's own env, not a per-workspace OAuth token, so the flag itself IS
+  // the registration (mirrors how `sensitive`-less channels work, minus the
+  // install lookup).
   if (workspace && resolveExperimentalFeature(workspace.metadata, 'voice')) {
-    const meetSlug = channelDefaultSlug('voice');
-    if (!channelAlreadyDeclared(declared, 'voice', meetSlug)) {
-      const install = await loadVoiceInstall(workspaceId).catch(() => null);
-      if (install) specs.push(channelSpec('voice', meetSlug));
+    const voiceSlug = channelDefaultSlug('voice');
+    if (!channelAlreadyDeclared(declared, 'voice', voiceSlug)) {
+      specs.push(channelSpec('voice', voiceSlug));
     }
   }
-
 
   if (!workspace || !resolveExperimentalFeature(workspace.metadata, 'agentmail_email')) {
     return specs;

@@ -1,110 +1,88 @@
 /**
- * Mount point for the voice MCP, plus the HTTP contract apps/voice-agent (a
- * separate process — see runtime.ts's file header) calls back into.
+ * Mount point for the voice MCP — the ONLY thing apps/voice-agent (a separate
+ * process — see runtime.ts's file header) calls back into.
  *
- * Auth for the MCP route reuses the executor's workspace-principal resolution
- * rather than inventing a second path: the caller is an in-sandbox agent
- * holding a session-scoped credential, which is exactly what the executor
- * already knows how to identify. That also means `voice_spawn` joins the
- * meeting through the executor gateway, so connector policies, approvals, and
- * the audit trail all apply — a direct Recall call from here would quietly
- * bypass every one of them.
+ * Auth here is completely different from every other route on `workspacesApp`:
+ * the caller is the LiveKit worker process, not a Kortix session, so it
+ * authenticates with the per-call `kortix_api_token` minted in `startCall`
+ * and handed to it via the room's metadata (see runtime.ts's
+ * `VoiceRoomMetadata`) — never session/PAT auth. `verifyCallApiToken`
+ * (worker-token.ts) is the whole check: it's an HMAC over the call id, and
+ * the call id IS the session id, so `workspaceId`/`sessionId` come straight
+ * from the path with nothing to look up first.
  *
- * Auth for the `/voice/*` routes below is completely different: the caller is
- * the LiveKit worker process, not a Kortix session, so it authenticates with
- * the per-call `kortix_api_token` minted in `startCall` and handed to it via
- * the room's metadata (see runtime.ts's `VoiceRoomMetadata`) — never the
- * workspace-principal auth the MCP route uses.
+ * `voiceMcpRoutes` is mounted standalone BEFORE `workspacesApp` (see
+ * index.ts's comment) specifically so this route skips `workspacesApp`'s
+ * `.use('/*', supabaseAuth)` — a worker token is not a Kortix session and
+ * `resolveWorkspacePrincipal` would 401 it regardless of validity. There used
+ * to be a SECOND, Kortix-agent-facing MCP route here too
+ * (`/:workspaceId/mcp/voice`, session/PAT-authed, guarded by its own
+ * `voiceMcpRoutes.use('/:workspaceId/mcp/voice', supabaseAuth)`) for the
+ * agent's own voice_spawn/voice_read/send_prompt/run_command/voice_end
+ * tools; that moved to the `kortix_voice` channel connector
+ * (executor/channels.ts, executor/db-deps.ts's executeVoiceCall) so it runs
+ * through the executor gateway like every other connector call — policies,
+ * approvals, and the audit trail included, none of which a direct MCP route
+ * ever had. This file and mcp.ts are now exclusively the worker's way in. If
+ * a second, differently-authed MCP ever needs to live here again, give it
+ * its own path rather than layering another `.use()` onto this one: reusing
+ * a path that also carries `supabaseAuth` for a caller that isn't a Kortix
+ * session is exactly the mistake that used to 401 a perfectly valid worker
+ * token against `resolveWorkspacePrincipal`.
  */
 import { createRoute, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
-import { dbExecutorRouterDeps } from '../../executor/db-deps';
-import { handleCall } from '../../executor/gateway';
-import { VOICE_CHANNEL_CONNECTOR_SLUG } from '../../executor/channels';
-import { supabaseAuth } from '../../middleware/auth';
 import { errors, json, makeOpenApiApp } from '../../openapi';
-import { resolveWorkspaceBotName } from '../voice-identity';
+import { roomNameForCall } from './livekit';
 import { handleVoiceMcp, type VoiceMcpContext } from './mcp';
-import { appendTurn, askKortix, getCall, startCall, type VoiceCall } from './runtime';
+import { appendTurn, askKortix, type VoiceCall } from './runtime';
 import { runCommandInSandbox } from './run-command';
 import { verifyCallApiToken } from './worker-token';
 
 export const voiceMcpRoutes = makeOpenApiApp();
 
-// `voiceMcpRoutes` is mounted standalone BEFORE `workspacesApp` (see the file
-// header + index.ts's comment) specifically so the three worker-callback
-// routes below skip workspacesApp's `supabaseAuth` and use their own HMAC
-// check instead. That means `/mcp/voice` — the ONE route on this app that
-// actually needs standard session/PAT auth, the same as every other
-// workspacesApp route — never runs `supabaseAuth` either, since it lives on a
-// completely separate Hono instance that never reaches workspacesApp's `.use('/*',
-// supabaseAuth)`. Without this, `resolveWorkspacePrincipal` always sees an
-// empty `c.get('userId')` and every call — regardless of token validity —
-// 401s. Scoped to exactly this one path so the worker callback routes below
-// are untouched.
-voiceMcpRoutes.use('/:workspaceId/mcp/voice', supabaseAuth);
+/**
+ * Builds the worker's MCP context straight from the request: the HMAC proves
+ * this caller owns this call, and workspaceId/sessionId are both in the path —
+ * which is everything askKortix/runCommandInSandbox/appendTurn use. The call
+ * id IS the session id and the room name derives from it, so there is
+ * nothing to look up (no in-process call registry — see runtime.ts's
+ * `isCallLive` doc for why one used to exist and why it was wrong).
+ */
+function buildWorkerContext(c: Context, workspaceId: string, sessionId: string): VoiceMcpContext | null {
+  const auth = c.req.header('Authorization') ?? '';
+  const token = auth.startsWith('Bearer ') ? auth.slice('Bearer '.length) : '';
+  if (!verifyCallApiToken(sessionId, token)) return null;
 
-async function buildContext(c: Context, workspaceId: string): Promise<VoiceMcpContext | null> {
-  const principal = await dbExecutorRouterDeps.resolveWorkspacePrincipal(c, workspaceId);
-  if (!principal?.sessionId) return null;
-
-  const sessionId = principal.sessionId;
+  const callId = sessionId;
+  const call: VoiceCall = {
+    callId,
+    workspaceId,
+    sessionId,
+    voice: 'alloy',
+    room: roomNameForCall(callId),
+    startedAt: Date.now(),
+    closed: false,
+  };
 
   return {
     workspaceId,
     sessionId,
-    async spawn({ meetingUrl, voice }) {
-      const botName = await resolveWorkspaceBotName(workspaceId);
-
-      // The call id IS the session id: one live call per session, and it is what
-      // binds the conversation to the thread that spawned it. The join-time
-      // LiveKit token minted at join time carries the same value.
-      const callId = sessionId;
-
-      // Start the room BEFORE joining. If the bot arrives first it renders a
-      // bridge page whose room does not exist yet, and the page's join is
-      // rejected with nothing to retry against.
-      await startCall({ callId, workspaceId, sessionId, botId: null, botName, voice });
-
-      const result = await handleCall(dbExecutorRouterDeps.makeGatewayDeps(principal), {
-        workspaceId,
-        accountId: principal.accountId,
-        subject: principal.subject,
-        sessionId,
-        connectorSlug: VOICE_CHANNEL_CONNECTOR_SLUG,
-        actionPath: 'join_meeting',
-        args: { meeting_url: meetingUrl },
-      });
-
-      if (result.status !== 'ok') {
-        // Surface the gateway's own reason (policy denial, missing connector,
-        // pending approval) rather than a generic failure — the agent can act on
-        // "connector_not_found" and cannot act on "join failed".
-        const detail = (result as { reason?: string }).reason ?? result.status;
-        throw new Error(`could not join the meeting: ${detail}`);
-      }
-
-      const botId =
-        result.data && typeof result.data === 'object'
-          ? ((result.data as { id?: string }).id ?? null)
-          : null;
-
-      const call = (await import('./runtime')).getCall(callId);
-      if (call) call.botId = botId;
-
-      return { callId, botId };
-    },
+    callId,
+    askKortix: (request: string) => askKortix(call, request),
+    runCommand: (command: string, cwd?: string) => runCommandInSandbox(sessionId, command, cwd),
+    postTurn: (role, text, speaker) => appendTurn({ callId, workspaceId, sessionId }, role, text, speaker),
   };
 }
 
 voiceMcpRoutes.openapi(
   createRoute({
     method: 'post',
-    path: '/{workspaceId}/mcp/voice',
+    path: '/{workspaceId}/sessions/{sessionId}/mcp/voice',
     tags: ['channels'],
-    summary: 'POST /:workspaceId/mcp/voice — voice MCP (JSON-RPC)',
+    summary: "POST .../mcp/voice — the voice worker's MCP (JSON-RPC over streamable HTTP)",
     request: {
-      params: z.object({ workspaceId: z.string() }),
+      params: z.object({ workspaceId: z.string(), sessionId: z.string() }),
       body: { content: { 'application/json': { schema: z.any() } } },
     },
     responses: {
@@ -114,7 +92,8 @@ voiceMcpRoutes.openapi(
   }),
   async (c: any) => {
     const workspaceId = c.req.param('workspaceId');
-    const ctx = await buildContext(c, workspaceId);
+    const sessionId = c.req.param('sessionId');
+    const ctx = buildWorkerContext(c, workspaceId, sessionId);
     if (!ctx) return c.json({ error: 'Unauthorized' }, 401);
 
     let body: unknown;
@@ -127,162 +106,5 @@ voiceMcpRoutes.openapi(
     const res = await handleVoiceMcp(ctx, body as Record<string, unknown>);
     if (res === null) return c.body(null, 202);
     return c.json(res);
-  },
-);
-
-// ── apps/voice-agent's callback contract ───────────────────────────────────
-// Three routes under /{workspaceId}/sessions/{sessionId}/voice/ — path, body
-// shape, and response shape are all fixed by that app's `kortix-client.ts` /
-// README.md ("The apps/api contract this app expects"); this side implements
-// them, it does not get to renegotiate them without also editing that app,
-// which is out of scope here.
-
-async function authenticateWorker(
-  c: Context,
-  workspaceId: string,
-  sessionId: string,
-): Promise<{ ok: true; call: VoiceCall } | { ok: false; status: 401 | 404; error: string }> {
-  // Verify the token BEFORE touching the call registry: the token is an HMAC
-  // over the session id itself (call id IS session id — see runtime.ts / this
-  // file's own comment above), so this doesn't need to load anything first,
-  // and an unauthenticated caller learns nothing about whether a call exists.
-  const auth = c.req.header('Authorization') ?? '';
-  const token = auth.startsWith('Bearer ') ? auth.slice('Bearer '.length) : '';
-  if (!verifyCallApiToken(sessionId, token)) {
-    return { ok: false, status: 401, error: 'Unauthorized' };
-  }
-
-  const call = getCall(sessionId);
-  if (!call || call.closed || call.workspaceId !== workspaceId) {
-    return { ok: false, status: 404, error: 'call not found' };
-  }
-
-  return { ok: true, call };
-}
-
-voiceMcpRoutes.openapi(
-  createRoute({
-    method: 'post',
-    path: '/{workspaceId}/sessions/{sessionId}/voice/prompt',
-    tags: ['channels'],
-    summary: "POST .../voice/prompt — worker's send_prompt hand-off to Kortix",
-    request: {
-      params: z.object({ workspaceId: z.string(), sessionId: z.string() }),
-      body: { content: { 'application/json': { schema: z.object({ call_id: z.string(), text: z.string() }) } } },
-    },
-    responses: { 200: json(z.any(), 'Queued'), ...errors(400, 401, 404) },
-  }),
-  async (c: any) => {
-    const auth = await authenticateWorker(c, c.req.param('workspaceId'), c.req.param('sessionId'));
-    if (!auth.ok) return c.json({ error: auth.error }, auth.status);
-
-    const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
-    const text = typeof body.text === 'string' ? body.text : '';
-
-    // Answer FIRST, then deliver — see askKortix's own doc comment. This
-    // route must respond well inside the worker's PROMPT_TIMEOUT_MS.
-    const result = askKortix(auth.call, text);
-    if (!result.ok) return c.json({ error: result.error }, 400);
-    return c.json({ ok: true });
-  },
-);
-
-voiceMcpRoutes.openapi(
-  createRoute({
-    method: 'post',
-    path: '/{workspaceId}/sessions/{sessionId}/voice/run-command',
-    tags: ['channels'],
-    summary: "POST .../voice/run-command — worker's run_command quick-check tool",
-    request: {
-      params: z.object({ workspaceId: z.string(), sessionId: z.string() }),
-      body: {
-        content: {
-          'application/json': {
-            schema: z.object({ call_id: z.string(), command: z.string(), cwd: z.string().optional() }),
-          },
-        },
-      },
-    },
-    responses: { 200: json(z.any(), 'Command result'), ...errors(400, 401, 404) },
-  }),
-  async (c: any) => {
-    const auth = await authenticateWorker(c, c.req.param('workspaceId'), c.req.param('sessionId'));
-    if (!auth.ok) return c.json({ error: auth.error }, auth.status);
-
-    const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
-    const command = typeof body.command === 'string' ? body.command : '';
-    const cwd = typeof body.cwd === 'string' ? body.cwd : undefined;
-    if (!command.trim()) return c.json({ error: 'command is required' }, 400);
-
-    try {
-      const result = await runCommandInSandbox(auth.call.sessionId, command, cwd);
-      return c.json({
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exit_code: result.exitCode,
-        timed_out: result.timedOut,
-      });
-    } catch (err) {
-      // Same rule mcp.ts follows: a readable error the worker's tool can speak
-      // around, not a bare 500 that turns into a generic network-error string.
-      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
-    }
-  },
-);
-
-voiceMcpRoutes.openapi(
-  createRoute({
-    method: 'post',
-    path: '/{workspaceId}/sessions/{sessionId}/voice/turns',
-    tags: ['channels'],
-    summary: "POST .../voice/turns — worker's transcript sink",
-    request: {
-      params: z.object({ workspaceId: z.string(), sessionId: z.string() }),
-      body: {
-        content: {
-          'application/json': {
-            schema: z.object({
-              call_id: z.string(),
-              role: z.enum(['user', 'agent']),
-              text: z.string(),
-              speaker: z.string().nullable().optional(),
-            }),
-          },
-        },
-      },
-    },
-    responses: { 200: json(z.any(), 'Persisted'), ...errors(400, 401, 404) },
-  }),
-  async (c: any) => {
-    const workspaceId = c.req.param('workspaceId');
-    const sessionId = c.req.param('sessionId');
-
-    // Deliberately does NOT require a live entry in the in-process call
-    // registry, unlike the other two worker routes. Since LiveKit took over the
-    // media plane the API holds no socket for a call, so which instance has it
-    // in memory is arbitrary — and an API restart mid-call would otherwise
-    // silently stop persisting a conversation that is still happening. The HMAC
-    // already proves this caller owns this call, and workspaceId/sessionId are in
-    // the path, which is everything a transcript row needs.
-    const authHeader = c.req.header('Authorization') ?? '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : '';
-    if (!verifyCallApiToken(sessionId, token)) return c.json({ error: 'Unauthorized' }, 401);
-
-    const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
-    const role = body.role === 'agent' ? 'agent' : 'user';
-    const text = typeof body.text === 'string' ? body.text : '';
-    const speaker = typeof body.speaker === 'string' ? body.speaker : null;
-    const callId = typeof body.call_id === 'string' && body.call_id ? body.call_id : sessionId;
-
-    // Reject empty/whitespace-only text with 400 rather than silently 200'ing
-    // a no-op write. appendTurn() itself no-ops on empty text (by design, for
-    // its other caller paths), which used to mean a caller sending blank text
-    // saw a green 200 in its own logs while nothing was persisted — a capture
-    // regression upstream of this route would look identical to success. This
-    // makes that failure mode loud at the one place that can see it happen.
-    if (!text.trim()) return c.json({ error: 'text must not be empty' }, 400);
-
-    await appendTurn({ callId, workspaceId, sessionId }, role, text, speaker);
-    return c.json({ ok: true });
   },
 );

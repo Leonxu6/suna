@@ -40,6 +40,7 @@ import {
   sandboxFromLoadedAgents,
 } from '../agents';
 import { createRemoteSessionBranch, resolveCommitSha } from '../git';
+import { resolveSessionSecretGrant } from './secret-grant';
 import {
   AmbiguousSecretGrantError,
   intersectSecretGrants,
@@ -293,15 +294,20 @@ export async function buildSessionSandboxEnvVars(input: {
     // No-op (undefined → 'all') for back-compat grants and workspaces without
     // an `agents:` map or git context. This is the ONLY gate on agent secret
     // access — there is no resource-side allow-list on the secret itself.
-    const loadedAgents = await loadWorkspaceAgents({
+    //
+    // FAIL CLOSED: this used to `.catch(() => null)`, which collapsed a loader
+    // throw into an unrestricted grant — a transient git/parse failure silently
+    // handed the session every workspace secret. It now throws
+    // SecretGrantResolutionError and the provision fails instead. Shares one
+    // resolver with the per-prompt hot push (lib/secret-grant.ts) so the two
+    // paths can no longer disagree about what this agent may read.
+    agentGrantEnv = await resolveSessionSecretGrant({
       workspaceId: input.workspaceId,
       repoUrl: input.repoUrl,
       defaultBranch: input.defaultBranch,
-      manifestPath: input.manifestPath ?? 'kortix.yaml',
-      gitAuthToken: null,
-    }).catch(() => null);
-    const grant = loadedAgents ? grantFromLoadedAgents(input.agentName, loadedAgents) : null;
-    agentGrantEnv = grant?.env;
+      manifestPath: input.manifestPath,
+      sessionAgent: input.agentName,
+    });
   }
 
   // Per-session KaaB fields, read by sessionId inside the builder so all three

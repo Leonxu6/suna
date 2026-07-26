@@ -4,7 +4,7 @@
  *
  * Every voice test so far used a synthetic session id, which meant ask_kortix —
  * the whole point of the channel — could only ever report 'no-session'. This
- * mints a real user, project, and session with a live sandbox so the hand-off
+ * mints a real user, workspace, and session with a live sandbox so the hand-off
  * has somewhere to land and the turn-relay has a turn to narrate.
  *
  * Prints `SESSION=<id> PROJECT=<id>` on success.
@@ -53,23 +53,25 @@ async function main() {
 
   const H = { Authorization: `Bearer ${token}`, 'content-type': 'application/json' };
 
-  console.log('3/5  creating project…');
-  // /provision, not /projects: the plain create requires a BYO repo_url, while
+  console.log('3/5  creating workspace…');
+  // /provision, not /workspaces: the plain create requires a BYO repo_url, while
   // provision mints a managed repo — the same path the e2e fixtures use.
-  const projRes = await fetch(`${API}/projects/provision`, {
+  const workspaceRes = await fetch(`${API}/workspaces/provision`, {
     method: 'POST',
     headers: H,
     body: JSON.stringify({ name: `voice-e2e-${stamp}`, seed_starter: true }),
   });
-  const proj = await j(projRes);
-  const projectId = proj?.project_id ?? proj?.project?.project_id ?? proj?.id;
-  if (!projectId) throw new Error(`project create failed: ${JSON.stringify(proj).slice(0, 400)}`);
-  console.log(`     project ${projectId}`);
+  const workspace = await j(workspaceRes);
+  const workspaceId =
+    workspace?.workspace_id ?? workspace?.workspace?.workspace_id ?? workspace?.id;
+  if (!workspaceId) {
+    throw new Error(`workspace create failed: ${JSON.stringify(workspace).slice(0, 400)}`);
+  }
+  console.log(`     workspace ${workspaceId}`);
 
-  // The voice channel is connector-backed and experimental-gated; without this
-  // the kortix_voice connector never materializes and voice_spawn cannot join.
+  // The voice connector checks this flag before it starts a call.
   console.log('4/5  enabling the voice experimental flag…');
-  const flagRes = await fetch(`${API}/projects/${projectId}/experimental`, {
+  const flagRes = await fetch(`${API}/workspaces/${workspaceId}/experimental`, {
     method: 'PATCH',
     headers: H,
     body: JSON.stringify({ feature: 'voice', enabled: true }),
@@ -77,7 +79,7 @@ async function main() {
   console.log(`     ${flagRes.status} ${flagRes.ok ? 'enabled' : (await flagRes.text()).slice(0, 200)}`);
 
   console.log('5/5  creating session (boots a sandbox — takes ~20s)…');
-  const sessRes = await fetch(`${API}/projects/${projectId}/sessions`, {
+  const sessRes = await fetch(`${API}/workspaces/${workspaceId}/sessions`, {
     method: 'POST',
     headers: H,
     body: JSON.stringify({ initial_prompt: 'Say hello and wait for instructions.' }),
@@ -90,7 +92,7 @@ async function main() {
   // Wait for the sandbox to be ready — continueSession polls for this too, but
   // failing here gives a far clearer error than a silent 'pending' later.
   for (let i = 0; i < 60; i++) {
-    const s = await j(await fetch(`${API}/projects/${projectId}/sessions/${sessionId}`, { headers: H }));
+    const s = await j(await fetch(`${API}/workspaces/${workspaceId}/sessions/${sessionId}`, { headers: H }));
     const stage = s?.session?.sandbox?.stage ?? s?.sandbox?.stage ?? s?.session?.status ?? s?.status;
     if (i % 5 === 0) console.log(`     …${stage}`);
     if (stage === 'ready' || stage === 'running') break;
@@ -100,7 +102,7 @@ async function main() {
 
   console.log('');
   console.log(`SESSION=${sessionId}`);
-  console.log(`PROJECT=${projectId}`);
+  console.log(`WORKSPACE=${workspaceId}`);
   console.log(`TOKEN=${token.slice(0, 12)}…`);
 }
 

@@ -30,7 +30,7 @@ This is the direct analogue of the Slack work: a new Executor **provider type** 
 - **Auth model** (`routes/auth.ts`): `getTunnelReadContext` (apiKey **and** user/PAT — used by GET /connections, GET /:id, **POST /rpc**) vs `getTunnelOwnerContext` (= `requireUserCredential`, rejects apiKey — all management mutations). So the **sandbox apiKey can already RPC**; only humans/PATs manage.
 - **Method set** (`packages/agent-tunnel/src/shared/types.ts`, `TunnelMethods`): the canonical source of truth — `fs.read|write|list|stat|delete` (`filesystem`), `shell.exec` (`shell`), ~45 `desktop.cua.*` (`desktop`), plus `tunnel.*` protocol notifications (capability `null`).
 - **Permission model:** `tunnel_permissions` rows = `(tunnelId, capability, scope, status, expiresAt)`. Scope is capability-specific (`filesystem`: paths/operations/maxFileSize/excludePatterns; `shell`: commands/workingDir; `desktop`: features). Empty `{}` scope = allow-all within the capability. Granted at device-auth approve time and/or via the permission-request approval flow. `checkPermission` + `validateScope` enforce. **This is per-machine and stays authoritative.**
-- **Scoping:** tunnels are **account-scoped** (`tunnel_connections.accountId`, optional `sandboxId` FK, **no projectId**). One laptop serves all the account's projects.
+- **Scoping:** tunnels are **account-scoped** (`tunnel_connections.accountId`, optional `sandboxId` FK, **no workspaceId**). One laptop serves all the account's workspaces.
 - **Lifecycle hooks:** tunnel **created** at `routes/device-auth.ts:300` (device-auth approve) and `routes/connections.ts:103` (POST /connections); **deleted** at `routes/connections.ts:283` (DELETE, cascades to permissions/audit/device-auth).
 - **Consumers:** `kortix tunnel ls|show|rpc|rm` CLI (PAT auth); the in-sandbox `agent-tunnel` opencode skill-CLI (resolves first-online tunnel via GET /connections, calls POST /rpc with the sandbox apiKey); the npm daemon `npx --yes @kortix/agent-tunnel@latest connect` (device-auth → WS); the web **Customize → Computers** surface (gated by the `agent_tunnel` experimental flag).
 
@@ -42,7 +42,7 @@ The Executor is provider-pluggable. The `channel` provider (Slack) is the worked
 | Catalog | fixed `http` bindings → slack.com/api | fixed **`tunnel`** bindings → relay RPC |
 | Credential | install token via `loadSlackTokenForProject` (server-side) | **none** — the "credential" is the live WS relay; auth/scope is the tunnel permission layer |
 | Execution | gateway → `executeCall` (HTTP) | gateway → **`executeComputerCall`** → shared tunnel RPC core (permission-check → relay → audit) |
-| Cardinality | one `slack` connector per project | one `computer` connector per project, **fronting all the account's machines** (machine = an action arg) |
+| Cardinality | one `slack` connector per workspace | one `computer` connector per workspace, **fronting all the account's machines** (machine = an action arg) |
 | Materialize trigger | Slack connect/disconnect | first machine connects / last machine removed |
 | UI banner | "managed in Channels" | "managed in Computers" |
 
@@ -50,7 +50,7 @@ The Executor is provider-pluggable. The `channel` provider (Slack) is the worked
 
 ## 3. Design overview
 
-Add a new Executor provider **`computer`**. When a project's account owns ≥1 tunnel, the Executor **synthesizes a single `computer` connector** — no `kortix.yaml` entry, no experimental opt-in; connecting a machine IS the registration, exactly like a Slack install. (Superseding the original D4 gating: the connector is a **regular** connector and no longer requires the per-project `agent_tunnel` flag — see §"D4".) That one connector exposes:
+Add a new Executor provider **`computer`**. When a workspace's account owns ≥1 tunnel, the Executor **synthesizes a single `computer` connector** — no `kortix.yaml` entry, no experimental opt-in; connecting a machine IS the registration, exactly like a Slack install. (Superseding the original D4 gating: the connector is a **regular** connector and no longer requires the per-workspace `agent_tunnel` flag — see §"D4".) That one connector exposes:
 
 - **`list_computers`** — a meta action (handled server-side, no relay): returns the account's machines with `{ id, name, online, capabilities, platform }` so the agent can pick one.
 - The **tunnel RPC method set** (`fs.*`, `shell.exec`, curated `desktop.cua.*` + a `desktop.cua.call` passthrough), each taking an extra **`computer`** selector arg (machine name or id; optional when exactly one machine is online → defaults to it).
@@ -59,7 +59,7 @@ When the agent calls an action, the gateway routes to a **shared tunnel RPC core
 
 ```
 agent (sandbox)                          API process
-  executor `call`  ──HTTP──▶  /executor/projects/:id/call
+  executor `call`  ──HTTP──▶  /executor/workspaces/:id/call
    computer.fs.read                          │
      {computer:"laptop", path}               ▼ gateway.handleCall  (provider === 'computer')
                                              │   access (connector sharing) + executor policy (default allow_all)
@@ -76,10 +76,11 @@ agent (sandbox)                          API process
 
 ## 4. Decisions (locked)
 
-- **D1 — Cardinality: one `computer` connector, many machines.** A single connector per project fronts all the account's machines; the machine is an action argument (`computer`), with `list_computers` for discovery and default-to-sole-online for the common single-machine case. Rationale: machines are account-scoped while connectors are project-scoped, so one connector (exists iff the account has ≥1 machine) is far simpler than synthesizing/fanning N per-machine rows; you govern & share *one* thing ("central front door"); per-machine security is unchanged (the tunnel permission layer gates each machine individually). *(Chosen over per-machine connectors.)*
+- **D1 — Cardinality: one `computer` connector, many machines.** A single connector per workspace fronts all the account's machines; the machine is an action argument (`computer`), with `list_computers` for discovery and default-to-sole-online for the common single-machine case. Rationale: machines are account-scoped while connectors are workspace-scoped, so one connector (exists iff the account has ≥1 machine) is far simpler than synthesizing/fanning N per-machine rows; you govern & share *one* thing ("central front door"); per-machine security is unchanged (the tunnel permission layer gates each machine individually). *(Chosen over per-machine connectors.)*
 - **D2 — In-sandbox: a `computer` skill that drives the Executor (CLI/SDK/MCP).** Keep an ergonomic `computer` skill, but it calls the Executor (`@kortix/executor-sdk` / `kortix executor` / the MCP tools) instead of hitting `POST /rpc` directly — one auth path, one audit trail. Update `kortix-executor` SKILL.md to list the `computer` provider. *(Exact Slack precedent.)*
 - **D3 — Desktop catalog: curated + passthrough.** Typed actions for `fs.*`, `shell.exec`, and high-value `desktop.cua.*` (click/type/press_key/screenshot/scroll/list_apps/launch_app/…), plus a generic `desktop.cua.call` passthrough for the ~45-method long tail. `describe` stays useful without hand-maintaining every schema.
-- **D4 — Naming & gating (UPDATED).** Provider/enum value = **`computer`**; connector slug = `computer`; management CLI stays `kortix tunnel`. **Synth is NOT gated by the `agent_tunnel` experimental flag** — the `computer` connector is a *regular* connector that materializes whenever the account has a connected machine, exactly like the Slack channel connector. A machine can only exist when the platform tunnel service is on (`config.TUNNEL_ENABLED` gates the tunnel routes), so machine-presence already implies platform support. The `agent_tunnel` flag now gates **only** the dedicated Customize → Computers management UI (device-auth / per-machine permissions), not the connector. *(Original decision gated synth on the per-project flag; reversed so connecting a machine "just works" as a connector.)*
+- **D4 — Naming & gating (UPDATED).** Provider/enum value = **`computer`**; connector slug = `computer`; management CLI stays `kortix tunnel`. **Synth is NOT gated by the `agent_tunnel` experimental flag** — the `computer` connector is a *regular* connector that materializes whenever the account has a connected machine, exactly like the Slack channel connector. A machine can only exist when the platform tunnel service is on (`config.TUNNEL_ENABLED` gates the tunnel routes), so machine-presence already implies platform support. The `agent_tunnel` flag now gates **only** the dedicated Customize → Computers management UI (device-auth / per-machine permissions), not the connector. *(Original decision gated synth on the per-workspace flag; reversed so connecting a machine "just works" as a connector.)*
+- **D5 — "Connected machine" means ever-heartbeat, not row-exists (fix).** `synthesizeComputerConnectors` gates on `tunnel_connections.last_heartbeat_at IS NOT NULL`, not merely a row existing for the account. A device-auth approval (or an abandoned/leftover pairing attempt) creates the row up front with `status: 'offline'` and no heartbeat; the CLI then dials in and sets the heartbeat within seconds in the real flow, so this costs nothing there. What it fixes: a pairing that was approved and never actually connected used to sit forever and silently materialize an "active" `computer` connector across **every workspace in the account** — indistinguishable from a real connection in the Connectors list. Once a machine has connected at least once its connector correctly stays materialized through later offline periods (closed laptop) — only a connection that never came online even once is excluded.
 
 ---
 
@@ -91,7 +92,7 @@ No new tables. Two additive changes:
 
 2. **`ActionBinding`** union (`apps/api/src/executor/types.ts`) — add `| { kind: 'tunnel'; method: string }`. The relay method name (`fs.read`, `desktop.cua.click`, …) rides in the binding; `list_computers` uses `{ kind: 'tunnel', method: 'list_computers' }` and is special-cased (meta, no relay).
 
-The synthetic connector needs **no per-machine config** (it spans all machines): `config = { auth: { type:'none', … } }`, `baseUrl` null. The row's `accountId`/`projectId` are the project's; machine resolution happens at call time scoped to `accountId` (so the agent can only reach its own account's machines).
+The synthetic connector needs **no per-machine config** (it spans all machines): `config = { auth: { type:'none', … } }`, `baseUrl` null. The row's `accountId`/`workspaceId` are the workspace's; machine resolution happens at call time scoped to `accountId` (so the agent can only reach its own account's machines).
 
 ---
 
@@ -135,11 +136,11 @@ It does rate-limit → resolve capability → `checkPermission` → (deny) creat
 
 ### 7.3 Selector resolution (`executeComputerCall`, in `db-deps.ts`)
 - `list_computers`: query `tunnel_connections` where `accountId = input.accountId`; enrich with `tunnelRelay.isConnected(tunnelId)`; return `[{ id, name, online, capabilities, platform }]`.
-- selector → tunnelId: match the account's tunnels by id, then by case-insensitive name; if omitted, pick the sole online machine; ambiguous/none → `no_machine`. **Always scoped to `input.accountId`** (the connector's account = the project's account = the tunnel's account), so cross-account access is impossible.
+- selector → tunnelId: match the account's tunnels by id, then by case-insensitive name; if omitted, pick the sole online machine; ambiguous/none → `no_machine`. **Always scoped to `input.accountId`** (the connector's account = the workspace's account = the tunnel's account), so cross-account access is impossible.
 - then `executeTunnelRpc({ tunnelId, accountId, method, params: args })`.
 
 ### 7.4 Two-layer security (intentional, documented)
-- **Executor layer:** connector sharing (`isSecretUsableBy` — which project members), per-agent grants (`agentMayUseConnector`), executor policy (left at default `allow_all` so it doesn't double-prompt). Govern the whole `computer` connector once.
+- **Executor layer:** connector sharing (`isSecretUsableBy` — which workspace members), per-agent grants (`agentMayUseConnector`), executor policy (left at default `allow_all` so it doesn't double-prompt). Govern the whole `computer` connector once.
 - **Tunnel layer (authoritative, per-machine):** `tunnel_permissions` capability+scope + the permission-request approval UX + the tunnel audit log — unchanged. A freshly-connected machine with no grants still triggers the existing approval flow, now surfaced through the executor as `pending_approval`.
 - **Audit:** both `tunnel_audit_logs` (Computers UI shows ALL relay RPC, however invoked) and `executor_executions` (Executor surface). Intentional dual-write.
 
@@ -148,25 +149,25 @@ It does rate-limit → resolve capability → `checkPermission` → (deny) creat
 ## 8. Auto-materialization & reconcile
 
 `apps/api/src/executor/computer-materialize.ts` (NEW), mirroring `channel-materialize.ts` but **one connector, not N**:
-- `synthesizeComputerConnectors(projectId, declared) → ConnectorSpec[]`:
+- `synthesizeComputerConnectors(workspaceId, declared) → ConnectorSpec[]`:
   1. If the `computer` slug is already declared → `[]` (never shadow).
-  2. Resolve the project's `accountId`; if the account has **≥1** `tunnel_connections` row → return a single synthetic `computer` `ConnectorSpec` (`provider:'computer'`, `credentialMode:'shared'`, `auth:none`, slug `computer`, name "Computers"); else `[]`. **No `agent_tunnel` flag check** (updated D4) — machine presence is the only gate.
-- Wire into `syncProjectConnectors` next to the channel synth (`sync.ts:120`): fold `computerSpecs` into `specs`; include `'computer'` in the **guarded-deletion** branch (`sync.ts:163`) so the connector is reaped when the last machine is removed but a transient git error never wipes it.
+  2. Resolve the workspace's `accountId`; if the account has **≥1** `tunnel_connections` row → return a single synthetic `computer` `ConnectorSpec` (`provider:'computer'`, `credentialMode:'shared'`, `auth:none`, slug `computer`, name "Computers"); else `[]`. **No `agent_tunnel` flag check** (updated D4) — machine presence is the only gate.
+- Wire into `syncWorkspaceConnectors` next to the channel synth (`sync.ts:120`): fold `computerSpecs` into `specs`; include `'computer'` in the **guarded-deletion** branch (`sync.ts:163`) so the connector is reaped when the last machine is removed but a transient git error never wipes it.
 - `resolveCatalog` case `'computer'` (`sync.ts:290`-style): `{ actions: computerCatalog(), server: null }` — fixed, no network.
 - `connectorConfig` case `'computer'` (`materialize.ts`): `{ auth: { type:'none', … } }`, baseUrl null.
 - `db-deps.ts`: `baseUrlOf` → null; `authOf`/`hasAuth` → false; `connectorConnected` computer → "account has ≥1 tunnel"; `resolveCredential` computer → `null`; wire `executeComputerCall` into `makeDbGatewayDeps`.
 
 **Reconcile.** Trivial vs the per-machine model — the connector exists iff the account has ≥1 machine:
-- `reconcileComputerConnectors(accountId)`: list the account's projects, `void syncProjectConnectors(projectId, accountId)` for each (best-effort, never throws — same posture as `reconcileChannelConnectors`). Idempotent: re-syncing when machines come/go just confirms/creates/reaps the one connector.
+- `reconcileComputerConnectors(accountId)`: list the account's workspaces, `void syncWorkspaceConnectors(workspaceId, accountId)` for each (best-effort, never throws — same posture as `reconcileChannelConnectors`). Idempotent: re-syncing when machines come/go just confirms/creates/reaps the one connector.
 - Fire from the lifecycle hooks: tunnel create (`device-auth.ts` approve, `connections.ts` POST) and delete (`connections.ts` DELETE).
-- **Lazy fallback:** the synth also runs in every ordinary `syncProjectConnectors` (session start / periodic sweep / manual Sync), so the connector appears even if a fan-out is missed — eventual consistency, no orphan risk. (Machines coming/going *within* an existing connector need no resync at all — `list_computers` is always live.)
+- **Lazy fallback:** the synth also runs in every ordinary `syncWorkspaceConnectors` (session start / periodic sweep / manual Sync), so the connector appears even if a fan-out is missed — eventual consistency, no orphan risk. (Machines coming/going *within* an existing connector need no resync at all — `list_computers` is always live.)
 
 ---
 
 ## 9. Web surface (dual-surface, mirrors Slack)
 
 - **Customize → Computers** (existing, `agent_tunnel`-gated) stays the management home: connect via device-auth, grant/revoke per-machine permissions, view audit.
-- **Customize → Connectors** now also lists the `computer` connector. `connectors-view.tsx`: add `computer → Monitor` icon + `providerLabel('computer') = 'Computers'`; render the credential/connect/remove controls as a **"managed in Computers"** `InfoBanner` (deep-link via `useCustomizeStore.setSection('computers')`); keep **sharing + the tool list**. `projects-client.ts`: `AdminConnector.provider` union += `'computer'`.
+- **Customize → Connectors** now also lists the `computer` connector. `connectors-view.tsx`: add `computer → Monitor` icon + `providerLabel('computer') = 'Computers'`; render the credential/connect/remove controls as a **"managed in Computers"** `InfoBanner` (deep-link via `useCustomizeStore.setSection('computers')`); keep **sharing + the tool list**. `workspaces-client.ts`: `AdminConnector.provider` union += `'computer'`.
 
 ---
 
@@ -192,7 +193,7 @@ All **free** — `provider` is an opaque string downstream:
 
 **EDIT**
 - `apps/api/src/executor/types.ts` — `ActionBinding` += `{ kind:'tunnel'; method }`.
-- `apps/api/src/projects/connectors.ts` — `ConnectorProvider`/`PROVIDERS` += `'computer'`; `base` defaults; `parseProviderFields` case (computer = synth-only: reject explicit `[[connectors]]` declaration with a clear error, like channel rejects `auth`); auth guard (computer ⇒ none); toml round-trip + `manifestHashForConnector`.
+- `apps/api/src/workspaces/connectors.ts` — `ConnectorProvider`/`PROVIDERS` += `'computer'`; `base` defaults; `parseProviderFields` case (computer = synth-only: reject explicit `[[connectors]]` declaration with a clear error, like channel rejects `auth`); auth guard (computer ⇒ none); toml round-trip + `manifestHashForConnector`.
 - `packages/db/src/schema/kortix.ts` — enum += `'computer'`.
 - `supabase/migrations/…125_executor_computer_provider.sql` — `ALTER TYPE … ADD VALUE 'computer'`.
 - `apps/api/src/executor/sync.ts` — import + synth + `resolveCatalog` case + guarded-deletion `|| e.providerType === 'computer'` + `reconcileComputerConnectors`.
@@ -201,8 +202,8 @@ All **free** — `provider` is an opaque string downstream:
 - `apps/api/src/executor/gateway.ts` — provider union + `executeComputerCall` dep + `handleCall` branch (`list_computers` meta + relay + outcome mapping).
 - `apps/api/src/tunnel/routes/rpc.ts` — delegate to `executeTunnelRpc`.
 - `apps/api/src/tunnel/routes/connections.ts` + `device-auth.ts` — fire `reconcileComputerConnectors(accountId)` on create/delete.
-- `apps/web/src/lib/projects-client.ts` — `AdminConnector.provider` += `'computer'`.
-- `apps/web/src/components/projects/customize/sections/connectors-view.tsx` — icon + label + "managed in Computers" banner + suppress credential/remove for computer.
+- `apps/web/src/lib/workspaces-client.ts` — `AdminConnector.provider` += `'computer'`.
+- `apps/web/src/components/workspaces/customize/sections/connectors-view.tsx` — icon + label + "managed in Computers" banner + suppress credential/remove for computer.
 - `apps/api/src/experimental/features.ts` — resolve the standing TODO comment.
 - `.kortix/.../kortix-executor/SKILL.md` ×2 + `apps/web/content/docs/concepts/connections.mdx` (+ a `computers.mdx`) + `manifest.mdx` (note: `computer` is synth-only, not declarable).
 - (D2) `.kortix/opencode/skills/agent-tunnel/*` (×2) — route through the Executor; refresh SKILL.md.

@@ -3,12 +3,15 @@
  *
  * Replaces the old §MEET flows: the ElevenLabs voice picker, the preview endpoint,
  * the `speak` proxy, and both Recall webhooks were deleted with the notetaker.
+ * Recall itself was later removed entirely: `voice_spawn` no longer joins a
+ * third-party meeting, it starts a LiveKit room and returns a join link a human
+ * opens directly — see mcp.ts.
  *
  * What is asserted here is deliberately the shape of the contract, not a live
- * call: spawning one costs Recall bot-minutes and provider minutes, and needs a
- * real meeting URL. The behaviours that actually break agents — a blocking tool
- * appearing, a spawn failure escalating into a protocol error, an unauthenticated
- * caller reaching the MCP — are all checkable without one.
+ * call: spawning one costs realtime-provider minutes and needs a live worker to
+ * actually talk back. The behaviours that actually break agents — a blocking
+ * tool appearing, a spawn failure escalating into a protocol error, an
+ * unauthenticated caller reaching the MCP — are all checkable without one.
  */
 import { flow } from "../core/flow";
 
@@ -73,7 +76,7 @@ flow(
       // This is the assertion that catches one being added later.
       if (r.statusCode === 200) {
         const body = r.json<{ result?: { tools?: Array<{ name: string }> } }>();
-        const names = (body?.result?.tools ?? []).map((tool) => tool.name);
+        const names = (body.result?.tools ?? []).map((tool) => tool.name);
         if (names.length > 0 && names.some((n) => /follow|tail|stream|wait/.test(n))) {
           throw new Error(`voice MCP exposes a blocking tool: ${names.join(", ")}`);
         }

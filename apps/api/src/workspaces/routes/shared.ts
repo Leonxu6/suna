@@ -7,7 +7,7 @@ import { db } from '../../shared/db';
 import { resolveBranchTip } from '../git';
 import { workspaceLlmGatewayEnabled } from '../../llm-gateway/enablement';
 import { changeRequests, workspaceSessions, sessionSandboxes } from '@kortix/db';
-import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { withWorkspaceGitAuth } from '../lib/git';
 import { WorkspaceRow, serializeSessionSandboxConfig } from '../lib/serializers';
 import { allocateSessionRuntime } from '../lib/session-runtime-allocator';
@@ -202,99 +202,6 @@ export async function resumeStoppedSandboxByExternalId(externalId: string): Prom
     externalId: row.externalId,
     metadata: row.metadata,
   });
-}
-
-// ── Pre-resume on presence ───────────────────────────────────────────────────
-// Throttle pre-resume per workspace so portal activity doesn't re-kick on every
-// request. The resume itself is idempotent (resumeStoppedSandbox only acts on a
-// stopped→active transition), so this is purely to avoid wasted DB lookups.
-const preResumeThrottle = new Map<string, number>();
-const PRERESUME_THROTTLE_MS = 30_000;
-
-/**
- * When a user returns to a workspace, proactively resume their most-recently-used
- * STOPPED session sandbox(es) so the ~8s in-place resume (VM restart + opencode
- * re-warm) overlaps the user's navigation and the session is ready by the time
- * they open it. Reuses resumeStoppedSandbox (idempotent with the on-open resume:
- * if the box is already resuming/active, the conditional stopped→active lock
- * simply no-ops). Best-effort + fire-and-forget; GATED OFF by default
- * (KORTIX_PRERESUME_ENABLED) since it spends compute on a box the user might not
- * open. Scoped to the user's OWN sessions (never speculatively resumes someone
- * else's). Most-recent-first, capped at KORTIX_PRERESUME_MAX_PER_WORKSPACE.
- */
-/**
- * The pre-resume candidates: the user's OWN most-recently-used STOPPED session
- * sandboxes in a workspace (status='stopped', a provider box still attached).
- * Most-recent-first, capped at `limit`. Pure DB read, no side effects —
- * exported so the selection is testable without provisioning real sandboxes.
- */
-export async function selectPreResumeTargets(
-  workspaceId: string,
-  userId: string,
-  limit: number,
-): Promise<
-  Array<{
-    sandboxId: string;
-    sessionId: string;
-    accountId: string;
-    provider: string;
-    externalId: string | null;
-    metadata: Record<string, unknown> | null;
-  }>
-> {
-  return db
-    .select({
-      sandboxId: sessionSandboxes.sandboxId,
-      sessionId: sessionSandboxes.sessionId,
-      accountId: sessionSandboxes.accountId,
-      provider: sessionSandboxes.provider,
-      externalId: sessionSandboxes.externalId,
-      metadata: sessionSandboxes.metadata,
-    })
-    .from(sessionSandboxes)
-    .innerJoin(workspaceSessions, eq(workspaceSessions.sessionId, sessionSandboxes.sessionId))
-    .where(
-      and(
-      eq(sessionSandboxes.workspaceId, workspaceId),
-      eq(sessionSandboxes.status, 'stopped'),
-      isNotNull(sessionSandboxes.externalId),
-      eq(workspaceSessions.createdBy, userId),
-      ),
-    )
-    .orderBy(desc(sessionSandboxes.lastUsedAt))
-    .limit(Math.max(1, limit));
-}
-
-export function preResumeRecentStoppedSessions(workspaceId: string, userId?: string | null): void {
-  if (!config.KORTIX_PRERESUME_ENABLED || !workspaceId || !userId) return;
-  const nowMs = Date.now();
-  if (nowMs - (preResumeThrottle.get(workspaceId) ?? 0) < PRERESUME_THROTTLE_MS) return;
-  preResumeThrottle.set(workspaceId, nowMs);
-  void (async () => {
-    try {
-      const rows = await selectPreResumeTargets(
-        workspaceId,
-        userId,
-        config.KORTIX_PRERESUME_MAX_PER_WORKSPACE,
-      );
-      let kicked = 0;
-      for (const row of rows) {
-        const won = await resumeStoppedSandbox(row).catch((err) => {
-          console.warn(
-            `[pre-resume] resume ${row.sandboxId.slice(0, 8)} failed:`,
-            err instanceof Error ? err.message : err,
-          );
-          return false;
-        });
-        if (won) kicked++;
-      }
-      if (kicked)
-        console.log(`[pre-resume] kicked ${kicked} resume(s) for workspace ${workspaceId.slice(0, 8)}`);
-    } catch (err) {
-      console.warn('[pre-resume] failed:', err instanceof Error ? err.message : err);
-      preResumeThrottle.delete(workspaceId); // let the next presence retry
-    }
-  })();
 }
 
 export async function allocateRuntimeOnOpen(

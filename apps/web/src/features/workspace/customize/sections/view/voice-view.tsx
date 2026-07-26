@@ -15,9 +15,10 @@ const DEFAULT_BOT_NAME = 'Kortix';
 
 export function VoiceView({ workspaceId }: { workspaceId: string }) {
   const setBotName = useSetVoiceBotName();
-  // Read-only unless the role can write connectors (voice is connector-backed);
-  // fails closed while the probe resolves.
-  const canWrite = useWorkspaceCan(workspaceId, WORKSPACE_ACTIONS.WORKSPACE_CONNECTOR_WRITE).allowed === true;
+  // Read-only unless the role can write customize settings; fails closed while
+  // the probe resolves.
+  const canWrite =
+    useWorkspaceCan(workspaceId, WORKSPACE_ACTIONS.WORKSPACE_CUSTOMIZE_WRITE).allowed === true;
   const [name, setName] = useState('');
 
   const dirty = name.trim().length > 0;

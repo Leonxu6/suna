@@ -2,20 +2,23 @@
 
 **Date:** 2026-07-25
 
-**Status:** Approved by direct user request
+**Status:** Historical design
+
+The implemented current state is documented in
+[`docs/specs/2026-07-26-acp-runtime-status-quo.md`](../../specs/2026-07-26-acp-runtime-status-quo.md).
 
 ## Objective
 
 Run every interactive OpenCode session through OpenCode's native ACP server.
 
-Keep the existing web interface and `useSession(projectId, sessionId)` contract.
+Keep the existing web interface and `useSession(workspaceId, sessionId)` contract.
 Keep OpenCode REST as an explicit rollback transport during the canary.
 
 ## Required path
 
 ```text
 apps/web
-  -> useSession(projectId, sessionId)
+  -> useSession(workspaceId, sessionId)
   -> @kortix/sdk
   -> Kortix API proxy
   -> sandbox ACP HTTP/SSE bridge
@@ -77,7 +80,7 @@ The browser never receives sandbox credentials or direct process access.
 
 The SDK owns ACP JSON-RPC, SSE, replay, and session projection.
 
-`useSession(projectId, sessionId)` keeps its current public return type.
+`useSession(workspaceId, sessionId)` keeps its current public return type.
 Existing OpenCode-named public exports remain available.
 This change adds no breaking SDK export rename or removal.
 
@@ -102,7 +105,7 @@ The frontend does not construct ACP paths.
 The server selects the runtime transport.
 
 The default client value is `rest` until ACP parity passes.
-A project experimental flag selects `acp`.
+A workspace experimental flag selects `acp`.
 Disabling the flag restores `rest`.
 
 The rollback switch must not require a frontend deployment.
