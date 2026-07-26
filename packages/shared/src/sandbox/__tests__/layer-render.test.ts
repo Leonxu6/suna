@@ -34,7 +34,7 @@ import {
   KORTIX_USER_PATH_DIRS,
   PLATFORM_DEFAULT_USER_DOCKERFILE,
   buildLayeredDockerfile,
-  buildPerProjectWarmFromBaseDockerfile,
+  buildPerWorkspaceWarmFromBaseDockerfile,
   kortixToolchainLayer,
 } from '../dockerfile-layer';
 
@@ -77,7 +77,7 @@ const CASES: Array<{ label: string; opts: BuildLayeredDockerfileOpts }> = [
     opts: { userDockerfile: GDAL_USER_DOCKERFILE, ...COMMON },
   },
   {
-    label: 'per-project cold warm (warmRepo)',
+    label: 'per-workspace cold warm (warmRepo)',
     opts: {
       userDockerfile: PLATFORM_DEFAULT_USER_DOCKERFILE,
       ...COMMON,
@@ -181,7 +181,7 @@ describe('Chromium sits on deterministic parents (cache order is load-bearing)',
     expect(chromium).toBeLessThan(migrationBakeAt(base));
   });
 
-  test('a per-project warm bake installs Chromium before the warm-repo COPY', () => {
+  test('a per-workspace warm bake installs Chromium before the warm-repo COPY', () => {
     const warm = kortixToolchainLayer({
       opencodeVersion: OPENCODE_VERSION,
       agentBrowserVersion: AGENT_BROWSER_VERSION,
@@ -272,7 +272,7 @@ describe('the /workspace cleanup is scoped to the shared default image', () => {
     expect(custom).toContain('kortix-opencode-warmup instance targeted');
   });
 
-  test('a per-project warm keeps the baked checkout (unchanged)', () => {
+  test('a per-workspace warm keeps the baked checkout (unchanged)', () => {
     const warm = buildLayeredDockerfile(CASES[2]!.opts);
     expect(warm).not.toContain(WIPE);
     expect(warm).toContain('kortix-opencode-warmup instance keep');
@@ -339,7 +339,7 @@ describe('the entrypoint survives providers that discard image USER/ENV', () => 
   });
 });
 
-describe('buildPerProjectWarmFromBaseDockerfile (FROM-base fast path)', () => {
+describe('buildPerWorkspaceWarmFromBaseDockerfile (FROM-base fast path)', () => {
   const FROM_BASE_OPTS = {
     baseImageRef: 'registry.daytona.internal/kortix-default-abc123:latest',
     opencodeConfigPath: 'kortix-opencode-config',
@@ -352,16 +352,16 @@ describe('buildPerProjectWarmFromBaseDockerfile (FROM-base fast path)', () => {
   };
 
   test('golden', () => {
-    expect(buildPerProjectWarmFromBaseDockerfile(FROM_BASE_OPTS)).toMatchSnapshot();
+    expect(buildPerWorkspaceWarmFromBaseDockerfile(FROM_BASE_OPTS)).toMatchSnapshot();
   });
 
   test('FROMs the base image ref as the very first line', () => {
-    const rendered = buildPerProjectWarmFromBaseDockerfile(FROM_BASE_OPTS);
+    const rendered = buildPerWorkspaceWarmFromBaseDockerfile(FROM_BASE_OPTS);
     expect(rendered.startsWith(`FROM ${FROM_BASE_OPTS.baseImageRef}\n`)).toBe(true);
   });
 
   test('never re-installs the toolchain — Chromium is inherited, not re-run', () => {
-    const rendered = buildPerProjectWarmFromBaseDockerfile(FROM_BASE_OPTS);
+    const rendered = buildPerWorkspaceWarmFromBaseDockerfile(FROM_BASE_OPTS);
     expect(rendered).not.toContain('apt-get');
     expect(rendered).not.toContain('opencode-ai@');
     expect(rendered).not.toContain('playwright');
@@ -372,8 +372,8 @@ describe('buildPerProjectWarmFromBaseDockerfile (FROM-base fast path)', () => {
   });
 
   test('bakes the repo checkout and re-warms the opencode instance against it', () => {
-    const rendered = buildPerProjectWarmFromBaseDockerfile(FROM_BASE_OPTS);
-    expect(rendered).toContain('Per-project COLD warm: bake repo checkout into /workspace');
+    const rendered = buildPerWorkspaceWarmFromBaseDockerfile(FROM_BASE_OPTS);
+    expect(rendered).toContain('Per-workspace COLD warm: bake repo checkout into /workspace');
     // MY credential-free COPY of the sanitized staged checkout …
     expect(rendered).toContain('COPY --chown=kortix:kortix kortix-warm-repo/ /workspace/');
     // Provider uploaders transfer the visible archive as one context object.
@@ -385,14 +385,14 @@ describe('buildPerProjectWarmFromBaseDockerfile (FROM-base fast path)', () => {
     );
     expect(rendered).not.toContain('rm -f /tmp/kortix-warm-repo-git.tar');
     // … and MAIN's opencode instance re-warm via the cache-only warm-up script,
-    // which for a per-project warm keeps the baked /workspace checkout.
+    // which for a per-workspace warm keeps the baked /workspace checkout.
     expect(rendered).toContain(
       'RUN bash /tmp/kortix-opencode-warmup instance keep; rm -f /tmp/kortix-opencode-warmup',
     );
   });
 
   test('carries no git credential — no auth header, no clone command', () => {
-    const rendered = buildPerProjectWarmFromBaseDockerfile(FROM_BASE_OPTS);
+    const rendered = buildPerWorkspaceWarmFromBaseDockerfile(FROM_BASE_OPTS);
     expect(rendered).not.toContain('http.extraHeader');
     expect(rendered).not.toContain('Authorization');
     expect(rendered).not.toContain('git clone');
@@ -404,7 +404,7 @@ describe('buildPerProjectWarmFromBaseDockerfile (FROM-base fast path)', () => {
       ...COMMON,
       warmRepo: FROM_BASE_OPTS.warmRepo,
     });
-    const fromBase = buildPerProjectWarmFromBaseDockerfile(FROM_BASE_OPTS);
+    const fromBase = buildPerWorkspaceWarmFromBaseDockerfile(FROM_BASE_OPTS);
     const startMarker = 'COPY --chown=kortix:kortix kortix-warm-repo/ /workspace/';
     const endMarker = 'rm -f /tmp/kortix-opencode-warmup';
     const slice = (text: string) =>
@@ -413,7 +413,7 @@ describe('buildPerProjectWarmFromBaseDockerfile (FROM-base fast path)', () => {
   });
 
   test('does not COPY or reference any staged artifact paths — everything is inherited', () => {
-    const rendered = buildPerProjectWarmFromBaseDockerfile(FROM_BASE_OPTS);
+    const rendered = buildPerWorkspaceWarmFromBaseDockerfile(FROM_BASE_OPTS);
     expect(rendered).not.toContain('COPY kortix-agent.gz');
     expect(rendered).not.toContain('COPY kortix.gz');
     expect(rendered).not.toContain('scaffold.git');
@@ -421,7 +421,7 @@ describe('buildPerProjectWarmFromBaseDockerfile (FROM-base fast path)', () => {
   });
 
   test('with no opencodeConfigPath, only the warm-repo COPY is added on top of the base', () => {
-    const rendered = buildPerProjectWarmFromBaseDockerfile({
+    const rendered = buildPerWorkspaceWarmFromBaseDockerfile({
       baseImageRef: FROM_BASE_OPTS.baseImageRef,
       warmRepo: FROM_BASE_OPTS.warmRepo,
     });
@@ -429,11 +429,11 @@ describe('buildPerProjectWarmFromBaseDockerfile (FROM-base fast path)', () => {
     // no opencode-config COPY since none was provided).
     expect(rendered).toContain('COPY --chown=kortix:kortix kortix-warm-repo/ /workspace/');
     expect(rendered).not.toContain('COPY kortix-opencode-config');
-    expect(rendered).toContain('Per-project COLD warm: bake repo checkout into /workspace');
+    expect(rendered).toContain('Per-workspace COLD warm: bake repo checkout into /workspace');
   });
 
   test('is portable — no buildah-unsupported heredocs', () => {
-    const rendered = buildPerProjectWarmFromBaseDockerfile(FROM_BASE_OPTS);
+    const rendered = buildPerWorkspaceWarmFromBaseDockerfile(FROM_BASE_OPTS);
     const heredocLine = rendered
       .split('\n')
       .find((l) => !/^\s*#/.test(l) && /<<-?['"]?[A-Za-z_]\w*['"]?\s*\\?\s*$/.test(l));
@@ -441,6 +441,6 @@ describe('buildPerProjectWarmFromBaseDockerfile (FROM-base fast path)', () => {
   });
 
   test('result ends with a trailing newline', () => {
-    expect(buildPerProjectWarmFromBaseDockerfile(FROM_BASE_OPTS).endsWith('\n')).toBe(true);
+    expect(buildPerWorkspaceWarmFromBaseDockerfile(FROM_BASE_OPTS).endsWith('\n')).toBe(true);
   });
 });

@@ -11,8 +11,8 @@
  *   4. ENV KORTIX_WORKSPACE=/workspace, WORKDIR /workspace, EXPOSE 8000
  *   5. ENTRYPOINT ["/usr/local/bin/kortix-entrypoint"]
  *
- * The project workspace is NOT baked in — the daemon git-clones it at boot
- * via `KORTIX_PROJECT_AUTO_CLONE`. That keeps the image identity decoupled
+ * The Workspace repository is NOT baked in. The daemon clones it at boot.
+ * via `KORTIX_WORKSPACE_AUTO_CLONE`. That keeps the image identity decoupled
  * from project source code, so a code change never invalidates a snapshot
  * and most projects share a single global default image.
  *
@@ -75,7 +75,7 @@ export const KORTIX_USER_PATH_DIRS =
 export const PLATFORM_DEFAULT_USER_DOCKERFILE = [
   '# syntax=docker/dockerfile:1.7',
   '# Kortix platform default sandbox base.',
-  '# Sessions clone the project workspace at boot — nothing project-specific',
+  '# Sessions clone the Workspace repository at boot — nothing Workspace-specific',
   '# is baked in here. Customize via `sandbox.templates` in kortix.yaml.',
   'FROM ubuntu:24.04',
   '',
@@ -157,7 +157,7 @@ export interface KortixToolchainLayerOpts {
 /**
  * Render-time inputs for baking a per-workspace COLD warm repo checkout into the
  * image. Shared between `kortixToolchainLayer` (the full monolithic build) and
- * `buildPerProjectWarmFromBaseDockerfile` (the FROM-base fast path) so both
+ * `buildPerWorkspaceWarmFromBaseDockerfile` (the FROM-base fast path) so both
  * render the identical COPY step — see `buildWarmRepoCopyLines`.
  *
  * SECURITY (PHASE 1): this shape carries NO credentials. The repo is cloned
@@ -254,7 +254,7 @@ export interface BuildLayeredDockerfileOpts
 /**
  * The network-install half of the Kortix runtime layer: the apt floor, the
  * uv-managed Python, opencode + its baked config deps, bun, the
- * build-time opencode warm-ups (incl. the optional per-project repo bake), and
+ * build-time opencode warm-ups (including the optional per-workspace repo bake), and
  * agent-browser + its Playwright Chromium.
  *
  * Renders against an EMPTY build context — it stages nothing. Ends with a
@@ -272,7 +272,7 @@ const shq = (v: string) => `'${String(v).replace(/'/g, `'\\''`)}'`;
  * object storage, baked into OCI history, and printed to build logs).
  *
  * Shared verbatim between `kortixToolchainLayer` (the monolithic build) and
- * `buildPerProjectWarmFromBaseDockerfile` (the FROM-base fast path) — the two
+ * `buildPerWorkspaceWarmFromBaseDockerfile` (the FROM-base fast path) — the two
  * MUST render byte-identical steps so the baked checkout is the same either
  * way. Returns `[]` when there's no repo to bake (the shared,
  * project-independent default image).
@@ -330,7 +330,7 @@ function buildWarmRepoCopyLines(warmRepo: WarmRepoConfig | undefined): string[] 
  * Best effort: a build without network (or a warm-up failure) just falls back
  * to the runtime cost — set +e + trailing `true` keep the image build green.
  *
- * Shared between `kortixToolchainLayer` and `buildPerProjectWarmFromBaseDockerfile`
+ * Shared between `kortixToolchainLayer` and `buildPerWorkspaceWarmFromBaseDockerfile`
  * so both render byte-identical warm-up text. Returns `[]` when there's no
  * starter config to warm against.
  */
@@ -365,7 +365,7 @@ function buildOpencodeInstanceWarmupLines(opts: {
     '',
     `COPY --chown=kortix:kortix ${opencodeWarmupScriptPath} /tmp/kortix-opencode-warmup`,
     // Stage the canonical starter opencode config so the instance warm-up
-    // has the pty plugin + tools to load. For a per-project warm the baked
+    // has the pty plugin + tools to load. For a per-workspace warm the baked
     // repo may already ship its own .kortix/opencode — keep it (its config
     // is what the session actually resolves at runtime) and only fall back
     // to the staged starter when the repo has none.
@@ -503,7 +503,7 @@ export function kortixToolchainLayer(opts: KortixToolchainLayerOpts): string {
     // This ~150MB Chromium download sits DIRECTLY on top of the deterministic
     // apt + pip floors and DELIBERATELY ABOVE everything below it: the opencode
     // install, the `opencode serve` migration-bake, the config-deps bun install,
-    // the per-project warm-repo clone, and the opencode instance warm-up. Several
+    // the per-workspace warm-repo clone, and the opencode instance warm-up. Several
     // of those layers are NON-DETERMINISTIC by construction — the migration-bake
     // writes a sqlite db with live timestamps, the config-deps install churns
     // node_modules mtimes, and the warm-repo clone bakes a fresh short-lived git
@@ -711,8 +711,8 @@ export function kortixArtifactLayer(opts: KortixArtifactLayerOpts): string {
     '    && kortix --version \\',
     '    && chown -R kortix:kortix /opt/kortix /workspace /ephemeral',
     '',
-    // The daemon clones the project workspace at boot using KORTIX_PROJECT_AUTO_CLONE
-    // — nothing project-specific is baked into the image. /workspace is created
+    // The daemon clones the Workspace repository at boot using KORTIX_WORKSPACE_AUTO_CLONE.
+    // Nothing Workspace-specific is baked into the image. /workspace is created
     // empty here; the daemon's materializeRepo path fills it.
     'ENV KORTIX_WORKSPACE=/workspace',
     'USER kortix',
@@ -739,22 +739,22 @@ export function buildLayeredDockerfile(opts: BuildLayeredDockerfileOpts): string
   return `${trimmed}\n${kortixToolchainLayer(opts)}${kortixArtifactLayer(opts)}`;
 }
 
-/** Inputs for the FROM-base per-project warm fast path — see
- *  {@link buildPerProjectWarmFromBaseDockerfile}. */
-export interface PerProjectWarmFromBaseOpts {
+/** Inputs for the FROM-base per-workspace warm fast path — see
+ *  {@link buildPerWorkspaceWarmFromBaseDockerfile}. */
+export interface PerWorkspaceWarmFromBaseOpts {
   /**
    * Registry-addressable reference to an ALREADY-BUILT, ACTIVE image that has
    * the full Kortix runtime layer baked in (apt/pip/opencode/bun/agent-browser
    * + Chromium + the artifact tail) — in practice the shared default image's
    * provider-reported image ref (e.g. Daytona `Snapshot.imageName`). The
-   * caller (ensurePerProjectWarmImage in apps/api/src/snapshots/builder.ts) is
+   * caller (ensurePerWorkspaceWarmImage in apps/api/src/snapshots/builder.ts) is
    * responsible for resolving this and MUST verify the source snapshot is
    * `active` first; a `FROM` of a not-yet-built or missing image fails the
    * whole bake immediately (no opportunistic retry-as-full-rebuild happens
    * inside this function — that fallback lives in the caller).
    */
   baseImageRef: string;
-  /** Repo to bake into /workspace — always set; a per-project warm with no
+  /** Repo to bake into /workspace — always set; a per-workspace warm with no
    *  repo to clone has nothing for this fast path to add over the base. */
   warmRepo: WarmRepoConfig;
   /** Same meaning as {@link KortixToolchainLayerOpts.opencodeConfigPath}. */
@@ -771,19 +771,19 @@ export interface PerProjectWarmFromBaseOpts {
  * THIS is the actual fix for the Chromium re-download bug (prod incident,
  * v0.10.11 rollback): `kortixToolchainLayer`'s comment already establishes
  * that the toolchain RUN text up to and including the Chromium install is
- * byte-identical between the shared default build and every per-project warm
+ * byte-identical between the shared default build and every per-workspace warm
  * bake — so in principle a build-cache hit should always be available. In
  * practice it was not reliable enough under concurrency (3+ simultaneous
- * per-project bakes), and a full monolithic rebuild is fundamentally an
+ * per-workspace bakes), and a full monolithic rebuild is fundamentally an
  * OPPORTUNISTIC cache hit — the provider's build backend is free to evict,
  * shard across builder nodes, or otherwise not share that cache, and there is
  * no way to observe or guarantee it from here. `FROM <baseImageRef>` removes
  * the dependency on that cache entirely: Chromium (and everything else in the
  * toolchain) is INHERITED, not re-executed, so there is no download to miss.
  *
- * Only adds the two per-project-specific steps on top of the base — the
+ * Only adds the two per-workspace-specific steps on top of the base — the
  * warm-repo COPY (credential-free, sanitized checkout staged API-side) and the
- * opencode instance re-warm against the real project — using the EXACT SAME
+ * opencode instance re-warm against the real Workspace — using the EXACT SAME
  * line-builders as the monolithic path
  * (`buildWarmRepoCopyLines` / `buildOpencodeInstanceWarmupLines`), so the
  * resulting /workspace content is equivalent to what the full rebuild would
@@ -792,7 +792,7 @@ export interface PerProjectWarmFromBaseOpts {
  * FROM semantics carry those forward automatically; this function does not
  * (and must not) re-declare them.
  */
-export function buildPerProjectWarmFromBaseDockerfile(opts: PerProjectWarmFromBaseOpts): string {
+export function buildPerWorkspaceWarmFromBaseDockerfile(opts: PerWorkspaceWarmFromBaseOpts): string {
   const { baseImageRef, warmRepo, opencodeConfigPath, opencodeWarmupScriptPath } = opts;
   return [
     `FROM ${baseImageRef}`,
@@ -816,9 +816,12 @@ export function buildPerProjectWarmFromBaseDockerfile(opts: PerProjectWarmFromBa
   ].join('\n') + '\n';
 }
 
-/** Canonical workspace name for the per-workspace warm layer renderer. */
-export const buildPerWorkspaceWarmFromBaseDockerfile =
-  buildPerProjectWarmFromBaseDockerfile;
+/** @deprecated Use {@link PerWorkspaceWarmFromBaseOpts}. */
+export type PerProjectWarmFromBaseOpts = PerWorkspaceWarmFromBaseOpts;
+
+/** @deprecated Use {@link buildPerWorkspaceWarmFromBaseDockerfile}. */
+export const buildPerProjectWarmFromBaseDockerfile =
+  buildPerWorkspaceWarmFromBaseDockerfile;
 
 export function normalizeUserDockerfileForSnapshot(dockerfile: string): string {
   // The legacy starter Dockerfile installed baseline tools that the injected

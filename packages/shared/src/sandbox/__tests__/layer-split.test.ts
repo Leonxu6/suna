@@ -61,7 +61,7 @@ WORKDIR /workspace
 
 // The opts shapes the production builder actually renders: the shared default
 // image (no config warm), the real default image (starter config + catalog),
-// and a per-project COLD warm (warmRepo).
+// and a per-workspace COLD warm (warmRepo).
 const OPT_SHAPES: Array<{ label: string; opts: Omit<BuildLayeredDockerfileOpts, 'userDockerfile'> }> = [
   { label: 'bare (no opencodeConfigPath)', opts: { ...COMMON } },
   {
@@ -73,7 +73,7 @@ const OPT_SHAPES: Array<{ label: string; opts: Omit<BuildLayeredDockerfileOpts, 
     },
   },
   {
-    label: 'with warmRepo (per-project COLD warm)',
+    label: 'with warmRepo (per-workspace COLD warm)',
     opts: {
       ...COMMON,
       opencodeConfigPath: 'kortix-opencode-config',

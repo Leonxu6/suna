@@ -3,7 +3,7 @@
 exports[`rendered layer (golden) shared platform default 1`] = `
 "# syntax=docker/dockerfile:1.7
 # Kortix platform default sandbox base.
-# Sessions clone the project workspace at boot — nothing project-specific
+# Sessions clone the Workspace repository at boot — nothing Workspace-specific
 # is baked in here. Customize via \`sandbox.templates\` in kortix.yaml.
 FROM ubuntu:24.04
 
@@ -309,10 +309,10 @@ ENTRYPOINT ["/usr/local/bin/kortix-entrypoint"]
 "
 `;
 
-exports[`rendered layer (golden) per-project cold warm (warmRepo) 1`] = `
+exports[`rendered layer (golden) per-workspace cold warm (warmRepo) 1`] = `
 "# syntax=docker/dockerfile:1.7
 # Kortix platform default sandbox base.
-# Sessions clone the project workspace at boot — nothing project-specific
+# Sessions clone the Workspace repository at boot — nothing Workspace-specific
 # is baked in here. Customize via \`sandbox.templates\` in kortix.yaml.
 FROM ubuntu:24.04
 
@@ -427,7 +427,7 @@ RUN cd /opt/kortix/opencode-config-deps \\
     && echo "opencode-config-deps: baked tree bundles cleanly"
 
 
-# ─── Per-project COLD warm: bake repo checkout into /workspace ──────
+# ─── Per-workspace COLD warm: bake repo checkout into /workspace ──────
 # The repo was cloned with the git-host credential, origin-reset to the
 # Kortix proxy, and scrubbed of ALL auth material API-side in Suna before
 # this Dockerfile was rendered. This image only COPYs the sanitized plain
@@ -477,10 +477,10 @@ ENTRYPOINT ["/usr/local/bin/kortix-entrypoint"]
 "
 `;
 
-exports[`buildPerProjectWarmFromBaseDockerfile (FROM-base fast path) golden 1`] = `
+exports[`buildPerWorkspaceWarmFromBaseDockerfile (FROM-base fast path) golden 1`] = `
 "FROM registry.daytona.internal/kortix-default-abc123:latest
 
-# ─── Per-project COLD warm (FROM-base fast path, auto-injected) ─────
+# ─── Per-workspace COLD warm (FROM-base fast path, auto-injected) ─────
 # Everything above this line is INHERITED from the already-built default
 # runtime image (apt/pip/opencode/bun/agent-browser + Chromium are already
 # baked in) — nothing below re-installs any of it. This is what makes the
@@ -490,7 +490,7 @@ exports[`buildPerProjectWarmFromBaseDockerfile (FROM-base fast path) golden 1`] 
 
 USER kortix
 
-# ─── Per-project COLD warm: bake repo checkout into /workspace ──────
+# ─── Per-workspace COLD warm: bake repo checkout into /workspace ──────
 # The repo was cloned with the git-host credential, origin-reset to the
 # Kortix proxy, and scrubbed of ALL auth material API-side in Suna before
 # this Dockerfile was rendered. This image only COPYs the sanitized plain
