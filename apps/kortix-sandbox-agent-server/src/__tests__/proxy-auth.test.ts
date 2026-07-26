@@ -719,7 +719,7 @@ describe('daemon proxy auth gate', () => {
 
       const app = buildOpencodeApp(
         baseConfig({
-          projectTarget: worktree,
+          workspaceTarget: worktree,
           repoUrl: join(root, 'missing-remote.git'),
           defaultBranch: 'main',
           branchName: 'session-branch',
@@ -779,7 +779,7 @@ describe('daemon proxy auth gate', () => {
       let restartCalls = 0
       const app = buildOpencodeApp(
         baseConfig({
-          projectTarget: worktree,
+          workspaceTarget: worktree,
           repoUrl: remote,
           defaultBranch: 'main',
           branchName: 'session-branch',

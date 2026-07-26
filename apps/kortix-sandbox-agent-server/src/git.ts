@@ -1148,7 +1148,7 @@ export async function syncWorkspaceToBase(
   cfg: Config,
   baseSha?: string,
 ): Promise<{ before: RepoInfo; after: RepoInfo }> {
-  const target = cfg.projectTarget
+  const target = cfg.workspaceTarget
   const before = await readRepoInfo(target)
   if (!before) throw new Error('project repo is not materialized')
   if (baseSha && before.commit === baseSha) {

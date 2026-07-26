@@ -1,6 +1,6 @@
 /**
  * resolveOpencodeConfigDir picks the opencode config dir for a sandbox. The
- * project's config lives INSIDE the cloned repo (`<projectTarget>/.kortix/
+ * workspace's config lives INSIDE the cloned repo (`<workspaceTarget>/.kortix/
  * opencode`), so this only returns the project dir once the repo has been
  * materialized — otherwise it falls back to the baked default. The boot path
  * (main.ts) MUST therefore resolve this AFTER the clone; resolving before the
