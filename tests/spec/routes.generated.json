@@ -1323,6 +1323,10 @@
       "path": "/v1/projects/:workspaceId/detail"
     },
     {
+      "method": "POST",
+      "path": "/v1/projects/:workspaceId/execution-lease"
+    },
+    {
       "method": "PATCH",
       "path": "/v1/projects/:workspaceId/experimental"
     },
@@ -1469,10 +1473,6 @@
     {
       "method": "POST",
       "path": "/v1/projects/:workspaceId/marketplace/install-session"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/projects/:workspaceId/mcp/voice"
     },
     {
       "method": "DELETE",
@@ -1631,6 +1631,10 @@
       "path": "/v1/projects/:workspaceId/sessions/:sessionId/commit-push"
     },
     {
+      "method": "POST",
+      "path": "/v1/projects/:workspaceId/sessions/:sessionId/mcp/voice"
+    },
+    {
       "method": "GET",
       "path": "/v1/projects/:workspaceId/sessions/:sessionId/previews"
     },
@@ -1667,16 +1671,8 @@
       "path": "/v1/projects/:workspaceId/sessions/:sessionId/transcript"
     },
     {
-      "method": "POST",
-      "path": "/v1/projects/:workspaceId/sessions/:sessionId/voice/prompt"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/projects/:workspaceId/sessions/:sessionId/voice/run-command"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/projects/:workspaceId/sessions/:sessionId/voice/turns"
+      "method": "GET",
+      "path": "/v1/projects/:workspaceId/sessions/:sessionId/voice-transcript"
     },
     {
       "method": "POST",
@@ -1805,6 +1801,14 @@
     {
       "method": "GET",
       "path": "/v1/public/session-shares/:shareId/messages"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/public/voice-join/:token"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/public/voice-join/:token/transcript"
     },
     {
       "method": "POST",
@@ -2335,6 +2339,10 @@
       "path": "/v1/workspaces/:workspaceId/detail"
     },
     {
+      "method": "POST",
+      "path": "/v1/workspaces/:workspaceId/execution-lease"
+    },
+    {
       "method": "PATCH",
       "path": "/v1/workspaces/:workspaceId/experimental"
     },
@@ -2481,10 +2489,6 @@
     {
       "method": "POST",
       "path": "/v1/workspaces/:workspaceId/marketplace/install-session"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/workspaces/:workspaceId/mcp/voice"
     },
     {
       "method": "DELETE",
@@ -2643,6 +2647,10 @@
       "path": "/v1/workspaces/:workspaceId/sessions/:sessionId/commit-push"
     },
     {
+      "method": "POST",
+      "path": "/v1/workspaces/:workspaceId/sessions/:sessionId/mcp/voice"
+    },
+    {
       "method": "GET",
       "path": "/v1/workspaces/:workspaceId/sessions/:sessionId/previews"
     },
@@ -2679,16 +2687,8 @@
       "path": "/v1/workspaces/:workspaceId/sessions/:sessionId/transcript"
     },
     {
-      "method": "POST",
-      "path": "/v1/workspaces/:workspaceId/sessions/:sessionId/voice/prompt"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/workspaces/:workspaceId/sessions/:sessionId/voice/run-command"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/workspaces/:workspaceId/sessions/:sessionId/voice/turns"
+      "method": "GET",
+      "path": "/v1/workspaces/:workspaceId/sessions/:sessionId/voice-transcript"
     },
     {
       "method": "POST",

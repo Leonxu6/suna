@@ -6,6 +6,48 @@ export interface AllowEntry {
 
 export const uncoveredAllow: AllowEntry[] = [
   {
+    method: "GET",
+    path: "/v1/public/voice-join/:*",
+    reason:
+      "public LiveKit join exchange requires a live call and short-lived join link; integration-voice-join-links.test.ts covers success, unknown, expired, and revoked links",
+  },
+  {
+    method: "GET",
+    path: "/v1/public/voice-join/:*/transcript",
+    reason:
+      "public durable transcript requires a live call and short-lived join link; integration-voice-join-links.test.ts covers pagination, isolation, expiry, and revocation",
+  },
+  {
+    method: "GET",
+    path: "/v1/workspaces/:*/sessions/:*/voice-transcript",
+    reason:
+      "authenticated UI polling route backed by durable voice turns; focused API and web transcript tests cover its contract without allocating a live call",
+  },
+  {
+    method: "GET",
+    path: "/v1/projects/:*/sessions/:*/voice-transcript",
+    reason:
+      "deprecated Project compatibility alias for the canonical Workspace voice-transcript route",
+  },
+  {
+    method: "POST",
+    path: "/v1/workspaces/:*/execution-lease",
+    reason:
+      "sandbox-only execution heartbeat authenticated by a sandbox token; the workspace session contract tests acquire, renew, and release it",
+  },
+  {
+    method: "POST",
+    path: "/v1/projects/:*/execution-lease",
+    reason:
+      "deprecated Project compatibility alias for the sandbox-only Workspace execution-lease route",
+  },
+  {
+    method: "POST",
+    path: "/v1/projects/:*/sessions/:*/mcp/voice",
+    reason:
+      "deprecated Project compatibility alias for the flow-covered Workspace voice MCP route",
+  },
+  {
     method: "POST",
     path: "/v1/platform/boot-timeline",
     reason:

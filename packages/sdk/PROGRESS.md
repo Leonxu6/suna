@@ -206,8 +206,8 @@ Also stop if the same failure survives three different fixes (use
 | 5 | CLI domain | DONE | `019f9afd` | 2026-07-25 | `a85190ab8` |
 | 6 | Web domain and default routing | DONE | `019f9afd` | 2026-07-26 | `d97810fde` + final audit commit |
 | 7 | Mobile, tests, and documentation | DONE | `019f9afd` | 2026-07-26 | `d97810fde` + final audit commit |
-| 8 | Full local verification | IN PROGRESS | `019f9afd` | 2026-07-26 | Post-rebase and PR checks remain |
-| 9 | Pull request | NOT STARTED | — | — | — |
+| 8 | Full local verification | DONE | `019f9afd` | 2026-07-26 | `965e4fa31` + final conflict-resolution commit |
+| 9 | Pull request | IN PROGRESS | `019f9afd` | 2026-07-26 | PR #5480; final checks pending |
 
 ---
 
@@ -2813,8 +2813,6 @@ Post-repair verification:
 **Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
 and deployed ACP plus REST parity remain.
 
----
-
 ### 2026-07-26 — session `019f9afd` (Workspace domain PR completion)
 
 PR #5480 contains the complete Project to Workspace domain migration.
@@ -3385,3 +3383,40 @@ Post-rebase live ACP and REST presentation plus question parity:
 
 **Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
 and deployed ACP plus REST parity remain.
+
+---
+
+### 2026-07-26 — session `019f9afd` (Workspace PR conflict resolution)
+
+Merged `origin/main` through `69ca1b3c8` into PR #5480.
+
+Resolved conflicts in API Workspace routes, execution leases, voice, Executor,
+request deadlines, secret grants, preview proxy, the SDK, the web app, starter
+assets, and the E2E specification.
+
+Post-merge verification:
+
+- API typecheck: exit 0.
+- SDK typecheck: exit 0.
+- SDK suite: **1290 pass / 0 fail**, **6946** assertions.
+- SDK packed-install smoke: pass.
+- Starter suite: **46 pass / 0 fail**, **1202** assertions.
+- Voice-agent and sandbox-agent suites: **303 pass / 0 fail**, **731**
+  assertions.
+- Focused web suite: **42 pass / 0 fail**, **66** assertions.
+- Focused API suite: **282 pass / 0 fail**, **1028** assertions.
+- Test-harness typecheck: exit 0.
+- Changed-web ESLint: **0 errors / 33 warnings**.
+- Route manifest: **702** routes.
+- `ke2e coverage`: **490/702** routes covered, **212** allowlisted, **0**
+  uncovered.
+- Conflict-marker scan: zero matches.
+- `git diff --check`: exit 0.
+
+The aggregate API runner remained CPU-active for 11 minutes and did not finish.
+The isolated API matrix covers all conflict-affected contracts and passes.
+PR CI remains the aggregate API gate.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** The branch push and all PR checks remain.

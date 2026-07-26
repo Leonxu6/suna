@@ -51,16 +51,22 @@ flow(
 // VOICE-2 — MCP handshake + the tool surface.
 flow(
   "VOICE-2",
-  { domain: "voice", routes: ["POST /v1/workspaces/:workspaceId/mcp/voice"] },
+  {
+    domain: "voice",
+    routes: ["POST /v1/workspaces/:workspaceId/sessions/:sessionId/mcp/voice"],
+  },
   async (ctx) => {
     const p = await ctx.fixtures.sharedWorkspace();
+    const sessionId = crypto.randomUUID();
 
     await ctx.step("initialize → server info", async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .post("/v1/workspaces/:workspaceId/mcp/voice", { jsonrpc: "2.0", id: 1, method: "initialize" }, {
-          params: { workspaceId: p.id },
-        });
+        .post(
+          "/v1/workspaces/:workspaceId/sessions/:sessionId/mcp/voice",
+          { jsonrpc: "2.0", id: 1, method: "initialize" },
+          { params: { workspaceId: p.id, sessionId } },
+        );
       // 401 is valid too: a user principal without a session cannot drive a call.
       r.status([200, 401]);
     });
@@ -68,9 +74,11 @@ flow(
     await ctx.step("tools/list exposes no blocking tool", async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
-        .post("/v1/workspaces/:workspaceId/mcp/voice", { jsonrpc: "2.0", id: 2, method: "tools/list" }, {
-          params: { workspaceId: p.id },
-        });
+        .post(
+          "/v1/workspaces/:workspaceId/sessions/:sessionId/mcp/voice",
+          { jsonrpc: "2.0", id: 2, method: "tools/list" },
+          { params: { workspaceId: p.id, sessionId } },
+        );
       r.status([200, 401]);
       // A follow/tail/stream tool would wedge the single-threaded agent loop.
       // This is the assertion that catches one being added later.
@@ -86,9 +94,11 @@ flow(
     await ctx.step("ANON → 401", async () => {
       const r = await ctx.client
         .as(ctx.P.ANON)
-        .post("/v1/workspaces/:workspaceId/mcp/voice", { jsonrpc: "2.0", id: 3, method: "tools/list" }, {
-          params: { workspaceId: p.id },
-        });
+        .post(
+          "/v1/workspaces/:workspaceId/sessions/:sessionId/mcp/voice",
+          { jsonrpc: "2.0", id: 3, method: "tools/list" },
+          { params: { workspaceId: p.id, sessionId } },
+        );
       r.status(401);
     });
   },
@@ -97,16 +107,20 @@ flow(
 // VOICE-3 — malformed JSON-RPC is a protocol error, not a 500.
 flow(
   "VOICE-3",
-  { domain: "voice", routes: ["POST /v1/workspaces/:workspaceId/mcp/voice"] },
+  {
+    domain: "voice",
+    routes: ["POST /v1/workspaces/:workspaceId/sessions/:sessionId/mcp/voice"],
+  },
   async (ctx) => {
     const p = await ctx.fixtures.sharedWorkspace();
+    const sessionId = crypto.randomUUID();
     await ctx.step("unknown method → -32601 (or 401 without a session principal)", async () => {
       const r = await ctx.client
         .as(ctx.P.OWNER)
         .post(
-          "/v1/workspaces/:workspaceId/mcp/voice",
+          "/v1/workspaces/:workspaceId/sessions/:sessionId/mcp/voice",
           { jsonrpc: "2.0", id: 9, method: "resources/list" },
-          { params: { workspaceId: p.id } },
+          { params: { workspaceId: p.id, sessionId } },
         );
       r.status([200, 401]);
     });
