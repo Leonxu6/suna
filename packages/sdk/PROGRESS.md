@@ -2899,7 +2899,7 @@ Known repository baselines:
 - Web i18n audit reports 70 missing marketing keys per non-English locale and
   1825 hardcoded UI findings.
 - The API aggregate runner has cross-file mock contamination. The isolated
-  run reported **3784 pass / 49 skip / 24 fail**. Focused Workspace limit and
+  run reported **3797 pass / 49 skip / 11 fail**. Focused Workspace limit and
   trigger suites pass with a public test `KORTIX_URL`.
 
 **Shippable to production: NOT YET.** The latest `origin/main` rebase, final
