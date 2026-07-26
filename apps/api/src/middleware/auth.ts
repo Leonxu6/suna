@@ -693,6 +693,18 @@ async function enforceTokenWorkspaceScope(c: Context, tokenWorkspaceId: string):
   // "what workspace/session/agent am I bound to?".
   if (path === '/v1/accounts/me') return;
 
+  // `/v1/skills` — the kortix-managed system skills (how Kortix itself works).
+  // This function is default-deny, and the in-sandbox `KORTIX_CLI_TOKEN` is
+  // exactly a workspace+session-scoped PAT, so without this branch the ONE caller
+  // these routes exist for gets a 403: every baked sandbox seeds a kortix-system
+  // skill telling the agent to run `kortix skills get <name>`.
+  // Safe to allow — the content is static template text that is byte-identical
+  // for every caller, carries no account or workspace data, and is served from the
+  // shipped @kortix/starter package rather than any per-workspace store. There is
+  // no scope to enforce here; the token gate is authentication, not
+  // authorization.
+  if (path === '/v1/skills' || path.startsWith('/v1/skills/')) return;
+
   // Reject other account-level routes outright.
   if (path.startsWith('/v1/accounts/') || path === '/v1/accounts') {
     throw new HTTPException(403, {

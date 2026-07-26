@@ -71,6 +71,7 @@ import {
   runsSingletonWorkers,
 } from './shared/leader-election';
 import { marketplaceApp } from './marketplace';
+import { skillsApp } from './skills';
 import { oauthApp } from './oauth';
 import { nativeOAuth2CallbackApp } from './executor/oauth2-callback';
 import {
@@ -738,6 +739,16 @@ app.use('/v1/projects/*', projectCompatibilityMiddleware);
 app.route('/v1/projects', voiceMcpRoutes);
 app.route('/v1/projects', workspacesApp); // Deprecated compatibility alias.
 app.route('/v1/marketplace', marketplaceApp); // /v1/marketplace — browse the registry catalog
+
+// /v1/skills — the kortix-managed system skills (how Kortix itself works), served
+// straight out of @kortix/starter so the text always matches this deploy. This is
+// what lets an agent in ANY harness, holding only the `kortix` binary and a token,
+// read the platform's own instructions with no repo checkout and no sandbox.
+// combinedAuth (not supabaseAuth) so a CLI `kortix_pat_` and the in-sandbox
+// KORTIX_CLI_TOKEN both work; see ./skills/index.ts for the full auth rationale.
+app.use('/v1/skills', combinedAuth);
+app.use('/v1/skills/*', combinedAuth);
+app.route('/v1/skills', skillsApp); // GET /v1/skills, /v1/skills/:name[?full=1], /v1/skills/:name/file?path=
 
 // Universal git smart-HTTP proxy — every git-backed workspace's client origin.
 // Auth is handled inside (git sends Basic/Bearer, not combinedAuth's Bearer),

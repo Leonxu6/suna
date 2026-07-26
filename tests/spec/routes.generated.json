@@ -1,6 +1,6 @@
 {
   "generatedAt": "static",
-  "count": 702,
+  "count": 705,
   "routes": [
     {
       "method": "GET",
@@ -1849,6 +1849,18 @@
     {
       "method": "POST",
       "path": "/v1/setup-links/secret/:token"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/skills"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/skills/:name"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/skills/:name/file"
     },
     {
       "method": "POST",

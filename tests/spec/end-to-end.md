@@ -49,6 +49,14 @@ Stack: TypeScript/Hono on Bun (`apps/api`), Drizzle→Postgres (`kortix` schema)
 `SYS-7` `POST /v1/system/demo-request` → public lead capture for the marketing "book a demo" form; invalid email → 400; valid → 200 `{ok:true, emailed}` (emails `DEMO_LEAD_NOTIFY_EMAIL` via Mailtrap; `emailed:false` when Mailtrap unconfigured — graceful skip). IP rate-limited (`KORTIX_DEMO_REQUEST_REQS_PER_MIN`, 429 on flood).
 `DOCS-1` `GET /v1/openapi.json` → public OpenAPI 3.1 spec (typed via `@hono/zod-openapi`). `GET /v1/docs` → public Scalar API reference (HTML).
 
+### Kortix system skills (`/v1/skills`, `combinedAuth`)
+
+The kortix-managed `kortix-*` skills — the markdown that tells an agent how Kortix itself works — served straight out of `@kortix/starter`, so the text always matches the running deploy. This is what lets an agent in any harness drive Kortix with nothing but the `kortix` binary and a token. Authed (any Kortix token or Supabase JWT), never anonymous; content is identical for every caller (no account scoping).
+
+`SKILL-1` `GET /v1/skills` → auth → 200 `{skills:[{name,description,referenceCount,bytes}],count}`. Bodies are NOT included — the frontmatter `description` is parsed server-side so an agent can choose without downloading ~330 KB of markdown. `ANON` → 401.
+`SKILL-2` `GET /v1/skills/:name [?full=1]` → auth → 200 `{name,description,body,references:[{path,bytes,content?}]}`; `body` is the complete SKILL.md. `?full=1` inlines every reference file. Unknown/non-managed name → 404. `ANON` → 401.
+`SKILL-3` `GET /v1/skills/:name/file?path=` → auth → 200 `{name,path,content}` for one reference file. Missing `path` → 400; unknown path or traversal attempt → 404 (lookup is exact-match against the in-memory index, not a filesystem read). `ANON` → 401.
+
 ---
 
 ## 1. GOLDEN PATH (master flow — init → ship → run → merge)
