@@ -7,7 +7,7 @@ import {
 } from '../src/core/client';
 import { waitFor } from '../src/core/poll';
 import type { Captured } from '../src/core/result';
-import { provisionProject } from '../src/fixtures/provision';
+import { provisionWorkspace } from '../src/fixtures/provision';
 
 function response(statusCode: number, bodyText: string, json?: unknown) {
   return {
@@ -42,22 +42,22 @@ describe('release gate transient failure resilience', () => {
     vi.unstubAllGlobals();
   });
 
-  it('retries project provisioning after an HTTP 502 response', async () => {
+  it('retries workspace provisioning after an HTTP 502 response', async () => {
     vi.useFakeTimers();
     const post = vi
       .fn()
       .mockResolvedValueOnce(response(502, '<html>Bad gateway</html>'))
       .mockResolvedValueOnce(
-        response(200, '{"project_id":"project-1"}', { project_id: 'project-1' }),
+        response(200, '{"workspace_id":"workspace-1"}', { workspace_id: 'workspace-1' }),
       );
 
-    const result = provisionProject(clientWithPost(post), { name: 'release-gate-test' });
+    const result = provisionWorkspace(clientWithPost(post), { name: 'release-gate-test' });
 
-    await expect(settleTimers(result)).resolves.toBe('project-1');
+    await expect(settleTimers(result)).resolves.toBe('workspace-1');
     expect(post).toHaveBeenCalledTimes(2);
   });
 
-  it('retries project provisioning after a marked network error', async () => {
+  it('retries workspace provisioning after a marked network error', async () => {
     vi.useFakeTimers();
     const networkError = Object.assign(new Error('request timed out'), {
       ke2eRetryable: true,
@@ -66,12 +66,12 @@ describe('release gate transient failure resilience', () => {
       .fn()
       .mockRejectedValueOnce(networkError)
       .mockResolvedValueOnce(
-        response(200, '{"project_id":"project-2"}', { project_id: 'project-2' }),
+        response(200, '{"workspace_id":"workspace-2"}', { workspace_id: 'workspace-2' }),
       );
 
-    const result = provisionProject(clientWithPost(post), { name: 'release-gate-test' });
+    const result = provisionWorkspace(clientWithPost(post), { name: 'release-gate-test' });
 
-    await expect(settleTimers(result)).resolves.toBe('project-2');
+    await expect(settleTimers(result)).resolves.toBe('workspace-2');
     expect(post).toHaveBeenCalledTimes(2);
   });
 
@@ -79,7 +79,7 @@ describe('release gate transient failure resilience', () => {
     const post = vi.fn().mockResolvedValue(response(400, '{"error":"invalid request"}'));
 
     await expect(
-      provisionProject(clientWithPost(post), { name: 'release-gate-test' }),
+      provisionWorkspace(clientWithPost(post), { name: 'release-gate-test' }),
     ).rejects.toThrow('HTTP 400');
     expect(post).toHaveBeenCalledTimes(1);
   });
@@ -90,12 +90,12 @@ describe('release gate transient failure resilience', () => {
       .fn()
       .mockResolvedValueOnce(response(403, '{"error":"secondary rate limit"}'))
       .mockResolvedValueOnce(
-        response(200, '{"project_id":"project-3"}', { project_id: 'project-3' }),
+        response(200, '{"workspace_id":"workspace-3"}', { workspace_id: 'workspace-3' }),
       );
 
-    const result = provisionProject(clientWithPost(post), { name: 'release-gate-test' });
+    const result = provisionWorkspace(clientWithPost(post), { name: 'release-gate-test' });
 
-    await expect(settleTimers(result)).resolves.toBe('project-3');
+    await expect(settleTimers(result)).resolves.toBe('workspace-3');
     expect(post).toHaveBeenCalledTimes(2);
   });
 
