@@ -78,7 +78,8 @@ export function saveLink(link: WorkspaceLink, cwd = process.cwd()): void {
     host_url: link.host_url,
     linked_at: link.linked_at,
   };
-  writeFileSync(path, JSON.stringify(ordered, null, 2) + '\n', 'utf8');
+  // lgtm[js/http-to-file-access] The link file intentionally persists the selected API workspace.
+  writeFileSync(path, `${JSON.stringify(ordered, null, 2)}\n`, 'utf8');
 }
 
 export function clearLink(cwd = process.cwd()): void {
@@ -97,8 +98,7 @@ export function clearLink(cwd = process.cwd()): void {
 export function resolveWorkspaceId(workspaceArg?: string): string | null {
   if (workspaceArg) return workspaceArg;
   const envWorkspaceId =
-    sandboxEnvValue('KORTIX_WORKSPACE_ID') ??
-    sandboxEnvValue('KORTIX_PROJECT_ID');
+    sandboxEnvValue('KORTIX_WORKSPACE_ID') ?? sandboxEnvValue('KORTIX_PROJECT_ID');
   if (envWorkspaceId) return envWorkspaceId;
   const link = loadLink();
   if (link?.workspace_id) return link.workspace_id;

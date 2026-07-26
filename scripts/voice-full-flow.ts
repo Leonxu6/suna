@@ -67,7 +67,7 @@ import { db } from '../apps/api/src/shared/db';
 import { config } from '../apps/api/src/config';
 import { startCall, endCall, readTurns } from '../apps/api/src/channels/voice/runtime';
 import { roomNameForCall, mintAccessToken } from '../apps/api/src/channels/voice/livekit';
-import { resolveProjectBotName } from '../apps/api/src/channels/voice-identity';
+import { resolveWorkspaceBotName } from '../apps/api/src/channels/voice-identity';
 import { runCommandInSandbox } from '../apps/api/src/channels/voice/run-command';
 
 // ── workspace-scoped packages this file cannot `import` directly (see header
@@ -169,7 +169,8 @@ function record(name: string, status: Status, detail?: string): void {
 
 function summarizeAndExit(): never {
   console.log('\n=== SUMMARY ===');
-  for (const r of results) console.log(`  [${r.status.padEnd(4)}] ${r.name}${r.detail ? ' — ' + r.detail : ''}`);
+  for (const r of results)
+    console.log(`  [${r.status.padEnd(4)}] ${r.name}${r.detail ? ' — ' + r.detail : ''}`);
   const failed = results.filter((r) => r.status === 'FAIL');
   const warned = results.filter((r) => r.status === 'WARN');
   console.log(
@@ -238,8 +239,11 @@ async function createSessionAndWaitReady(projectId: string, userJwt: string): Pr
   if (!sessionId) throw new Error(`session create failed: ${JSON.stringify(sess).slice(0, 500)}`);
 
   for (let i = 0; i < 80; i++) {
-    const s = await j(await fetch(`${API}/projects/${projectId}/sessions/${sessionId}`, { headers: H }));
-    const stage = s?.session?.sandbox?.stage ?? s?.sandbox?.stage ?? s?.session?.status ?? s?.status;
+    const s = await j(
+      await fetch(`${API}/projects/${projectId}/sessions/${sessionId}`, { headers: H }),
+    );
+    const stage =
+      s?.session?.sandbox?.stage ?? s?.sandbox?.stage ?? s?.session?.status ?? s?.status;
     if (i % 5 === 0) console.log(`  …sandbox ${stage}`);
     if (stage === 'ready' || stage === 'running') return sessionId;
     if (stage === 'failed') throw new Error('sandbox failed to boot');
@@ -339,11 +343,17 @@ async function speak(source: any, text: string): Promise<void> {
   const per = (SAMPLE_RATE / 100) * CHANNELS;
   for (let off = 0; off < pcm.length; off += per) {
     const chunk = pcm.subarray(off, Math.min(off + per, pcm.length));
-    await source.captureFrame(new AudioFrame(chunk, SAMPLE_RATE, CHANNELS, chunk.length / CHANNELS));
+    await source.captureFrame(
+      new AudioFrame(chunk, SAMPLE_RATE, CHANNELS, chunk.length / CHANNELS),
+    );
   }
 }
 
-async function waitUntil(cond: () => boolean, timeoutMs: number, intervalMs = 500): Promise<boolean> {
+async function waitUntil(
+  cond: () => boolean,
+  timeoutMs: number,
+  intervalMs = 500,
+): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (cond()) return true;
@@ -399,7 +409,11 @@ async function main() {
         .from(projectSessions)
         .where(eq(projectSessions.sessionId, sessionId))
         .limit(1);
-      if (!row) abort('1-provision', new Error(`session ${sessionId} not found in DB — pass --project explicitly`));
+      if (!row)
+        abort(
+          '1-provision',
+          new Error(`session ${sessionId} not found in DB — pass --project explicitly`),
+        );
       projectId = row!.projectId;
     }
     record('1-provision', 'SKIP', `reusing project=${projectId} call=${sessionId}`);
@@ -416,9 +430,14 @@ async function main() {
           headers: { Authorization: `Bearer ${userJwt}`, 'content-type': 'application/json' },
           body: JSON.stringify({ feature: 'voice', enabled: true }),
         });
-        if (!res.ok) console.log(`  [warn] PATCH /experimental → ${res.status} ${(await res.text()).slice(0, 200)}`);
+        if (!res.ok)
+          console.log(
+            `  [warn] PATCH /experimental → ${res.status} ${(await res.text()).slice(0, 200)}`,
+          );
       } else {
-        console.log('  [info] no fresh user token (reusing a project) — checking materialization only');
+        console.log(
+          '  [info] no fresh user token (reusing a project) — checking materialization only',
+        );
       }
       // reconcileChannelConnectors runs fire-and-forget off the PATCH; poll.
       let foundEnabled = false;
@@ -426,7 +445,12 @@ async function main() {
         const rows = await db
           .select({ enabled: executorConnectors.enabled })
           .from(executorConnectors)
-          .where(and(eq(executorConnectors.projectId, projectId!), eq(executorConnectors.slug, 'kortix_voice')))
+          .where(
+            and(
+              eq(executorConnectors.projectId, projectId!),
+              eq(executorConnectors.slug, 'kortix_voice'),
+            ),
+          )
           .limit(1);
         if (rows.length && rows[0]!.enabled) {
           foundEnabled = true;
@@ -474,7 +498,9 @@ async function main() {
       const result = await runCommandInSandbox(sessionId!, 'printenv KORTIX_EXECUTOR_TOKEN');
       const tok = result.stdout.trim().split('\n').pop()?.trim();
       if (!tok || result.timedOut) {
-        throw new Error(`printenv returned nothing (timedOut=${result.timedOut}, exit=${result.exitCode})`);
+        throw new Error(
+          `printenv returned nothing (timedOut=${result.timedOut}, exit=${result.exitCode})`,
+        );
       }
       executorToken = tok;
       record('token', 'PASS', `fetched KORTIX_EXECUTOR_TOKEN (${tok.slice(0, 12)}…)`);
@@ -494,11 +520,11 @@ async function main() {
         '         executor gateway -> Recall /bot/). This step instead imports runtime.startCall\n' +
         '         directly and calls it in-process, which opens a real LiveKit room and gets a\n' +
         '         real worker dispatched into it, simulating what voice_spawn would have done\n' +
-        '         minus the Recall leg. See this file\'s header for the cross-process caveat\n' +
+        "         minus the Recall leg. See this file's header for the cross-process caveat\n" +
         '         this creates for steps 8 and 10.',
     );
     try {
-      const botName = await resolveProjectBotName(projectId!).catch(() => 'Kortix');
+      const botName = await resolveWorkspaceBotName(projectId!).catch(() => 'Kortix');
       const call = await startCall({
         callId: sessionId!,
         projectId: projectId!,
@@ -521,12 +547,20 @@ async function main() {
     record('5-mcp-tools-list', 'SKIP', 'no session token available');
   } else {
     try {
-      const { status, body } = await mcpCall(projectId!, sessionId!, executorToken, 'tools/list', undefined, 5);
+      const { status, body } = await mcpCall(
+        projectId!,
+        sessionId!,
+        executorToken,
+        'tools/list',
+        undefined,
+        5,
+      );
       if (status !== 200) {
         record('5-mcp-tools-list', 'FAIL', `HTTP ${status} ${JSON.stringify(body).slice(0, 200)}`);
       } else {
         const names: string[] = (body?.result?.tools ?? []).map((t: { name: string }) => t.name);
-        const sameSet = names.length === EXPECTED_TOOLS.length && EXPECTED_TOOLS.every((n) => names.includes(n));
+        const sameSet =
+          names.length === EXPECTED_TOOLS.length && EXPECTED_TOOLS.every((n) => names.includes(n));
         const hasBlocking = names.some((n) => /follow|tail|stream|wait/i.test(n));
         record(
           '5-mcp-tools-list',
@@ -548,7 +582,11 @@ async function main() {
   } else {
     try {
       const roomName = roomNameForCall(sessionId!);
-      const token = await mintAccessToken({ room: roomName, identity: `probe-${Date.now()}`, name: 'full-flow probe' });
+      const token = await mintAccessToken({
+        room: roomName,
+        identity: `probe-${Date.now()}`,
+        name: 'full-flow probe',
+      });
       probe = await connectProbe(config.LIVEKIT_URL, token);
       await sleep(1500); // let the published track settle
       const before = probe.state.frameCount;
@@ -597,7 +635,8 @@ async function main() {
       const logPath = arg('api-log') ?? DEFAULT_API_LOG;
       const offsetBefore = await fileSize(logPath);
       const cmdSay =
-        arg('run-command-say') ?? 'Please run git status in the sandbox and tell me what branch we are on.';
+        arg('run-command-say') ??
+        'Please run git status in the sandbox and tell me what branch we are on.';
       console.log(`  speaking: "${cmdSay}"`);
       await speak(probe.source, cmdSay);
       console.log('  waiting 15s for the worker to call run_command…');
@@ -660,7 +699,11 @@ async function main() {
           typeof cursor === 'number' &&
           cursor >= lastCursor &&
           monotonic;
-        record('9-voice-read', ok ? 'PASS' : 'FAIL', `turns=${turns.length} cursor=${cursor} monotonic=${monotonic}`);
+        record(
+          '9-voice-read',
+          ok ? 'PASS' : 'FAIL',
+          `turns=${turns.length} cursor=${cursor} monotonic=${monotonic}`,
+        );
       }
     } catch (err) {
       record('9-voice-read', 'FAIL', err instanceof Error ? err.message : String(err));
@@ -685,7 +728,9 @@ async function main() {
           { name: 'voice_end', arguments: { call_id: sessionId } },
           10,
         );
-        console.log(`  [info] MCP voice_end → HTTP ${status} ${JSON.stringify(body).slice(0, 150)}`);
+        console.log(
+          `  [info] MCP voice_end → HTTP ${status} ${JSON.stringify(body).slice(0, 150)}`,
+        );
       }
 
       const roomName = roomNameForCall(sessionId!);
@@ -703,7 +748,11 @@ async function main() {
         record('10-end', 'WARN', 'room did not exist before voice_end — was step 4 skipped?');
       } else {
         const roomGone = after.length === 0;
-        record('10-end', closed && roomGone ? 'PASS' : 'FAIL', `registryClosed=${closed} roomBefore=${before.length} roomAfter=${after.length}`);
+        record(
+          '10-end',
+          closed && roomGone ? 'PASS' : 'FAIL',
+          `registryClosed=${closed} roomBefore=${before.length} roomAfter=${after.length}`,
+        );
       }
     } catch (err) {
       record('10-end', 'FAIL', err instanceof Error ? err.message : String(err));

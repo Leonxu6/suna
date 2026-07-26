@@ -1,6 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { loadAuth } from '../api/auth.ts';
+import type { Auth } from '../api/auth.ts';
+import { ApiError, clientFromAuth } from '../api/client.ts';
 import {
   activeAccount,
   activeHostName,
@@ -9,8 +11,18 @@ import {
   setActiveAccount,
   setDefaultWorkspace,
 } from '../api/config.ts';
-import { ApiError, clientFromAuth } from '../api/client.ts';
+import type { AccountMembership, MeResponse, WorkspaceSummary } from '../api/types.ts';
+import {
+  emitJson,
+  locateWorkspaceAnywhere,
+  takeFlagBool,
+  takeFlagValue,
+} from '../command-helpers.ts';
+import { appendGitExcludeEntries } from '../git-exclude.ts';
 import { confirm } from '../prompts.ts';
+import { C, help, pad, status } from '../style.ts';
+import { selectFromList } from '../tui-select.ts';
+import { workspaceWebUrl } from '../web-url.ts';
 import {
   clearLink,
   isKortixWorkspace,
@@ -18,13 +30,6 @@ import {
   resolveWorkspaceId,
   saveLink,
 } from '../workspace-link.ts';
-import { selectFromList } from '../tui-select.ts';
-import { emitJson, locateWorkspaceAnywhere, takeFlagBool, takeFlagValue } from '../command-helpers.ts';
-import { C, help, pad, status } from '../style.ts';
-import { workspaceWebUrl } from '../web-url.ts';
-import { appendGitExcludeEntries } from '../git-exclude.ts';
-import type { Auth } from '../api/auth.ts';
-import type { AccountMembership, MeResponse, WorkspaceSummary } from '../api/types.ts';
 import { authHeaderArgs } from './ship.ts';
 
 const HELP = help`Usage: kortix workspaces <subcommand>
@@ -211,11 +216,7 @@ export function saveClonedWorkspaceLink(
     repoRoot,
   );
 
-  appendGitExcludeEntries(
-    repoRoot,
-    ['/.kortix/link.json'],
-    'Kortix local workspace binding',
-  );
+  appendGitExcludeEntries(repoRoot, ['/.kortix/link.json'], 'Kortix local workspace binding');
 }
 
 /** Resolve clone auth without ever placing a credential in the remote URL. */
@@ -228,7 +229,7 @@ export function resolveWorkspaceCloneTarget(
     return {
       repoUrl: proxyUrl,
       token: kortixToken,
-      username: "x-access-token",
+      username: 'x-access-token',
       needsManagedToken: false,
     };
   }
@@ -237,7 +238,7 @@ export function resolveWorkspaceCloneTarget(
   return {
     repoUrl: workspace.repo_url,
     token: null,
-    username: "x-access-token",
+    username: 'x-access-token',
     needsManagedToken: git?.managed === true,
   };
 }
@@ -250,7 +251,7 @@ async function workspacesClone(
   const id = arg ?? resolveWorkspaceId();
   if (!id) {
     process.stderr.write(
-      `${status.err("No workspace selected. Run `kortix workspaces use`, link a directory, or pass an id.")}\n`,
+      `${status.err('No workspace selected. Run `kortix workspaces use`, link a directory, or pass an id.')}\n`,
     );
     return 1;
   }
@@ -278,33 +279,25 @@ async function workspacesClone(
   }
 
   const args = target.token
-    ? [
-        ...authHeaderArgs(target.repoUrl, target.token, target.username),
-        "clone",
-        target.repoUrl,
-      ]
-    : ["clone", target.repoUrl];
+    ? [...authHeaderArgs(target.repoUrl, target.token, target.username), 'clone', target.repoUrl]
+    : ['clone', target.repoUrl];
   if (destination) args.push(destination);
 
-  const cloned = spawnSync("git", args, { stdio: "inherit" });
+  const cloned = spawnSync('git', args, { stdio: 'inherit' });
   if (cloned.error) {
-    process.stderr.write(
-      `${status.err(`Could not start git: ${cloned.error.message}`)}\n`,
-    );
+    process.stderr.write(`${status.err(`Could not start git: ${cloned.error.message}`)}\n`);
     return 1;
   }
   if ((cloned.status ?? 1) !== 0) {
-    process.stderr.write(
-      `${status.err(`git clone failed (exit ${cloned.status ?? 1}).`)}\n`,
-    );
+    process.stderr.write(`${status.err(`git clone failed (exit ${cloned.status ?? 1}).`)}\n`);
     return cloned.status ?? 1;
   }
 
   const defaultDirectory =
     target.repoUrl
-      .split("/")
+      .split('/')
       .pop()
-      ?.replace(/\.git$/i, "") || workspace.name;
+      ?.replace(/\.git$/i, '') || workspace.name;
   const repoRoot = resolve(process.cwd(), destination || defaultDirectory);
   if (isKortixWorkspace(repoRoot)) {
     saveClonedWorkspaceLink(
@@ -425,8 +418,7 @@ async function workspacesLsAll(auth: Auth, json = false): Promise<number> {
 
   let total = 0;
   for (const s of sections) {
-    const activeMark =
-      s.account.account_id === activeId ? `   ${C.green}← active${C.reset}` : '';
+    const activeMark = s.account.account_id === activeId ? `   ${C.green}← active${C.reset}` : '';
     process.stdout.write('\n');
     process.stdout.write(
       `  ${C.bold}${s.account.name || s.account.slug}${C.reset} ${C.faded}(${s.account.slug}, ${s.account.role})${C.reset}${activeMark}\n`,
@@ -458,11 +450,7 @@ function renderWorkspaceTable(
   for (const p of workspaces) {
     const isDefault = p.workspace_id === marks.def;
     const isLinked = p.workspace_id === marks.linked;
-    const marker = isDefault
-      ? `${C.green}● ${C.reset}`
-      : isLinked
-        ? `${C.cyan}◆ ${C.reset}`
-        : '  ';
+    const marker = isDefault ? `${C.green}● ${C.reset}` : isLinked ? `${C.cyan}◆ ${C.reset}` : '  ';
     const tag = isDefault
       ? `   ${C.green}default${C.reset}`
       : isLinked
@@ -523,9 +511,9 @@ async function workspacesUse(arg?: string): Promise<number> {
     // Pick from the active account's workspaces.
     let list: WorkspaceSummary[];
     try {
-      list = await clientFromAuth(auth, { accountId: scopeAccountId(auth) }).get<WorkspaceSummary[]>(
-        '/workspaces',
-      );
+      list = await clientFromAuth(auth, { accountId: scopeAccountId(auth) }).get<
+        WorkspaceSummary[]
+      >('/workspaces');
     } catch (err) {
       return surface(err);
     }
@@ -555,13 +543,14 @@ async function workspacesUse(arg?: string): Promise<number> {
   // than the active one, switch the active account to it (resolving the
   // account's display name best-effort) before recording the default.
   const switched = target.account_id !== (activeAccount()?.id ?? auth.account_id);
+  const targetAccountId = target.account_id;
   let accountLabel = target.account_id.slice(0, 8);
   if (switched) {
     let slug = target.account_id.slice(0, 8);
     let name: string | undefined;
     try {
       const me = await clientFromAuth(auth).get<MeResponse>('/accounts/me');
-      const m = me.accounts.find((a) => a.account_id === target!.account_id);
+      const m = me.accounts.find((a) => a.account_id === targetAccountId);
       if (m) {
         slug = m.slug;
         name = m.name;
@@ -580,7 +569,9 @@ async function workspacesUse(arg?: string): Promise<number> {
 
   process.stdout.write(`${status.ok(`Default workspace: ${C.bold}${target.name}${C.reset}`)}\n`);
   if (switched) {
-    process.stdout.write(`  ${C.dim}account → ${C.reset}${accountLabel} ${C.dim}(now active)${C.reset}\n`);
+    process.stdout.write(
+      `  ${C.dim}account → ${C.reset}${accountLabel} ${C.dim}(now active)${C.reset}\n`,
+    );
   }
   process.stdout.write(
     `  ${C.dim}Used by connectors/executor/sessions when a directory isn't linked.${C.reset}\n`,
@@ -679,7 +670,9 @@ async function workspacesUnlink(): Promise<number> {
   const existing = loadLink();
   clearLink();
   if (existing) {
-    process.stdout.write(`${status.ok(`Unlinked ${C.dim}(was ${existing.workspace_id})${C.reset}`)}\n`);
+    process.stdout.write(
+      `${status.ok(`Unlinked ${C.dim}(was ${existing.workspace_id})${C.reset}`)}\n`,
+    );
   } else {
     process.stdout.write(`${C.dim}Not linked. Nothing to do.${C.reset}\n`);
   }
@@ -804,18 +797,15 @@ function formatRelative(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-
 function openInBrowser(url: string): void {
-  // Only hand a real web URL to the OS opener — a value starting with '-' would
-  // be read as a flag by open/xdg-open, and Windows `start` parses its argument,
-  // so an unvalidated URL is a command-injection vector.
   if (!/^https?:\/\//i.test(url)) return;
-  const cmd =
-    process.platform === 'darwin'
-      ? 'open'
-      : process.platform === 'win32'
-        ? 'cmd'
-        : 'xdg-open';
-  const args = process.platform === 'win32' ? ['/c', 'start', '', url] : [url];
-  spawnSync(cmd, args, { stdio: 'ignore' });
+  if (process.platform === 'darwin') {
+    spawnSync('/usr/bin/open', ['--', url], { stdio: 'ignore' });
+    return;
+  }
+  if (process.platform === 'win32') {
+    spawnSync('explorer.exe', [url], { stdio: 'ignore' });
+    return;
+  }
+  spawnSync('/usr/bin/xdg-open', ['--', url], { stdio: 'ignore' });
 }
