@@ -117,7 +117,7 @@ describe('resolveBranchAheadState — the empty-CR guard', () => {
   });
 
   test('a push landing AFTER the mirror warmed in the same process is still seen (forced re-fetch beats the staleness window)', () => {
-    const { source, origin, workspace } = makeFixture();
+    const { source, workspace } = makeFixture();
     // One process: warm the mirror with the branch empty, push from a second
     // clone while the in-process refresh marker is fresh, resolve again —
     // exactly an agent's `git push && kortix cr open` against a warm mirror.

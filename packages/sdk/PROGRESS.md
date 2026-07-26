@@ -2813,6 +2813,39 @@ and deployed ACP plus REST parity remain.
 
 ---
 
+### 2026-07-26 — session `019f9afd` (Workspace domain PR completion)
+
+PR #5480 contains the complete Project to Workspace domain migration.
+Commit `5564298180872ac96233fc6b54cdefdaa411134c` passed the final implementation
+checks before this ledger update.
+
+Task 8 is complete. The branch is pushed, and every PR check passes.
+Task 9 awaits explicit human merge approval.
+
+Final PR verification:
+
+- CodeQL aggregate: pass.
+- JavaScript and TypeScript CodeQL analysis: pass in 7 minutes 14 seconds.
+- Frontend build: pass in 6 minutes 22 seconds.
+- Fast QA checks: pass in 4 minutes 41 seconds.
+- Package and application unit tests: pass in 3 minutes 59 seconds.
+- API unit tests: pass in 44 seconds.
+- API typecheck: pass in 1 minute 15 seconds.
+- CLI binary smoke: pass in 46 seconds.
+- Migration format, immutability, ordering, schema, and fresh-database checks:
+  pass.
+- Security, secret, infrastructure, self-host, desktop, and sandbox checks:
+  pass.
+- Local CLI suite: **520 pass / 0 fail**, **1848** assertions.
+- Strix security review: no security issues.
+
+**Status:** READY FOR MERGE APPROVAL.
+
+**Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
+and deployed Workspace browser and API verification remain.
+
+---
+
 ### 2026-07-26 — session `whitelabel-acp-stable-completion` (B23 delivery completion)
 
 Merged B23 in PR #5477.
