@@ -22,7 +22,14 @@ describe('canServeLastKnownGoodRuntime', () => {
   });
 
   test('never serves a stale runtime for explicit build operations', () => {
-    for (const source of ['project-create', 'cr-merge', 'manual', 'background', 'startup'] as const) {
+    for (const source of [
+      'workspace-create',
+      'project-create',
+      'cr-merge',
+      'manual',
+      'background',
+      'startup',
+    ] as const) {
       expect(
         canServeLastKnownGoodRuntime({
           source,

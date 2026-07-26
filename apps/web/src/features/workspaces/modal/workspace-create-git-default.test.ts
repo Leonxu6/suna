@@ -47,7 +47,7 @@ describe('new workspace git provider default', () => {
   });
 });
 
-describe('new project dialog: simplified default state', () => {
+describe('new workspace dialog: simplified default state', () => {
   test('repository source starts collapsed behind a disclosure, not shown up front', () => {
     // The 3-way tabs live inside DisclosureContent, gated by `advancedOpen`
     // (default false) — never rendered open on mount.
@@ -85,7 +85,7 @@ describe('new project dialog: simplified default state', () => {
     );
   });
 
-  test('repository options render below the project name field, not above it', () => {
+  test('repository options render below the workspace name field, not above it', () => {
     // `autoFocus` only lives on the managed-form name Input — the primary
     // 95%-path field. Its own RepositoryOptions usage (the nearest one
     // after it) must come after it in source order, i.e. below it in that

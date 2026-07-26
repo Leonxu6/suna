@@ -249,7 +249,7 @@ export interface AccountStateResponse {
    * be billed for RIGHT NOW (createPerSeatCheckoutSession uses the same
    * countActiveMembers). Always present (unlike `seats`, which only appears once
    * the account is already on per-seat), so the subscribe modal can show the real
-   * workspaceed total (members × price) BEFORE redirecting to Stripe.
+   * projected total (members × price) BEFORE redirecting to Stripe.
    */
   member_count: number;
   /**

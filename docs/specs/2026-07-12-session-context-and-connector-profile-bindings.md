@@ -181,7 +181,7 @@ Binding authorization is owner-aware:
 - any project member may select their own `owner_type=member` profile;
 - project-default profiles preserve the shared compatibility path;
 - external/agent/subject profiles require
-  `project.session.bindings.write` (project managers/operator service accounts);
+  `workspace.session.bindings.write` (project managers/operator service accounts);
 - that management capability never permits selecting or rotating another
   member's profile.
 

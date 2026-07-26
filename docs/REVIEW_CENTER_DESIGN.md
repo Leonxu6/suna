@@ -11,7 +11,7 @@ Built and tested for **native review items** (agent-submitted `output` / `decisi
 
 - **DB** — `review_items` table + enums + migration (`packages/db`).
 - **API** — `review-items.ts` core + `routes/r11.ts` (list / get / submit / act / bulk), new IAM actions
-  `project.review.read|submit|act`, co-located unit tests, `tests/spec/end-to-end.md` §11b + `review.flow.ts`,
+  `workspace.review.read|submit|act`, co-located unit tests, `tests/spec/end-to-end.md` §11b + `review.flow.ts`,
   route manifest regenerated.
 - **Web** — `projects-client.ts` methods + types + the `review_center` experimental flag, `use-review-items.ts`
   hooks, `map.ts` (API→view-model, unit-tested), and `review-center-connected.tsx` (the inbox wired to the
@@ -64,7 +64,7 @@ in plain language, from the web or from Slack.
 
 | Capability | State today | Files |
 | --- | --- | --- |
-| Change Requests | **Mature backend**, technical UI. `changeRequests` table; full `/v1/projects/:id/change-requests/*` API (list/detail/diff/merge-preview/merge/close/reopen); IAM gates `project.cr.merge`, `project.gitops.merge`; reusable hooks. UI exposes branch UUIDs, SHAs, merge-mode jargon, raw conflicts, diff hunks. | `apps/api/src/projects/change-requests.ts`, `routes/r8.ts`, `routes/r9.ts`, `git/merge.ts`; `apps/web/src/features/project-files/components/change-request-detail-dialog.tsx`, `change-requests-panel.tsx`; `hooks/use-change-requests.ts` |
+| Change Requests | **Mature backend**, technical UI. `changeRequests` table; full `/v1/projects/:id/change-requests/*` API (list/detail/diff/merge-preview/merge/close/reopen); IAM gates `workspace.cr.merge`, `workspace.gitops.merge`; reusable hooks. UI exposes branch UUIDs, SHAs, merge-mode jargon, raw conflicts, diff hunks. | `apps/api/src/projects/change-requests.ts`, `routes/r8.ts`, `routes/r9.ts`, `git/merge.ts`; `apps/web/src/features/project-files/components/change-request-detail-dialog.tsx`, `change-requests-panel.tsx`; `hooks/use-change-requests.ts` |
 | Tool-call approvals (Executor) | **Stub.** Policy resolves `always_run \| require_approval \| block`; on `require_approval` the gateway records `pending_approval` and returns **HTTP 202** — **no UI, no bulk, no resume**. This is the KORTIX-207 gap. | `apps/api/src/executor/gateway.ts`, `policy.ts`; tables `executorExecutions`, `executorProjectPolicies`, `executorConnectorPolicies` |
 | Permission approvals (Tunnel) | **The one real structured approval surface.** `tunnelPermissionRequests` table (pending/approved/denied/expired) + SSE stream + approve/deny/scoped/expiry dialog. The reuse template. | `apps/api/src/tunnel/routes/permission-requests.ts`; `apps/web/src/features/tunnel/tunnel-permission-request-dialog.tsx`; `hooks/tunnel/use-tunnel.ts` |
 | Agent outputs / tasks | **Proto-primitive already exists.** `KortixTask` has statuses `awaiting_review` and `input_needed`, a `result`, a `blocking_question`, an events timeline, and an approve endpoint. But no generic "submit an artifact/decision for review" separate from a code diff. | `apps/web/src/hooks/kortix/use-kortix-tasks.ts`; `components/kortix/task-*.tsx`; `lib/kortix/task-meta.ts` |

@@ -1,11 +1,11 @@
 import { beforeEach, expect, mock, test } from 'bun:test';
 
 import {
-  getProjectDetail,
-  provisionProject,
-  provisionProjectWithToken,
-  type CreateProjectRepoInput,
-} from './projects';
+  getWorkspaceDetail,
+  provisionWorkspace,
+  provisionWorkspaceWithToken,
+  type CreateWorkspaceRepoInput,
+} from './workspaces';
 import { configureKortix } from '../../http/config';
 
 let nextResponse: () => Response = () => new Response('{}', { status: 200 });
@@ -39,7 +39,7 @@ test('returns ok:true with the parsed workspace on a real 200 body', async () =>
   expect(result.ok && result.workspace.workspace_id).toBe('proj-1');
 });
 
-test('provisionProject applies the caller timeout to slow managed-git provisioning', async () => {
+test('provisionWorkspace applies the caller timeout to slow managed-git provisioning', async () => {
   configureKortix({
     backendUrl: 'http://backend.test/v1',
     getToken: async () => 'tok',
@@ -71,20 +71,20 @@ test('provisionProject applies the caller timeout to slow managed-git provisioni
   ) as unknown as typeof fetch;
 
   await expect(
-    provisionProject(
-      { account_id: 'acc-1', name: 'Slow Project', seed_starter: true },
+    provisionWorkspace(
+      { account_id: 'acc-1', name: 'Slow Workspace', seed_starter: true },
       { timeout: 5 },
     ),
   ).rejects.toMatchObject({
     code: 'TIMEOUT',
-    endpoint: '/projects/provision',
+    endpoint: '/workspaces/provision',
     timeout: 5,
   });
 });
 
-// Regression: a 200 whose body has no project_id used to be reported as a
-// fake success — the caller would build an unusable `/projects/undefined` path.
-test('reports not-ok when the response is 200 but the body has no project_id', async () => {
+// Regression: a 200 whose body has no workspace_id used to be reported as a
+// fake success — the caller would build an unusable `/workspaces/undefined` path.
+test('reports not-ok when the response is 200 but the body has no workspace_id', async () => {
   nextResponse = () =>
     new Response(JSON.stringify({ name: 'My First Workspace' }), {
       status: 200,

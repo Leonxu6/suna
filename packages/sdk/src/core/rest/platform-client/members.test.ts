@@ -75,57 +75,57 @@ const sandbox: SandboxInfo = {
 
 // ─── Deliberate stubs — every one of these always rejects, regardless of input ──
 
-test('listSandboxMembers always rejects — moved to project access', async () => {
+test('listSandboxMembers always rejects — moved to workspace access', async () => {
   await expect(listSandboxMembers('sbx-1')).rejects.toThrow(
-    'Sandbox members moved to project access; use project members for project-session sandboxes',
+    'Sandbox members moved to workspace access; use workspace members for workspace-session sandboxes',
   );
 });
 
-test('addSandboxMember always rejects — invite to project instead', async () => {
+test('addSandboxMember always rejects — invite to workspace instead', async () => {
   await expect(addSandboxMember('sbx-1', 'a@b.com', 'member')).rejects.toThrow(
-    'Sandbox members moved to project access; invite the user to the project instead',
+    'Sandbox members moved to workspace access; invite the user to the workspace instead',
   );
 });
 
-test('removeSandboxMember always rejects — update project access instead', async () => {
+test('removeSandboxMember always rejects — update workspace access instead', async () => {
   await expect(removeSandboxMember('sbx-1', 'user-1')).rejects.toThrow(
-    'Sandbox members moved to project access; update project access instead',
+    'Sandbox members moved to workspace access; update workspace access instead',
   );
 });
 
-test('updateSandboxMemberRole always rejects — update project access instead', async () => {
+test('updateSandboxMemberRole always rejects — update workspace access instead', async () => {
   await expect(updateSandboxMemberRole('sbx-1', 'user-1', 'admin')).rejects.toThrow(
-    'Sandbox members moved to project access; update project access instead',
+    'Sandbox members moved to workspace access; update workspace access instead',
   );
 });
 
-test('updateSandboxMemberSpendCap always rejects — not exposed for project-session sandboxes', async () => {
+test('updateSandboxMemberSpendCap always rejects — not exposed for workspace-session sandboxes', async () => {
   await expect(updateSandboxMemberSpendCap('sbx-1', 'user-1', 5000)).rejects.toThrow(
-    'Sandbox member spend caps are not exposed for project-session sandboxes',
+    'Sandbox member spend caps are not exposed for workspace-session sandboxes',
   );
 });
 
-test('getViewerSandboxScopes always rejects — moved to project access', async () => {
+test('getViewerSandboxScopes always rejects — moved to workspace access', async () => {
   await expect(getViewerSandboxScopes('sbx-1')).rejects.toThrow(
-    'Sandbox scopes moved to project access for project-session sandboxes',
+    'Sandbox scopes moved to workspace access for workspace-session sandboxes',
   );
 });
 
-test('getSandboxMemberScopes always rejects — moved to project access', async () => {
+test('getSandboxMemberScopes always rejects — moved to workspace access', async () => {
   await expect(getSandboxMemberScopes('sbx-1', 'user-1')).rejects.toThrow(
-    'Sandbox scopes moved to project access for project-session sandboxes',
+    'Sandbox scopes moved to workspace access for workspace-session sandboxes',
   );
 });
 
-test('updateSandboxMemberScope always rejects — moved to project access', async () => {
+test('updateSandboxMemberScope always rejects — moved to workspace access', async () => {
   await expect(updateSandboxMemberScope('sbx-1', 'user-1', 'files.read', 'grant')).rejects.toThrow(
-    'Sandbox scopes moved to project access for project-session sandboxes',
+    'Sandbox scopes moved to workspace access for workspace-session sandboxes',
   );
 });
 
-test('revokeSandboxInvite always rejects — moved to project access', async () => {
+test('revokeSandboxInvite always rejects — moved to workspace access', async () => {
   await expect(revokeSandboxInvite('sbx-1', 'invite-1')).rejects.toThrow(
-    'Sandbox invites moved to project access for project-session sandboxes',
+    'Sandbox invites moved to workspace access for workspace-session sandboxes',
   );
   // Stubs must not hit the network — they throw synchronously up front.
   expect(calls.length).toBe(0);

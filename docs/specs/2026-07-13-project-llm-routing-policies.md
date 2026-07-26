@@ -97,7 +97,7 @@ treat all model identifiers as opaque strings.
 ## Authorization and audit
 
 - Read and preview require project read access.
-- Save and reset require `project.customize.write`.
+- Save and reset require `workspace.customize.write`.
 - `updated_by` records the authenticated user.
 - Invalid, duplicate, looping, or over-limit chains return a typed 400 contract.
 

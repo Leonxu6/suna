@@ -92,7 +92,7 @@ describe('OpenCode local model selection scoping', () => {
     ).toEqual({ providerID: 'kortix', modelID: 'glm-5.2' });
   });
 
-  test('project sessions prefer the server-bound agent over global last-used agent', () => {
+  test('workspace sessions prefer the server-bound agent over global last-used agent', () => {
     expect(
       resolveCurrentAgentName({
         sessionId: 'session-1',
@@ -117,7 +117,7 @@ describe('OpenCode local model selection scoping', () => {
     expect(resolveCurrentAgentName({ lastAgentName: 'reviewer' })).toBe('reviewer');
   });
 
-  test('project composer prefers its declared default over a cross-project last-used agent', () => {
+  test('workspace composer prefers its declared default over a cross-workspace last-used agent', () => {
     expect(
       resolveCurrentAgentName({
         defaultAgentName: 'kortix',
@@ -126,7 +126,7 @@ describe('OpenCode local model selection scoping', () => {
     ).toBe('kortix');
   });
 
-  test('an explicit picker choice can override the project default for the current composer', () => {
+  test('an explicit picker choice can override the workspace default for the current composer', () => {
     expect(
       resolveCurrentAgentName({
         explicitAgentName: 'reviewer',

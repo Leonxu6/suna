@@ -11,7 +11,7 @@
  *   3. Open the project's Sandbox tab in the browser; assert it renders
  *      WITHOUT a runtime error (catches the regression where the card crashed
  *      with "Cannot read properties of undefined (reading 'find')").
- *   4. Create a project template and click Rebuild; expect the build API call
+ *   4. Create a workspace template and click Rebuild; expect the build API call
  *      → 202 and no client console error.
  *
  * Designed for the local-dev stack (Next on :3000, API on :8008, Supabase on
@@ -122,7 +122,7 @@ test.describe('12 — Sandbox templates UI', () => {
     expect(pageErrors, `client errors: ${pageErrors.join(' | ')}`).toEqual([]);
   });
 
-  test('clicking Rebuild on a project template calls the API and does not crash', async ({ page }) => {
+  test('clicking Rebuild on a workspace template calls the API and does not crash', async ({ page }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (err) => pageErrors.push(err.message));
     const customSlug = `e2e-image-${Date.now()}`;

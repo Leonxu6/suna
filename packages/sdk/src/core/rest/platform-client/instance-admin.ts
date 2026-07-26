@@ -48,7 +48,7 @@ export interface CreateInstanceRequest {
  */
 export async function createInstance(_request: CreateInstanceRequest): Promise<never> {
   throw new Error(
-    'Retired instance provisioning is unavailable. Create a project session with daytona, platinum, or e2b.',
+    'Retired instance provisioning is unavailable. Create a workspace session with daytona, platinum, or e2b.',
   );
 }
 

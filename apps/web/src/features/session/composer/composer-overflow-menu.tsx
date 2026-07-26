@@ -8,10 +8,10 @@ import type { Agent, ProviderListResponse } from '@kortix/sdk/react';
 import { EllipsisIcon } from 'lucide-react';
 
 import type { FlatModel } from '../model-flatten';
-import type { ReasoningEffortModelKey } from '../reasoning-effort-selector';
-import { ReasoningEffortSelector } from '../reasoning-effort-selector';
 import type { ModelDefaultControls } from '../model-selector';
 import { ModelSelector } from '../model-selector';
+import type { ReasoningEffortModelKey } from '../reasoning-effort-selector';
+import { ReasoningEffortSelector } from '../reasoning-effort-selector';
 import { AgentSelector } from './agent-selector';
 import { VariantSelector } from './variant-selector';
 
@@ -55,7 +55,7 @@ export interface ComposerOverflowMenuProps {
   showVariant: boolean;
 
   reasoningModel: ReasoningEffortModelKey | null;
-  projectId: string | undefined;
+  workspaceId: string | undefined;
   showReasoningEffort: boolean;
 }
 
@@ -89,7 +89,7 @@ export function ComposerOverflowMenu({
   onVariantChange,
   showVariant,
   reasoningModel,
-  projectId,
+  workspaceId,
   showReasoningEffort,
 }: ComposerOverflowMenuProps) {
   const [open, setOpen] = useState(false);
@@ -132,7 +132,7 @@ export function ComposerOverflowMenu({
         )}
         {showReasoningEffort && (
           <OverflowRow label="Thinking">
-            <ReasoningEffortSelector model={reasoningModel} projectId={projectId} />
+            <ReasoningEffortSelector model={reasoningModel} workspaceId={workspaceId} />
           </OverflowRow>
         )}
         {variants.length > 0 && (

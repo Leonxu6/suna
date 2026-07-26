@@ -18,7 +18,7 @@ The token is shown once — put it in your backend's environment as `KORTIX_API_
 - The API key (a `kortix_pat_…` token) rides **your** project role, so it can
   start sessions on any project you can — no extra setup, any plan.
 - For CI / least-privilege machine identities, a **Service account** (Settings →
-  Service accounts) works too, but it must be granted `project.session.start`
+  Service accounts) works too, but it must be granted `workspace.session.start`
   via an IAM policy first (an enterprise feature). **Start with the API key.**
 
 A session started with either token is recorded with `origin: "backend"`, which
@@ -189,7 +189,7 @@ both mintable with your API key:
    await kortix.project(projectId).connectors.profiles.activate(profile.profile_id);
    // → bind at session start: connector_bindings: { 'user-mcp': { profile_id: profile.profile_id } }
    ```
-   All of these are gated by `project.connector.write` (editor-tier and up) — a
+   All of these are gated by `workspace.connector.write` (editor-tier and up) — a
    dashboard API key rides that automatically.
 
    **OAuth apps (Gmail, Slack, Notion — `provider: 'pipedream'`).** There's no
@@ -234,7 +234,7 @@ both mintable with your API key:
 
 > **Revoked mid-session fails closed.** If an end-user disconnects their account
 > (the profile goes `revoked`) while a session is live, the broker returns
-> **null** for that connector — it never falls back to a shared project default.
+> **null** for that connector — it never falls back to a shared workspace default.
 > The agent's call to that connector fails; your wrapper should detect it and
 > prompt the user to reconnect — re-run the profile's connect steps
 > (`updateCredential` + `activate` for a static connector, or `pipedreamConnect` +

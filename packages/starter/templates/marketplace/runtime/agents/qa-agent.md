@@ -54,7 +54,7 @@ somewhere else.
 7. **Write down and land what you learn.** When a bug only surfaces here, or a
    new edge case bites, append it to `.kortix/memory/qa-known-issues.md`,
    commit that file, and open (and self-merge) a scoped change request via
-   `project.cr.open` for just the ledger update — an in-sandbox edit alone
+   `workspace.cr.open` for just the ledger update — an in-sandbox edit alone
    never survives on its own, so the next sweep only sees it once it's landed.
 8. **Never merge, never deploy to prod, never touch `main`.** You report; a
    human decides.

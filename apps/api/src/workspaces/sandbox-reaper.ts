@@ -293,14 +293,14 @@ export async function reapAndReconcileSandboxes(now = new Date()): Promise<ReapR
       externalId: sessionSandboxes.externalId,
       metadata: sessionSandboxes.metadata,
       warmState: sql<string | null>`
-        ${projectSessions.metadata}->'warm_session'->>'state'
+        ${workspaceSessions.metadata}->'warm_session'->>'state'
       `,
       createdAt: sessionSandboxes.createdAt,
     })
     .from(sessionSandboxes)
     .innerJoin(
-      projectSessions,
-      eq(projectSessions.sessionId, sessionSandboxes.sessionId),
+      workspaceSessions,
+      eq(workspaceSessions.sessionId, sessionSandboxes.sessionId),
     )
     .where(and(
       eq(sessionSandboxes.status, 'active'),

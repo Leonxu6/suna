@@ -60,7 +60,7 @@ export function KortixLayerFields({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__inherit__">Project default</SelectItem>
+                <SelectItem value="__inherit__">Workspace default</SelectItem>
                 {sandboxOptions.map((option) => (
                   <SelectItem key={option.id} value={option.id}>
                     {option.label}

@@ -356,7 +356,7 @@ function SandboxPicker({
               )}
             </div>
             <div className="text-muted-foreground text-xs">
-              Uses the selected agent, project, or platform default.
+              Uses the selected agent, workspace, or platform default.
             </div>
           </div>
         </DropdownMenuItem>

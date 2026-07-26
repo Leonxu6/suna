@@ -172,7 +172,7 @@ export const BottomBar = forwardRef<BottomBarRef, BottomBarProps>(function Botto
   // slotted before the destructive tail. Share renders only when the caller
   // passes a handler (gated on can_manage_sharing upstream).
   // Rename/Share/Delete rows render only when their handler is provided —
-  // the caller gates them on the resolved project-session row (and Share
+  // the caller gates them on the resolved workspace-session row (and Share
   // additionally on can_manage_sharing), mirroring web's isWorkspaceSession gate.
   const menuItems = useMemo(() => [
     ...(onRenameSession

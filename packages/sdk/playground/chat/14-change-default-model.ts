@@ -1,7 +1,7 @@
 /**
  * Step 5 — change the model, with a typesafe model picker.
  *
- * Changes the PROJECT default model via `workspace.modelDefaults.set(...)`,
+ * Changes the WORKSPACE default model via `workspace.modelDefaults.set(...)`,
  * then re-reads the defaults and asserts the change stuck. Every new session
  * in the workspace resolves to this model unless a prompt overrides it.
  *

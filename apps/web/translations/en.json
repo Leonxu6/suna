@@ -1136,7 +1136,7 @@
         "9": "Build a board meeting presentation with strategic recommendations"
       },
       "data": {
-        "0": "Build a financial model workspaceing ARR growth with different pricing scenarios",
+        "0": "Build a financial model projecting ARR growth with different pricing scenarios",
         "1": "Create an interactive sales dashboard tracking metrics by region and quarter",
         "2": "Analyze 50K customer reviews and visualize sentiment trends over time",
         "3": "Design a content calendar tracking campaigns with ROI and engagement charts",
@@ -4780,7 +4780,7 @@
       "line1203JsxTextArpuMo": "ARPU ($/mo)",
       "line1213JsxTextMonthlyChurn": "Monthly Churn (%)",
       "line1223JsxTextTargetArr": "Target ARR ($)",
-      "line1241JsxTextWorkspaceedArrJun2026": "Workspaceed ARR (Jun 2026)",
+      "line1241JsxTextProjectedArrJun2026": "Projected ARR (Jun 2026)",
       "line1247JsxTextTotalSubscribers": "Total Subscribers",
       "line1255JsxTextGapToTarget": "Gap to Target",
       "line1261JsxTextProgressToGoal": "Progress to Goal",
@@ -4792,7 +4792,7 @@
       "line1452JsxTextMrrGoalVsActual": "💰 MRR: Goal vs Actual",
       "line1506JsxTextNewPaidVsChurnGoalVsActual": "📊 New Paid vs Churn: Goal vs Actual",
       "line1565JsxTextMonthlyBreakdownGoalVsActual": "Monthly Breakdown (Goal vs Actual)",
-      "line1566JsxTextWorkspaceedGrowthFromDec2025ToJun2026": "Workspaceed growth from Dec 2025 to Jun 2026 with actual data comparison",
+      "line1566JsxTextProjectedGrowthFromDec2025ToJun2026": "Projected growth from Dec 2025 to Jun 2026 with actual data comparison",
       "line1579JsxTextNewPaid": "New Paid",
       "line1583JsxTextChurnRate": "Churn Rate",
       "line1584JsxTextTotalSubs": "Total Subs",

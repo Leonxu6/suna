@@ -31,17 +31,17 @@ agents:
   seo-director:
     connectors: none
     secrets: none
-    kortix_cli: [project.cr.open]
+    kortix_cli: [workspace.cr.open]
     skills: [seo-operating-system, technical-seo-audit, seo-repo-monitoring, content-seo-workflow, serp-intelligence]
   technical-seo:
     connectors: none
     secrets: none
-    kortix_cli: [project.cr.open]
+    kortix_cli: [workspace.cr.open]
     skills: [seo-operating-system, technical-seo-audit, seo-repo-monitoring]
   content-strategist:
     connectors: none
     secrets: none
-    kortix_cli: [project.cr.open]
+    kortix_cli: [workspace.cr.open]
     skills: [seo-operating-system, content-seo-workflow]
   serp-analyst:
     connectors: none
@@ -51,7 +51,7 @@ agents:
   seo-repo-watchdog:
     connectors: none
     secrets: none
-    kortix_cli: [project.cr.open]
+    kortix_cli: [workspace.cr.open]
     skills: [seo-operating-system, technical-seo-audit, seo-repo-monitoring]
 
 triggers:

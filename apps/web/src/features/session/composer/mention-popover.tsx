@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef } from 'react';
 
-import { getFileIcon } from '@/features/project-files';
+import { getFileIcon } from '@/features/workspace-files';
 import { cn } from '@/lib/utils';
 import { Folder, Loader2, MessageSquare } from 'lucide-react';
 

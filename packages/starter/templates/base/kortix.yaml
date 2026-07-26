@@ -59,7 +59,7 @@ env:
 #       cpu: 2
 #       memory: 4
 #
-# Make one template the project-wide default. An agent can override it with
+# Make one template the workspace-wide default. An agent can override it with
 # `agents.<name>.sandbox`. Omit both fields for the platform default.
 # sandbox:
 #   default: python
@@ -90,12 +90,12 @@ agents:
     secrets: all
     kortix_cli: all
     skills: all
-    # sandbox: python # Must name an available project template, or "default".
+    # sandbox: python # Must name an available workspace template, or "default".
 
   memory-reflector:
     # Scoped specialist: only what its job needs (open — never merge — a
     # memory CR). No connectors, no workspace secrets.
-    kortix_cli: [project.cr.open]
+    kortix_cli: [workspace.cr.open]
 
 # ─── Triggers ────────────────────────────────────────────────────────────
 # Each entry spawns a fresh session that runs `prompt` as its initial

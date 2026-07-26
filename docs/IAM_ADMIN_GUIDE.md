@@ -25,7 +25,7 @@ this target?** Five concepts cover the whole system:
 | --- | --- | --- |
 | **Principal** | Who is asking | A human member, a service account, an agent session, a personal access token |
 | **Scope** | Where the action lives | The **account** (org-wide) or a **project** |
-| **Action** | A precise capability string | `project.secret.read`, `member.invite`, `project.trigger.fire` |
+| **Action** | A precise capability string | `workspace.secret.read`, `member.invite`, `workspace.trigger.fire` |
 | **Role** | A named set of actions | Built-in (`owner`, `admin`, `member`; `manager`, `editor`, `member`) or **custom** |
 | **Policy** | A binding: principal → role @ scope | "Group *Support* holds role *read-run* on project X, until July 31" |
 
@@ -45,7 +45,7 @@ this target?** Five concepts cover the whole system:
 
 3. **Every route enforces its exact capability.** Each API endpoint asserts the specific
    leaf action it represents (e.g. reading a secret value asserts
-   `project.secret.read`). The dashboard mirrors this: a customize section is *visible*
+   `workspace.secret.read`). The dashboard mirrors this: a customize section is *visible*
    if you hold its **read** leaf and *editable* if you also hold its **write** leaf —
    read-without-write renders a clean read-only view. UI visibility is a convenience
    layer; the API re-checks every request.
@@ -119,8 +119,8 @@ Custom roles (section 5) exist for everything the built-ins don't express.
 | Read the project; use chat; **start/stop sessions**; **fire triggers** | ✅ | ✅ | ✅ |
 | Read agents, skills, commands, customization, git history, connectors | ✅ | ✅ | ✅ |
 | See members; read gateway logs & spend; Review inbox (read + submit) | ✅ | ✅ | ✅ |
-| **Browse repo files** (`project.file.read`) | — | ✅ | ✅ |
-| **View secret values** (`project.secret.read`) | — | ✅ | ✅ |
+| **Browse repo files** (`workspace.file.read`) | — | ✅ | ✅ |
+| **View secret values** (`workspace.secret.read`) | — | ✅ | ✅ |
 | Edit anything (agents, skills, commands, files, customization, connectors, secrets) | — | ✅ | ✅ |
 | Create/update/delete triggers; deploy; push/merge via gitops; act on reviews | — | ✅ | ✅ |
 | Set gateway budgets | — | ✅ | ✅ |
@@ -144,7 +144,7 @@ tabs **People** and **Invite**.
 
 ### Adding people
 
-- **Invite** (needs `project.members.manage`, i.e. project Manager or account
+- **Invite** (needs `workspace.members.manage`, i.e. project Manager or account
   owner/admin): enter emails, pick `manager` / `editor` / `member`, optionally set an
   expiry. Existing users are added instantly; unknown emails receive an **account
   invitation carrying a bootstrap project grant** — accepting it joins the org *and* the
@@ -281,8 +281,8 @@ fire triggers, but can't browse files, read secret values, or edit anything.
 **B. "Secrets manager" — floor access plus secrets**
 ```
 key: secrets_manager   scope: project
-actions: project.read, project.session.start, project.session.stop,
-         project.secret.read, project.secret.write
+actions: workspace.read, workspace.session.start, workspace.session.stop,
+         workspace.secret.read, workspace.secret.write
 ```
 Bind to the person/group on the project **with no built-in grant**. They see the
 customize rail with just the sections they can read; Environment variables is fully
@@ -291,18 +291,18 @@ editable; everything else is invisible or read-only.
 **C. "Read-only auditor" — see everything, change nothing**
 ```
 key: auditor   scope: project
-actions: project.read, project.file.read, project.secret.read,
-         project.gitops.read, project.agent.read, project.skill.read,
-         project.command.read, project.customize.read, project.connector.read,
-         project.trigger.read, project.session.read, project.members.read,
-         project.review.read, project.gateway.logs.read, project.gateway.spend.read
+actions: workspace.read, workspace.file.read, workspace.secret.read,
+         workspace.gitops.read, workspace.agent.read, workspace.skill.read,
+         workspace.command.read, workspace.customize.read, workspace.connector.read,
+         workspace.trigger.read, workspace.session.read, workspace.members.read,
+         workspace.review.read, workspace.gateway.logs.read, workspace.gateway.spend.read
 ```
 Every customize section renders read-only; every mutation 403s server-side.
 
 **D. "Member manager" — delegate membership without edit rights**
 ```
 key: member_manager   scope: project
-actions: project.read, project.members.read, project.members.manage
+actions: workspace.read, workspace.members.read, workspace.members.manage
 ```
 Can invite/remove/re-role people on the bound project but cannot edit the project
 itself.
@@ -310,7 +310,7 @@ itself.
 **CLI equivalents:**
 ```bash
 kortix roles create secrets_manager --name "Secrets Manager" --scope project \
-  --actions project.read,project.session.start,project.session.stop,project.secret.read,project.secret.write
+  --actions workspace.read,workspace.session.start,workspace.session.stop,workspace.secret.read,workspace.secret.write
 kortix roles assign secrets_manager --to member:<user-id> --project <project-id>
 kortix roles assignments --project <project-id>
 kortix roles export > iam-roles.toml     # IAM-as-code snapshot
@@ -529,7 +529,7 @@ effective = (launching user's role  |  agent's standing role)
       secrets: all             # which project secrets it may read ($ENV)
       kortix_cli: all          # which Kortix platform actions it may perform
     release-bot:
-      kortix_cli: [project.cr.open, project.trigger.create]   # exactly two powers
+      kortix_cli: [workspace.cr.open, workspace.trigger.create]   # exactly two powers
       connectors: [github]
       secrets: [DEPLOY_KEY]
   ```
@@ -540,10 +540,10 @@ effective = (launching user's role  |  agent's standing role)
   its own powers in a change request, but the change only takes effect once a human
   merges it.
 - Grantable `kortix_cli` actions are the project action catalog (§12); `'all'` and
-  `'*'` mean unrestricted. `project.cr.open`/`project.cr.merge` and
-  `project.gitops.push`/`project.gitops.merge` are alias pairs — either spelling works.
+  `'*'` mean unrestricted. `workspace.cr.open`/`workspace.cr.merge` and
+  `workspace.gitops.push`/`workspace.gitops.merge` are alias pairs — either spelling works.
 - **Secrets and connectors** can be scoped from the dashboard without touching YAML:
-  **Customize → Agents → Access scope** (needs `project.agent.write`; saves as a
+  **Customize → Agents → Access scope** (needs `workspace.agent.write`; saves as a
   manifest commit). `kortix_cli` is deliberately **not** editable in the UI — platform
   powers are a sharper escalation and stay a reviewed manifest change.
 
@@ -560,7 +560,7 @@ hard-lock an agent regardless of who runs it.
 ### Assigning agents to people (resource grants + inheritance)
 
 **Customize → Members → Resource access** assigns an agent to a member or group
-(`project.members.manage` required). Two effects:
+(`workspace.members.manage` required). Two effects:
 
 1. **Scoping** — once an agent has ≥ 1 assignment it becomes *scoped*: only assignees
    (and owners/admins) can use it. Unassigned agents remain open to the whole project.
@@ -663,7 +663,7 @@ audit log records both the grant and the expiry event.
 ```yaml
 agents:
   release-bot:
-    kortix_cli: [project.cr.open, project.trigger.create]
+    kortix_cli: [workspace.cr.open, workspace.trigger.create]
     connectors: [github]
     secrets: [DEPLOY_KEY]
 ```
@@ -673,7 +673,7 @@ else, no matter who launches them (the grant intersects the launcher's role).
 **Prove "who could touch production secrets" to an auditor**
 1. `/accounts/{id}?tab=audit` → filter `iam.` → export JSONL (grants/revocations).
 2. Project → Customize → Members: effective roles with sources (direct / group / admin).
-3. `GET /iam/members/{userId}/effective?action=project.secret.read` for a live yes/no
+3. `GET /iam/members/{userId}/effective?action=workspace.secret.read` for a live yes/no
    per user.
 
 ---
@@ -684,21 +684,21 @@ else, no matter who launches them (the grant intersects the launcher's role).
 
 | Family | Actions |
 | --- | --- |
-| Core | `project.read` · `project.write` · `project.delete` |
-| Change requests | `project.cr.open` · `project.cr.merge` *(aliases of `gitops.push`/`gitops.merge`)* |
-| Sessions | `project.session.read` · `project.session.start` · `project.session.stop` |
-| Members | `project.members.read` · `project.members.manage` |
-| Triggers | `project.trigger.read` · `.create` · `.update` · `.delete` · `.fire` |
-| LLM gateway | `project.gateway.logs.read` · `.spend.read` · `.budget.set` · `.keys.manage` |
-| Agents | `project.agent.read` · `project.agent.write` |
-| Skills | `project.skill.read` · `project.skill.write` |
-| Commands | `project.command.read` · `project.command.write` |
-| Files | `project.file.read` · `project.file.write` |
-| Customization | `project.customize.read` · `project.customize.write` |
-| Git ops | `project.gitops.read` · `project.gitops.push` · `project.gitops.merge` |
-| Secrets | `project.secret.read` · `project.secret.write` |
-| Connectors | `project.connector.read` · `project.connector.write` |
-| Review Center | `project.review.read` · `project.review.submit` · `project.review.act` |
+| Core | `workspace.read` · `workspace.write` · `workspace.delete` |
+| Change requests | `workspace.cr.open` · `workspace.cr.merge` *(aliases of `gitops.push`/`gitops.merge`)* |
+| Sessions | `workspace.session.read` · `workspace.session.start` · `workspace.session.stop` |
+| Members | `workspace.members.read` · `workspace.members.manage` |
+| Triggers | `workspace.trigger.read` · `.create` · `.update` · `.delete` · `.fire` |
+| LLM gateway | `workspace.gateway.logs.read` · `.spend.read` · `.budget.set` · `.keys.manage` |
+| Agents | `workspace.agent.read` · `workspace.agent.write` |
+| Skills | `workspace.skill.read` · `workspace.skill.write` |
+| Commands | `workspace.command.read` · `workspace.command.write` |
+| Files | `workspace.file.read` · `workspace.file.write` |
+| Customization | `workspace.customize.read` · `workspace.customize.write` |
+| Git ops | `workspace.gitops.read` · `workspace.gitops.push` · `workspace.gitops.merge` |
+| Secrets | `workspace.secret.read` · `workspace.secret.write` |
+| Connectors | `workspace.connector.read` · `workspace.connector.write` |
+| Review Center | `workspace.review.read` · `workspace.review.submit` · `workspace.review.act` |
 
 Account actions: `account.read/write/delete`, `billing.read/write`, `audit.read`,
 `member.read/invite/update/remove`, `member.super_admin.grant`,
@@ -717,7 +717,7 @@ Per-trigger scope: `trigger.read/update/delete/fire`.
 | Member detail | `/accounts/{accountId}/members/{userId}` |
 | Project members / group grants / custom-role bindings / resource access | `/projects/{id}/customize/members` |
 | Agent access scope | `/projects/{id}/customize/agents` |
-| Repo files (gated `project.file.read`) | `/projects/{id}/files` |
+| Repo files (gated `workspace.file.read`) | `/projects/{id}/files` |
 | Sign-in (SSO domain routing) | `/auth` |
 
 ### API quick reference
@@ -767,7 +767,7 @@ GET /v1/accounts/{id}/audit (+ /export)                     GET|POST …/audit/w
 | SCIM works, then stops | Entitlement lapsed (checked per request) or token revoked/expired → check tier + token status |
 | User keeps access ~seconds after revoke | The 15 s cache TTL across replicas — by design; writes bust the local replica immediately |
 | Okta "Test Connector" fails | Wrong base URL (must be `https://<api-origin>/scim/v2/accounts/{accountId}`) or missing bearer token |
-| Member can't see the Files page | Floor `member` lacks `project.file.read` — raise to editor or grant a custom role with the leaf |
+| Member can't see the Files page | Floor `member` lacks `workspace.file.read` — raise to editor or grant a custom role with the leaf |
 | Agent gets 403 on a platform action | Its `kortix_cli` grant lacks the action (or its standing role does) → widen the manifest grant via CR |
 
 ---

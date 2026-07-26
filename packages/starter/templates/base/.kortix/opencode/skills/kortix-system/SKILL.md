@@ -428,7 +428,7 @@ agents:
   release-bot:                          # = the agent's .md name (.kortix/opencode/agents/release-bot.md)
     sandbox: ml                         # default environment for this agent
     connectors: [github]                # which connector profiles it may call   (default: none)
-    kortix_cli: [project.write, project.cr.open]    # what it may do via the Kortix CLI/API (default: none)
+    kortix_cli: [workspace.write, workspace.cr.open]    # what it may do via the Kortix CLI/API (default: none)
 ```
 
 **Which file owns what — never duplicate across the boundary:**
@@ -453,26 +453,26 @@ agents:
 
 **`kortix_cli` — the grantable enum** (workspace-scoped only; account-level admin actions
 like `member.*` / `billing.*` / `project.create` can NEVER be granted to an agent — nor can
-`project.delete` / `project.members.manage` / `project.gateway.keys.manage`: the workspace-role
+`workspace.delete` / `workspace.members.manage` / `workspace.gateway.keys.manage`: the workspace-role
 collapse promoted those three to ACCOUNT owner/admin authority even though they still target a
 specific workspace). Run `kortix validate --scopes` to print this list:
 
 ```
-project.read  project.write
-project.cr.open  project.cr.merge          # opening a CR ≠ merging it (merge lands code on main)
-project.session.read  project.session.start  project.session.stop  project.session.bindings.write
-project.members.read
-project.trigger.read  project.trigger.create  project.trigger.update  project.trigger.delete  project.trigger.fire
-project.gateway.logs.read  project.gateway.spend.read  project.gateway.budget.set
-project.agent.read  project.agent.write
-project.skill.read  project.skill.write
-project.command.read  project.command.write
-project.file.read  project.file.write
-project.customize.read  project.customize.write
-project.gitops.read  project.gitops.push  project.gitops.merge
-project.secret.read  project.secret.write
-project.connector.read  project.connector.write  project.connector.profiles.manage   # channels (Slack/meet/email) send + connect are gated here
-project.review.read  project.review.submit  project.review.act
+workspace.read  workspace.write
+workspace.cr.open  workspace.cr.merge          # opening a CR ≠ merging it (merge lands code on main)
+workspace.session.read  workspace.session.start  workspace.session.stop  workspace.session.bindings.write
+workspace.members.read
+workspace.trigger.read  workspace.trigger.create  workspace.trigger.update  workspace.trigger.delete  workspace.trigger.fire
+workspace.gateway.logs.read  workspace.gateway.spend.read  workspace.gateway.budget.set
+workspace.agent.read  workspace.agent.write
+workspace.skill.read  workspace.skill.write
+workspace.command.read  workspace.command.write
+workspace.file.read  workspace.file.write
+workspace.customize.read  workspace.customize.write
+workspace.gitops.read  workspace.gitops.push  workspace.gitops.merge
+workspace.secret.read  workspace.secret.write
+workspace.connector.read  workspace.connector.write  workspace.connector.profiles.manage   # channels (Slack/meet/email) send + connect are gated here
+workspace.review.read  workspace.review.submit  workspace.review.act
 ```
 
 `kortix validate` validates `agents:` (v2) / `[[agents]]` (v1) — rejecting unknown /

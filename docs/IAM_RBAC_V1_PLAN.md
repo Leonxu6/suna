@@ -12,7 +12,7 @@
 
 **The reality (verified):** The IAM engine is already Cloudflare-shaped and ~70% there — but it has **two structural gaps** that make intra-project scoping impossible today:
 
-1. **Everything below the project collapses to `project.read` / `project.write`.** `loadProjectForUser(c, id, 'read'|'write'|'manage')` is the gate for Agents, Skills, Commands, Schedules, Webhooks, Files, Customize, Git Ops — and `manage` even maps to `project.write` ([access.ts:238](apps/api/src/projects/lib/access.ts)). There are **no per-capability action strings**, so there is nothing to toggle.
+1. **Everything below the project collapses to `workspace.read` / `workspace.write`.** `loadProjectForUser(c, id, 'read'|'write'|'manage')` is the gate for Agents, Skills, Commands, Schedules, Webhooks, Files, Customize, Git Ops — and `manage` even maps to `workspace.write` ([access.ts:238](apps/api/src/projects/lib/access.ts)). There are **no per-capability action strings**, so there is nothing to toggle.
 2. **Roles are 6 frozen `Set`s in code**, not data ([role-perms.ts:57,102](apps/api/src/iam/role-perms.ts)). The `role.*` / `policy.*` actions ([actions.ts:45-52](apps/api/src/iam/actions.ts)), the `VALID_ACTIONS` custom-role validator ([actions.ts:133](apps/api/src/iam/actions.ts)), and `ACTION_CATALOG` ([actions.ts:157](apps/api/src/iam/actions.ts)) are **reserved with zero engine consumers**. No custom/department roles exist.
 
 **The unlock (verified, and the reason this is "activate + extend", not greenfield):** the frontend **already ships a complete IAM management SDK** — [`apps/web/src/lib/iam-client.ts`](apps/web/src/lib/iam-client.ts) defines `IamRole`, `IamPolicy`, `PrincipalType`, `PolicyScopeType`, `ActionCatalogEntry`, and calls `GET/POST /accounts/:id/iam/roles`, `PUT /iam/roles/:id/permissions`, `GET /iam/actions`, full `/iam/policies` CRUD + `:bulk-import` + `:simulate` + `roles/:id/usage`. **Those backend routes 404 today.** The contract is pre-designed; we build the backend to match it and wire the engine to read it.
@@ -25,7 +25,7 @@
 
 ### 1.1 The engine — `authorizeV2` ([engine-v2.ts:274](apps/api/src/iam/engine-v2.ts))
 - Single role, **allow-only, highest-wins**. No deny, no conditions. V1 policy engine retired (`engine.ts` is type-only).
-- `scopeForActionV2` ([engine-v2.ts:53](apps/api/src/iam/engine-v2.ts)) = **prefix switch**: `account.*/billing.*/audit.*/member.*/group.*/role.*/policy.*/token.*` → `account`; **everything else → `project`**. (Good: new `project.agent.*` etc. fall through to `project` automatically.)
+- `scopeForActionV2` ([engine-v2.ts:53](apps/api/src/iam/engine-v2.ts)) = **prefix switch**: `account.*/billing.*/audit.*/member.*/group.*/role.*/policy.*/token.*` → `account`; **everything else → `project`**. (Good: new `workspace.agent.*` etc. fall through to `project` automatically.)
 - Decision = `PROJECT_ROLE_PERMS[effectiveRole].has(action)` (project) / `ACCOUNT_ROLE_PERMS[role].has(action)` (account) ([role-perms.ts:132-139](apps/api/src/iam/role-perms.ts)).
 - **Role merge** `deriveEffectiveProjectRole` ([engine-v2.ts:78](apps/api/src/iam/engine-v2.ts)): fold the implicit account role (owner/admin → `manager`), the direct `project_members` row, and every `project_group_grants` row via `maxProjectRole` (viewer<editor<manager). **No source can subtract.**
 - **Owner / admin / super_admin bypass ALL project gates** ([engine-v2.ts:304](apps/api/src/iam/engine-v2.ts), `loadEffectiveProjectRole:224`). → Department isolation cannot contain an account owner/admin (see Open Q1).
@@ -33,11 +33,11 @@
 
 ### 1.2 The collapse point ([access.ts:238](apps/api/src/projects/lib/access.ts)) — verified verbatim
 ```
-read   → project.read
-write  → project.write
-manage → project.write   // "editors aren't accidentally locked out"; stricter routes add an explicit assertAuthorized on top
+read   → workspace.read
+write  → workspace.write
+manage → workspace.write   // "editors aren't accidentally locked out"; stricter routes add an explicit assertAuthorized on top
 ```
-So **every feature route bottoms out at `project.read` or `project.write`** (r3/r4/r5/r8/r9/r10). The Members surface ([r6.ts](apps/api/src/projects/routes/r6.ts)) is the **proven pattern** for stricter gating: `loadProjectForUser('write')` + an explicit `assertAuthorized(...members.manage)`.
+So **every feature route bottoms out at `workspace.read` or `workspace.write`** (r3/r4/r5/r8/r9/r10). The Members surface ([r6.ts](apps/api/src/projects/routes/r6.ts)) is the **proven pattern** for stricter gating: `loadProjectForUser('write')` + an explicit `assertAuthorized(...members.manage)`.
 
 ### 1.3 Roles & actions
 - 6 roles as **additive slices** ([role-perms.ts](apps/api/src/iam/role-perms.ts)): account `MEMBER_BASELINE` + `ADMIN_EXTRAS` + `OWNER_ONLY`; project `VIEWER_BASELINE` + `EDITOR_EXTRAS` + `MANAGER_ONLY`. (Additive shape = trivial to seed into `iam_role_actions`.)
@@ -82,21 +82,21 @@ Add to `PROJECT_ACTIONS` ([actions.ts:68](apps/api/src/iam/actions.ts)), `resour
 
 | Resource | read → VIEWER | write/verb → EDITOR |
 |---|---|---|
-| Agents | `project.agent.read` | `project.agent.write` |
-| Skills | `project.skill.read` | `project.skill.write` |
-| Commands | `project.command.read` | `project.command.write` |
+| Agents | `workspace.agent.read` | `workspace.agent.write` |
+| Skills | `workspace.skill.read` | `workspace.skill.write` |
+| Commands | `workspace.command.read` | `workspace.command.write` |
 | Schedules (cron config) | `project.schedule.read` | `project.schedule.write` |
 | Webhooks (config only¹) | `project.webhook.read` | `project.webhook.write` |
-| Files | `project.file.read` | `project.file.write` |
-| Customize config | `project.customize.read` | `project.customize.write` |
-| Git Ops (human side²) | `project.gitops.read` | `project.gitops.push`, `project.gitops.merge` |
-| Secrets | `project.secret.read` | `project.secret.write` |
-| Connectors | `project.connector.read` | `project.connector.write` |
+| Files | `workspace.file.read` | `workspace.file.write` |
+| Customize config | `workspace.customize.read` | `workspace.customize.write` |
+| Git Ops (human side²) | `workspace.gitops.read` | `workspace.gitops.push`, `workspace.gitops.merge` |
+| Secrets | `workspace.secret.read` | `workspace.secret.write` |
+| Connectors | `workspace.connector.read` | `workspace.connector.write` |
 
 ¹ The inbound webhook **fire** path ([r1.ts:60](apps/api/src/projects/routes/r1.ts)) stays HMAC-authed — no user IAM. Only **config** is gated.
-² `project.cr.open` / `project.cr.merge` already exist but are asserted for the **agent** scope only (r8/r9). The `gitops.*` leaves are the **human** gates.
+² `workspace.cr.open` / `workspace.cr.merge` already exist but are asserted for the **agent** scope only (r8/r9). The `gitops.*` leaves are the **human** gates.
 
-**Backward-compat rule (non-negotiable):** every new WRITE leaf is added to `EDITOR_EXTRAS` and every READ leaf to `VIEWER_BASELINE` in the same change. Existing editors/managers keep **all** current capability. "Deactivate Git Ops" then = a **custom role that OMITS** `project.gitops.*`, never removing it from editor. (If you skip this, the 15s cache hides the regression in manual testing and editors get locked out on cache expiry.)
+**Backward-compat rule (non-negotiable):** every new WRITE leaf is added to `EDITOR_EXTRAS` and every READ leaf to `VIEWER_BASELINE` in the same change. Existing editors/managers keep **all** current capability. "Deactivate Git Ops" then = a **custom role that OMITS** `workspace.gitops.*`, never removing it from editor. (If you skip this, the 15s cache hides the regression in manual testing and editors get locked out on cache expiry.)
 
 Also: wire `ROLE_* / POLICY_*` into `ADMIN_EXTRAS` (account) so admins can manage roles/policies; keep `VALID_ACTIONS` as the **write-time validator** for `iam_role_actions`.
 
@@ -120,7 +120,7 @@ Also: wire `ROLE_* / POLICY_*` into `ADMIN_EXTRAS` (account) so admins can manag
 This is the single biggest correctness risk. A file-based resource (agents/skills/commands/memory) is committed via git/CR, so an API gate alone is bypassable via raw `git push`.
 
 1. **API routes** (primary): copy the r6 Members pattern — `loadProjectForUser('write')` + explicit `assertAuthorized(leaf, {type:'project', id})`. Cover the **CR-merge path** too, not just direct edits.
-2. **Sandbox / git-proxy** (Phase 4): `authorizeGitProxy` consumes the `GitScope` it already receives (receive-pack=write/upload-pack=read are already split at `git-proxy/index.ts:168`); gate write/push on the launching user's `project.gitops.push`; **stamp role caps into the session token** at mint (`session-sandbox.ts:106`, where `agentGrant` is already stamped). **DEFAULT-ALLOW legacy tokens with no caps stamped** or you break the entire boot fleet.
+2. **Sandbox / git-proxy** (Phase 4): `authorizeGitProxy` consumes the `GitScope` it already receives (receive-pack=write/upload-pack=read are already split at `git-proxy/index.ts:168`); gate write/push on the launching user's `workspace.gitops.push`; **stamp role caps into the session token** at mint (`session-sandbox.ts:106`, where `agentGrant` is already stamped). **DEFAULT-ALLOW legacy tokens with no caps stamped** or you break the entire boot fleet.
 3. **Automation / tokens** (Phase 4): stamp the trigger owner's effective caps onto spawned session tokens; bridge service accounts via `iam_policies(principal_type='token')` with a **safe default** so Slack/cron don't 403.
 4. **Frontend** (Phase 3): `useProjectCan(projectId, action)` via a **`:batch` probe** (one call, not ~13 fan-out per overlay open); map each of the 16 `CustomizeSection` → leaf action; gate the **rail item AND the deep-link route**; **default-hide on load/error**; invalidate iam-permission query keys on mutation; remove the dead `useCan` path.
 
@@ -133,7 +133,7 @@ This is the single biggest correctness risk. A file-based resource (agents/skill
 | Phase | Goal | Ships | Risk |
 |---|---|---|---|
 | **0 — Cache revoke-invalidation** | Every grant/revoke takes effect immediately (any gate becomes a real boundary) | `ttl-memo` keyed invalidation + wire into all grant/group mutations + e2e asserting immediacy | **Low** — over-invalidation just costs a cache miss |
-| **1 — Leaf actions + route gates** | Mint per-capability leaves; route each through explicit `assertAuthorized`; editors keep everything | `actions.ts` leaves + `RESOURCE_TYPES`; add to `EDITOR_EXTRAS`/`VIEWER_BASELINE`; migrate r3/r4/r5/r8/r9/r10 gates per-capability | **Med-High** — ~131 `loadProjectForUser` callsites; a missed route fails **open** to `project.write`. `e2e-projects-contract` mocks `assertAuthorized` to no-op (won't catch) → **live ke2e suite is the guard**. Migrate per-capability, not big-bang |
+| **1 — Leaf actions + route gates** | Mint per-capability leaves; route each through explicit `assertAuthorized`; editors keep everything | `actions.ts` leaves + `RESOURCE_TYPES`; add to `EDITOR_EXTRAS`/`VIEWER_BASELINE`; migrate r3/r4/r5/r8/r9/r10 gates per-capability | **Med-High** — ~131 `loadProjectForUser` callsites; a missed route fails **open** to `workspace.write`. `e2e-projects-contract` mocks `assertAuthorized` to no-op (won't catch) → **live ke2e suite is the guard**. Migrate per-capability, not big-bang |
 | **2 — DB custom roles** | Engine reads roles from DB; 6 built-ins seeded as `is_builtin`; enables capability deactivation | `iam_roles`+`iam_role_actions`+enum (migration); seed migration; `resolveEffectiveActions` union + `hasCustomPolicies`; build the dark `/iam/roles`, `/iam/roles/:id/permissions`, `/iam/actions` backend; gate on `ROLE_*` | **Med** — touches hot authorize path. Mitigate: `hasCustomPolicies` short-circuit + **seed-equality test** (DB path == frozen-Set path for built-ins) |
 | **3 — Policies + dept scoping + frontend** | Assign roles to members/groups @ project scope; the "one company project, scoped departments" flow + capability-toggle UI; seed read+run "User" role | `iam_policies` + engine union; `/iam/policies` CRUD; Roles tab + action-catalog checkbox matrix (wire dark `iam-client`); `useProjectCan` section gating; SA bridge | **Med** — wrong section→action map can hide sections from legit managers (gate rail + deep-link together, default-hide); SA bridge must default-allow legacy |
 | **4 — Bypass seams + per-resource grants** | Enforce caps sandbox-side; resource-subset isolation (fail-closed) for true "can't see the rest" | `authorizeGitProxy` honors `GitScope` + token caps (default-allow legacy); trigger/SA cap stamping; `iam_resource_grants` + `isResourceAccessibleBy` (lift `share.ts`); group tab in SharingPicker | **High** — `authorizeGitProxy` is the auth point for **all** git traffic; too-strict breaks clone/push on every boot. **Ship behind a per-account flag; default-allow legacy** |
@@ -146,7 +146,7 @@ This is the single biggest correctness risk. A file-based resource (agents/skill
 
 1. **Owner/admin bypass:** owners/admins/super-admins bypass all project gates by design — department isolation only contains plain members + custom-role holders. Accept for v1, or build a "restricted admin"? → **Recommend accept** (big design fork otherwise).
 2. **Deactivation semantics under union:** v1 is union/highest-wins, so a Marketing role that omits Git Ops gives **no** protection if the user **also** has plain editor via another group. Is "this role lacks it" enough, or do you need "this user is denied project-wide" (= explicit DENY, a v2 item)? → **Recommend v1 = union-only, documented; deny in v2.**
-3. **`manage`→`project.write` collapse:** keep + add explicit leaf asserts (low risk, chosen here) vs. introduce a real `project.manage` and re-audit 47 callsites? → **Recommend keep-collapse.**
+3. **`manage`→`workspace.write` collapse:** keep + add explicit leaf asserts (low risk, chosen here) vs. introduce a real `project.manage` and re-audit 47 callsites? → **Recommend keep-collapse.**
 4. **"User/Operator" tier contents:** read-everything + `session.start/exec/stop` + `trigger.fire`? Also `connector.read`? `secret.read` (probably **not**)? → Need your persona definition for the 10-Marketing-operator.
 5. **File-based resource keys:** `iam_resource_grants.resource_id` for agents/skills/commands uses **path/slug** (`.opencode/agent/*`, `kortix.yaml agents:`). Confirm the path convention is stable enough to key grants on, or do we need a resource registry first?
 6. **Service-account default role:** what baseline should an unscoped SA get so existing Slack/automation doesn't break while we bridge `principal_type='token'`?
@@ -157,7 +157,7 @@ This is the single biggest correctness risk. A file-based resource (agents/skill
 
 ## 8. Risks & testing
 
-- **Fail-open on a missed route** (Phase 1): a capability route not migrated keeps `project.write` (editor has it) — safe-ish but means the deactivation silently doesn't apply. The **route manifest / ke2e coverage gate** + `spec/end-to-end.md` updates per changed gate are the guard; the contract test's no-op `assertAuthorized` mock will NOT catch it.
+- **Fail-open on a missed route** (Phase 1): a capability route not migrated keeps `workspace.write` (editor has it) — safe-ish but means the deactivation silently doesn't apply. The **route manifest / ke2e coverage gate** + `spec/end-to-end.md` updates per changed gate are the guard; the contract test's no-op `assertAuthorized` mock will NOT catch it.
 - **Hot-path latency** (Phase 2): the policy join must be skipped via `hasCustomPolicies` for the common (no-custom-roles) account.
 - **Seed equality** (Phase 2): a test must assert the DB-resolved action set for each built-in == the frozen-Set, both before and after cutover.
 - **git-proxy blast radius** (Phase 4): default-allow legacy tokens + per-account flag; one too-strict gate breaks every session boot's clone/push.
@@ -181,13 +181,13 @@ This is the single biggest correctness risk. A file-based resource (agents/skill
 
 ## 10. Implementation progress (branch `feat/iam-rbac-v1`)
 
-**Decisions taken (per §7 recommendations; revisit Q4/Q8 together):** accept owner/admin bypass (Q1); v1 union-only deactivation (Q2); keep `manage`→`project.write` collapse (Q3); defer Phase 4 unless "can't SEE the rest" is hard-required (Q8).
+**Decisions taken (per §7 recommendations; revisit Q4/Q8 together):** accept owner/admin bypass (Q1); v1 union-only deactivation (Q2); keep `manage`→`workspace.write` collapse (Q3); defer Phase 4 unless "can't SEE the rest" is hard-required (Q8).
 
 ### ✅ Done & committed (all additive, tsc-clean, unit-tested, no lockout risk)
 
 - **Phase 0 — cache revoke-invalidation.** `ttl-memo` gains `invalidate(key)` / `invalidateByPrefix(prefix)`; new `iam/cache-invalidation.ts` registry (push-based, no import cycle); the 4 authz memos register; the project-member memo key is unified to `userId`-first so one prefix busts all. Wired into every revoke/demote/role-change site: `grantProjectRole`, project-member + group-grant CRUD (r6/r7), account member remove/role/leave, super-admin toggle, group-membership repo helpers, SCIM users+groups, SSO JIT sync. Grants stay instant (nulls uncached); expiry self-heals within the TTL. Tests: `unit-ttl-memo`, `unit-iam-cache-invalidation`.
 - **Phase 1a — leaf catalog + role seeds.** Added `project.{agent,skill,command,schedule,webhook,file,customize,gitops,secret,connector}.{read,write}` (+ `gitops.push/merge`) to `PROJECT_ACTIONS`; seeded every write leaf into Editor and read leaf into Viewer so no current capability is lost. Guarded by a backward-compat invariant test in `unit-iam-v2-role-perms`.
-- **Phase 1b — route gates (most capabilities).** Asserted leaf actions on every cleanly-routed capability (all behavior-identical for built-in roles → the hooks a custom role omits to deactivate): `project.gitops.merge` (CR merge, r9), `project.gitops.push` (CR create + commit-push, r8), `project.trigger.fire` (manual fire, r4), `project.secret.write` (secret create/delete, r3), `project.connector.write` (OAuth disconnect, r3). Left ungated by design: OAuth **connect** (it's `'read'` today — gating would tighten/lock-out viewers) and file-based agent/skill/command/memory writes (git files via the CR path → covered by `gitops.push`; per-type granularity is Phase 4).
+- **Phase 1b — route gates (most capabilities).** Asserted leaf actions on every cleanly-routed capability (all behavior-identical for built-in roles → the hooks a custom role omits to deactivate): `workspace.gitops.merge` (CR merge, r9), `workspace.gitops.push` (CR create + commit-push, r8), `workspace.trigger.fire` (manual fire, r4), `workspace.secret.write` (secret create/delete, r3), `workspace.connector.write` (OAuth disconnect, r3). Left ungated by design: OAuth **connect** (it's `'read'` today — gating would tighten/lock-out viewers) and file-based agent/skill/command/memory writes (git files via the CR path → covered by `gitops.push`; per-type granularity is Phase 4).
 - **Phase 2 — DB custom roles + engine union.** Migration `iam_roles` + `iam_role_actions` + `iam_policies` (with a **collision guard** dropping any dead V1 `iam_roles`/`iam_policies` first — review before deploy). Engine: `resolveActorV2` also loads the actor's policy action set (member + group, self-contained subquery → same parallel batch, `[]` for no-custom-role accounts); `authorizeV2` + `listAccessibleProjectsV2` union it allow-only with the built-in role. Pure `customPolicyAllows` unit-tested.
 - **Phase 3 (backend) — role + policy management API.** Built the dark `/iam/roles` (list/create/patch/delete + `/:id/permissions` GET/PUT + `/:id/usage`), `/iam/actions`, and `/iam/policies` (list/create/**patch**/delete + `:bulk-delete` + `:bulk-import`) routes to the frontend SDK's exact contract; built-in presets incl. the read+run **"User"** tier; `ROLE_*`/`POLICY_*` wired into `ADMIN_EXTRAS`; allow-only (`effect=allow`, conditions ignored); every mutation busts the affected principals' cache (`invalidateIamCacheForRole`/`…ForPolicyPrincipal`). Pure presets + validator unit-tested. **162 IAM/auth tests green; all 3 typechecks clean; migration lints.**
 
@@ -211,9 +211,9 @@ A second adversarial review hunted every edge case in the now-live model. Fixed 
 
 - **The fold was DEAD at every leaf route (CRITICAL #29).** Routes called bare `assertAuthorized` without the acting token, so `authorizeV2`'s agent fold silently no-op'd — the whole agent-side pass above was inert in practice. Added `assertProjectCapability(c,…)` (threads `c.get('iamTokenId')`) and converted all 24 leaf gates + the membership/credential routes to it. **This is what actually turns the agent grant on.**
 - **Agent mints/revokes its own escape hatch (CRITICAL #30).** A scoped agent token could `POST /cli-token` to mint an *unscoped* sibling (and `DELETE` to DoS siblings). Now both are blocked for agent tokens.
-- **Registry install/update/delete pushed to the default branch ungated (CRITICAL #31).** Now gated on `project.gitops.push`.
+- **Registry install/update/delete pushed to the default branch ungated (CRITICAL #31).** Now gated on `workspace.gitops.push`.
 - **Admin self-escalates via a custom role (CRITICAL #32).** A custom role could carry owner-only / IAM-management actions; an admin could mint it, bind themselves, and become owner. Added `NON_DELEGABLE_ACTIONS` + account/project namespace integrity to `validateActions`.
-- **`loadProjectForUser('manage')` is really only `project.write` (editor).** So membership/credential routes gated only by it leaked to *editors* and (fold-exempt) scoped agents: access-request approve/reject + member-invite + group-grant CRUD now require `project.members.manage`; the raw-push-token endpoint requires `project.gitops.push`; git collaborator-invite requires `members.manage`.
+- **`loadProjectForUser('manage')` is really only `workspace.write` (editor).** So membership/credential routes gated only by it leaked to *editors* and (fold-exempt) scoped agents: access-request approve/reject + member-invite + group-grant CRUD now require `workspace.members.manage`; the raw-push-token endpoint requires `workspace.gitops.push`; git collaborator-invite requires `members.manage`.
 - **Coverage gates** added across the surface: git-credential PUT, Slack connect/disconnect, `PATCH /:projectId` (default_branch/**manifest_path**), session start/restart/create/delete, CR edit/close/reopen, snapshot/template build·rebuild, warm-pool + experimental config — each on the right leaf (or agent-only `assertAgentScope` where a human-tier change would be a regression).
 - **`readManifest` honored a custom `manifest_path` (HIGH #9).** It hardcoded `kortix.toml`, so a custom path silently turned OFF *all* per-agent env/connector scoping (grant resolved to null = unrestricted).
 - **Policy integrity:** reject token-principal policies (the engine never loads them → silent no-op), enforce role↔policy scope-type match (an account-scoped policy smears a project role over every project), reject already-expired policies, validate `scopeId` belongs to the account.
@@ -225,7 +225,7 @@ A second adversarial review hunted every edge case in the now-live model. Fixed 
 ### ✅ Frontend (Phase 3 UI) — built, reviewed, committed
 
 Wired the dark `iam-client` SDK into a working admin surface (workflow-built: 6-reader understanding map → 3 parallel component builds → 4-reviewer adversarial review with every finding independently verified → fixes). **tsc 0 errors web-wide; ESLint clean.**
-- **Foundation** `apps/web/src/lib/use-project-can.ts` + `project-actions.ts` — `useProjectCan(projectId, action)` / `useProjectCans(projectId, actions[])` ride the existing IAM probe with `resourceType:'project'` (NO new endpoint); a client mirror of the project leaf catalog + a `CustomizeSection → {read, write}` map whose read leaves are all Viewer-seeded (so gating never strands a viewer; `channels → connector.*`, leaf-less sections → `project.read`).
+- **Foundation** `apps/web/src/lib/use-project-can.ts` + `project-actions.ts` — `useProjectCan(projectId, action)` / `useProjectCans(projectId, actions[])` ride the existing IAM probe with `resourceType:'project'` (NO new endpoint); a client mirror of the project leaf catalog + a `CustomizeSection → {read, write}` map whose read leaves are all Viewer-seeded (so gating never strands a viewer; `channels → connector.*`, leaf-less sections → `workspace.read`).
 - **Roles tab** `components/iam/roles-tab.tsx` (account settings, gated on `role.create`) — list/create/edit/delete custom roles via a capability checkbox matrix (the matrix IS the deactivation UX); built-in roles read-only; delete warns about policy usage. Mounted via a `role.create` probe appended in-order to `ACCOUNT_PERMISSION_PROBES` + `'roles'` in `VALID_TABS` with a non-manager deep-link fallback.
 - **Policy assignment** `components/iam/policy-assignments.tsx` — bind member/group → custom role @ scope; allow-only (no deny/conditions/token/project_group — matches the backend); client UUID validation + end-of-day-local expiry.
 - **Customize gating** `customize-overlay.tsx` — one batched project-scoped probe hides a rail section (+ blocks its content) when its read leaf is omitted, so a deactivated capability disappears for that department; composes with the experimental-flag gating; schedules/webhooks gated distinctly despite sharing `TriggersView`.
@@ -245,7 +245,7 @@ Decision: an agent is a **standing** teammate — its own role; effective = (age
 ### ✅ Red-team security audit (DONE; 6 attack surfaces, every finding verified, fixes re-verified)
 
 Adversarial pen-test (12 agents: 6 attack + 6 verify, ~1.3M tokens). **Escalation: CLEAN** (can't climb via custom roles / policy binding / membership — NON_DELEGABLE + namespace + scope-match hold; verified "admin-lacks-AND-delegable" set is empty). **Cross-tenant / IDOR: CLEAN** (every bindable id tied to the URL account). Findings, all **fixed + fix-verified** (`42481f10`, `662de897`):
-- **HIGH — executor connector-admin fold bypass.** `combinedAuth` set `agentGrant` but not `iamTokenId`, and `resolveAdmin` (executor/db-deps.ts) authorized on the fold-exempt `project.write` without the token — a scoped agent-session token could create/delete connectors + write SHARED connector credentials it can't even call. Fix: `combinedAuth` sets `iamTokenId`; `resolveAdmin` gates on `project.connector.write` and threads the token so the fold fires. (Found independently by two attackers; fix re-verified end-to-end + no collateral on other combinedAuth routes.)
+- **HIGH — executor connector-admin fold bypass.** `combinedAuth` set `agentGrant` but not `iamTokenId`, and `resolveAdmin` (executor/db-deps.ts) authorized on the fold-exempt `workspace.write` without the token — a scoped agent-session token could create/delete connectors + write SHARED connector credentials it can't even call. Fix: `combinedAuth` sets `iamTokenId`; `resolveAdmin` gates on `workspace.connector.write` and threads the token so the fold fires. (Found independently by two attackers; fix re-verified end-to-end + no collateral on other combinedAuth routes.)
 - **MEDIUM — expired agent-SA policy bricked the agent** (activation ignored expiry while customActions respected it → permanent deny-all). Fix: activation query now respects expiry → an expired/removed binding reverts to baseline (launcher ∩ grant); lock-down = bind a live restrictive role.
 - **DEFENSE-IN-DEPTH** — member/group principal ownership parity in parsePolicyInput (skipped on PATCH since the principal is immutable); bulk-import per-row try/catch (no 500/partial); a unit test locking the `connector.write` fold invariant.
 - **Lows deferred (rationale):** `iam_policies` uniqueness (harmless under union); 15s expiry cache lag (SQL already excludes expired); archived projects in `listAccessible` (cosmetic); warm-token sessionId (attribution); no direct connector-fold e2e (pure `agentGrantGates` now unit-asserted).
@@ -266,8 +266,8 @@ A comprehensive UI/UX + backend review (4 FE + 2 BE reviewers). **Backend securi
 - **`iam_resource_grants`** table (`a07fd345d`) — `(account, project, resource_type, resource_id TEXT, principal member|group, effect)`. `resource_id` is TEXT: agent **name** / skill **slug** (file-based manifest keys). Hand-written migration (drizzle snapshot forked in the merge).
 - **Engine fold** (`92b549e0d`) — `iam/resource-grants.ts`: `isResourceAccessible` pure helper (unit-tested), project+type memo (15s, project-scoped cache bust), CRUD. `authorizeV2` intersects a per-resource check after the role/policy verdict (mirrors the agentGrant fold) — **human members only**; owner/admin/super-admin/SA bypass. `AuthorizeTarget` project variant gains optional `resource:{type,id}`.
 - **Semantics — resource-id-level activation:** a resource is "scoped" once ≥1 grant row exists; **unscoped resources stay project-wide** (no surprise lockouts; scoping agent A restricts only A). Granted = the member, or any of the user's groups.
-- **Resolver + enforcement** (`732722b66`) — `projects/lib/project-resources.ts` maps a `ProjectConfigSummary` → grantable ids (consistent slug/name keying everywhere). `GET /:projectId/detail` **hides** agents/skills the member isn't scoped to. `filterAccessibleProjectResources` (engine, batched). `GET/POST/DELETE /:projectId/resource-grants` (gated `project.members.manage`; POST validates principal∈account + resource∈project).
-- **Launch gate** (`7e69e66aa`) — `POST /:projectId/sessions` asserts `project.agent.read` on the launched agent (`assertProjectCapability` now takes an optional resource), so a scoped-out member can't start a session with an agent they don't have.
+- **Resolver + enforcement** (`732722b66`) — `projects/lib/project-resources.ts` maps a `ProjectConfigSummary` → grantable ids (consistent slug/name keying everywhere). `GET /:projectId/detail` **hides** agents/skills the member isn't scoped to. `filterAccessibleProjectResources` (engine, batched). `GET/POST/DELETE /:projectId/resource-grants` (gated `workspace.members.manage`; POST validates principal∈account + resource∈project).
+- **Launch gate** (`7e69e66aa`) — `POST /:projectId/sessions` asserts `workspace.agent.read` on the launched agent (`assertProjectCapability` now takes an optional resource), so a scoped-out member can't start a session with an agent they don't have.
 - **Frontend** (`2bb1ee796`) — a **"Resource access"** SectionCard in the project Members tab: pick a resource (agents+skills from the repo) + a principal (members+departments) → Grant; lists grants with Remove. Mirrors `ProjectGroupGrantsCard`.
 - **Tests** — pure helper unit (7/0); DB-backed integration (`6a43fd56b`, 4/0: member+group grants, filter hides ungranted/keeps unscoped, delete reopens + busts cache); web typecheck clean.
 
@@ -300,7 +300,7 @@ The deferred "can't even SEE the file" gap is now closed at the HTTP layer (the 
 
 **⚠️ Before deploy:** review the migration's collision-guard `DROP TABLE IF EXISTS iam_roles/iam_policies CASCADE` — it assumes any same-named tables are the dead V1 ones (per `accounts/iam.ts`). Confirm no live data depends on them in dev/prod (expected: none).
 
-**Note:** the leaves are inert for built-in roles (everyone holds them) — the first user-visible deactivation comes from a **custom role** (buildable now via the API) that omits a leaf. Capabilities a custom role can deactivate **today** (all route-gated): git-ops push + merge, schedules/webhooks (config via `project.trigger.*`, manual fire via `trigger.fire`), secrets write, connector disconnect, members.manage, gateway.*. File-based agent/skill/command edits remain under the shared `gitops.push`/CR gate until Phase 4's per-type grants.
+**Note:** the leaves are inert for built-in roles (everyone holds them) — the first user-visible deactivation comes from a **custom role** (buildable now via the API) that omits a leaf. Capabilities a custom role can deactivate **today** (all route-gated): git-ops push + merge, schedules/webhooks (config via `workspace.trigger.*`, manual fire via `trigger.fire`), secrets write, connector disconnect, members.manage, gateway.*. File-based agent/skill/command edits remain under the shared `gitops.push`/CR gate until Phase 4's per-type grants.
 
 ### ✅ Final test verdict — full suite after the `origin/main` merge (2026-06-26)
 

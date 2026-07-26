@@ -125,26 +125,26 @@ export interface CreateWorkspaceSessionInput {
   secrets?: string[];
 }
 
-export interface WarmProjectSessionWorkspaceRefresh {
+export interface WarmWorkspaceSessionWorkspaceRefresh {
   status: 'skipped' | 'unchanged' | 'updated' | 'failed';
   before_sha?: string | null;
   after_sha?: string | null;
   error?: string;
 }
 
-export interface WarmProjectSessionResult {
-  session: ProjectSession;
+export interface WarmWorkspaceSessionResult {
+  session: WorkspaceSession;
   reused: boolean;
-  workspace_refresh: WarmProjectSessionWorkspaceRefresh;
+  workspace_refresh: WarmWorkspaceSessionWorkspaceRefresh;
 }
 
-export interface ClaimWarmProjectSessionInput {
+export interface ClaimWarmWorkspaceSessionInput {
   session_id: string;
   agent_name?: string;
   sandbox_slug?: string;
 }
 
-export interface ProjectOpenCodeSession {
+export interface WorkspaceOpenCodeSession {
   id: string;
   title: string | null;
   parent_id: string | null;
@@ -283,10 +283,10 @@ export async function createWorkspaceSession(workspaceId: string, input?: Create
   return session;
 }
 
-export async function ensureWarmProjectSession(projectId: string) {
+export async function ensureWarmWorkspaceSession(workspaceId: string) {
   const result = unwrap(
-    await backendApi.post<WarmProjectSessionResult>(
-      `/projects/${projectId}/sessions/warm`,
+    await backendApi.post<WarmWorkspaceSessionResult>(
+      `/workspaces/${workspaceId}/sessions/warm`,
       {},
     ),
   );
@@ -294,13 +294,13 @@ export async function ensureWarmProjectSession(projectId: string) {
   return result;
 }
 
-export async function claimWarmProjectSession(
-  projectId: string,
-  input: ClaimWarmProjectSessionInput,
+export async function claimWarmWorkspaceSession(
+  workspaceId: string,
+  input: ClaimWarmWorkspaceSessionInput,
 ) {
   const session = unwrap(
-    await backendApi.post<ProjectSession>(
-      `/projects/${projectId}/sessions/warm/claim`,
+    await backendApi.post<WorkspaceSession>(
+      `/workspaces/${workspaceId}/sessions/warm/claim`,
       input,
     ),
   );
@@ -308,8 +308,8 @@ export async function claimWarmProjectSession(
   return session;
 }
 
-export async function getProjectSession(
-  projectId: string,
+export async function getWorkspaceSession(
+  workspaceId: string,
   sessionId: string,
   options?: { showErrors?: boolean },
 ) {

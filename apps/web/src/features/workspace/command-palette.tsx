@@ -587,9 +587,9 @@ export function CommandPalette() {
 
   const visibleAgents = useMemo(() => {
     if (!agents) return [];
-    const workspaceOnlyAgents = new Set(['workspace-manager']);
+    const projectOnlyAgents = new Set(['project-manager']);
     return agents.filter(
-      (a) => !a.hidden && (featureFlags.enableProjects || !workspaceOnlyAgents.has(a.name)),
+      (a) => !a.hidden && (featureFlags.enableProjects || !projectOnlyAgents.has(a.name)),
     );
   }, [agents]);
 

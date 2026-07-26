@@ -155,7 +155,7 @@ git commit -m "docs(qa): record edge case from PR #<PR_NUMBER>"
 ```
 
 Open (and self-merge) a scoped change request for just this ledger update via
-the `project.cr.open` action — an edit that only lives in the sandbox never
+the `workspace.cr.open` action — an edit that only lives in the sandbox never
 survives on its own; only a landed change request does. Then move to the next
 PR in this sweep's batch, if any, with a clean checkout (Step 1).
 
@@ -178,7 +178,7 @@ PR in this sweep's batch, if any, with a clean checkout (Step 1).
   never written to a log or a comment. The edge re-check is an unauthenticated
   public HTTPS request; no separate credential is needed for it.
 - **Ledger changes only through a change request.** Updates to
-  `.kortix/memory/qa-known-issues.md` land via a scoped `project.cr.open`
+  `.kortix/memory/qa-known-issues.md` land via a scoped `workspace.cr.open`
   change request for just that file — never bundled with anything else.
 - **One result per revision.** Don't re-post for a head SHA already checked;
   re-run only on a genuine new push.

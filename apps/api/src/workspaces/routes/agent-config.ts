@@ -329,7 +329,7 @@ workspacesApp.openapi(
 
     if (governanceBlock.sandbox) {
       try {
-        await resolveTemplateBySlug(await withProjectGitAuth(loaded.row), governanceBlock.sandbox);
+        await resolveTemplateBySlug(await withWorkspaceGitAuth(loaded.row), governanceBlock.sandbox);
       } catch {
         return c.json(
           {
@@ -338,7 +338,7 @@ workspacesApp.openapi(
             issues: [
               {
                 path: `agents.${agentName}.sandbox`,
-                message: 'must name an available project template or "default".',
+                message: 'must name an available workspace template or "default".',
                 severity: 'error',
               },
             ],

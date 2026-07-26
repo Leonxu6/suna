@@ -57,7 +57,7 @@ test('workspace(id).sessions.list forwards manager inventory scope', async () =>
   expect(last().url).toContain('/workspaces/PID123/sessions?scope=workspace');
 });
 
-test('project(id).sessions exposes server-owned warm-session ensure and claim', async () => {
+test('project(id).sessions delegates warm-session ensure and claim to workspace routes', async () => {
   globalThis.fetch = mock(async (url: unknown, opts: { method?: string; body?: unknown } = {}) => {
     const requestUrl = String(url);
     calls.push({
@@ -79,18 +79,29 @@ test('project(id).sessions exposes server-owned warm-session ensure and claim', 
   }) as unknown as typeof fetch;
 
   await kortix.project('PID123').sessions.ensureWarm();
-  expect(last().url).toContain('/projects/PID123/sessions/warm');
+  expect(last().url).toContain('/workspaces/PID123/sessions/warm');
   expect(last().method).toBe('POST');
 
   await kortix.project('PID123').sessions.claimWarm({ session_id: 'SID456' });
-  expect(last().url).toContain('/projects/PID123/sessions/warm/claim');
+  expect(last().url).toContain('/workspaces/PID123/sessions/warm/claim');
   expect(last().method).toBe('POST');
   expect(last().body).toEqual({ session_id: 'SID456' });
 });
 
-test('top-level projects.list hits /projects', async () => {
+test('top-level projects.list delegates to /workspaces', async () => {
+  globalThis.fetch = mock(async (url: unknown, opts: { method?: string } = {}) => {
+    calls.push({
+      url: String(url),
+      method: opts.method ?? 'GET',
+    });
+    return new Response('[]', {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as unknown as typeof fetch;
+
   await kortix.projects.list();
-  expect(last().url).toContain('/projects');
+  expect(last().url).toContain('/workspaces');
 });
 
 test('session(...).audit hits the audit endpoint with the given limit', async () => {

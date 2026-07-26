@@ -1,5 +1,6 @@
 export type RuntimeSnapshotBuildSource =
   | 'session-start'
+  | 'workspace-create'
   | 'project-create'
   | 'cr-merge'
   | 'manual'

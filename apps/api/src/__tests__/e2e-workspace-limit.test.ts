@@ -256,7 +256,7 @@ function provision(name = 'Limited Agent') {
   return createApp().request('/v1/workspaces/provision', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ account_id: ACCOUNT_ID, name }),
+    body: JSON.stringify({ account_id: ACCOUNT_ID, name, provider: 'github' }),
   });
 }
 

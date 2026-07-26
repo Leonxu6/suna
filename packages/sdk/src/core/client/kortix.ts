@@ -531,13 +531,13 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
       },
 
       sessions: {
-        list: (options?: Parameters<typeof P.listProjectSessions>[1]) =>
-          P.listProjectSessions(projectId, options),
-        create: (input?: Parameters<typeof P.createProjectSession>[1]) =>
-          P.createProjectSession(projectId, input),
-        ensureWarm: () => P.ensureWarmProjectSession(projectId),
-        claimWarm: (input: Parameters<typeof P.claimWarmProjectSession>[1]) =>
-          P.claimWarmProjectSession(projectId, input),
+        list: (options?: Parameters<typeof P.listWorkspaceSessions>[1]) =>
+          P.listWorkspaceSessions(workspaceId, options),
+        create: (input?: Parameters<typeof P.createWorkspaceSession>[1]) =>
+          P.createWorkspaceSession(workspaceId, input),
+        ensureWarm: () => P.ensureWarmWorkspaceSession(workspaceId),
+        claimWarm: (input: Parameters<typeof P.claimWarmWorkspaceSession>[1]) =>
+          P.claimWarmWorkspaceSession(workspaceId, input),
       },
 
       /** Review Center — the per-workspace human-in-the-loop inbox (change requests, tool approvals, agent outputs/decisions). */

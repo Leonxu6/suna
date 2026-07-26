@@ -108,7 +108,7 @@ rather than guessing.
 - **Role** → draft the narrower policy (drop the offending statement or scope
   the resource/action).
 
-Open one change request per finding via `project.cr.open` (or one per resource
+Open one change request per finding via `workspace.cr.open` (or one per resource
 group when several findings share a fix). Title it with the resource and
 violation, e.g. `compliance: newly-public bucket acme-uploads`. The CR body is
 the diagnosis from Step 3 (what, when, who) plus the proposed fix. A human
@@ -127,7 +127,7 @@ saying so; don't skip the post just because the sweep is clean.
   (`list-*`, `get-*`, `lookup-events`). Never call a `put-*`, `delete-*`, or
   `update-*` action against AWS from this skill.
 - **No auto-remediation.** Every fix is a proposed, human-approved change
-  request opened via `project.cr.open` — never applied directly, no exceptions
+  request opened via `workspace.cr.open` — never applied directly, no exceptions
   for findings you're confident about.
 - **Fresh every run.** There is no run-to-run ledger here — the only state
   carried between sweeps is the policy file itself, and that's authored by a

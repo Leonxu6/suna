@@ -151,8 +151,8 @@ agents:
   veyris:
     connectors: all
     kortix_cli:
-      - project.read
-      - project.cr.open
+      - workspace.read
+      - workspace.cr.open
 ```
 
 When a project adopts `agents:`, listed agents receive connector and
@@ -337,7 +337,7 @@ This is illustrative, not final syntax.
 [[agents]]
 name = "veyris"
 connectors = ["linear", "gmail"]
-kortix_cli = ["project.read", "project.session.read"]
+kortix_cli = ["workspace.read", "workspace.session.read"]
 skills = ["financial-analysis", "report-writer"]
 commands = []
 workspace = "runtime"
@@ -346,7 +346,7 @@ git = "none"
 [[agents]]
 name = "builder"
 connectors = "all"
-kortix_cli = ["project.read", "project.write", "project.cr.open"]
+kortix_cli = ["workspace.read", "workspace.write", "workspace.cr.open"]
 skills = "all"
 workspace = "branch"
 git = "cr"
@@ -572,7 +572,7 @@ Add audit events for:
 
 1. Should resource ACLs be committed to `kortix.yaml`, stored only in DB, or
    stored in DB with TOML defaults?
-2. Do project viewers get `project.session.start`, or is starting an agent an
+2. Do project viewers get `workspace.session.start`, or is starting an agent an
    editor-level action by default?
 3. Should "use agent" and "view agent definition" be separate by default?
 4. Do skills need user-visible ACLs, or are they only agent-scoped resources?

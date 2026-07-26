@@ -2,7 +2,7 @@
  * Platform API client.
  *
  * The legacy account-level sandbox lifecycle API was removed. This adapter
- * keeps older instance UI call sites pointed at the supported project-session
+ * keeps older instance UI call sites pointed at the supported workspace-session
  * endpoints under /workspaces/:workspaceId/sessions/:sessionId.
  *
  * This module was split into focused submodules for maintainability. The barrel

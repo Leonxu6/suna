@@ -17,7 +17,7 @@ const config = (defaultAgent: string | null) =>
   }) as any;
 
 describe('projectConfigAgentsToOpenCodeAgents', () => {
-  test('places the declared project default first for fallback consumers', () => {
+  test('places the declared workspace default first for fallback consumers', () => {
     expect(
       projectConfigAgentsToOpenCodeAgents(config('memory-reflector')).map((agent) => agent.name),
     ).toEqual(['memory-reflector', 'kortix']);

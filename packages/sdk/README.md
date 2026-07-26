@@ -77,14 +77,14 @@ const kortix = createKortix({
   getToken: () => supabase.auth.getSession().then(s => s.data.session?.access_token ?? null),
 });
 
-// Projects
-const projects = await kortix.projects.list();
-const detail   = await kortix.project(pid).detail();
-await kortix.project(pid).secrets.upsert({ name: 'STRIPE_API_KEY', value });
-const visibleSessions = await kortix.project(pid).sessions.list();
-const projectInventory = await kortix.project(pid).sessions.list({ scope: 'project' }); // manager only
-const warm = await kortix.project(pid).sessions.ensureWarm();
-await kortix.project(pid).sessions.claimWarm({ session_id: warm.session.session_id });
+// Workspaces
+const workspaces = await kortix.workspaces.list();
+const detail = await kortix.workspace(workspaceId).detail();
+await kortix.workspace(workspaceId).secrets.upsert({ name: 'STRIPE_API_KEY', value });
+const visibleSessions = await kortix.workspace(workspaceId).sessions.list();
+const workspaceInventory = await kortix.workspace(workspaceId).sessions.list({ scope: 'workspace' }); // manager only
+const warm = await kortix.workspace(workspaceId).sessions.ensureWarm();
+await kortix.workspace(workspaceId).sessions.claimWarm({ session_id: warm.session.session_id });
 
 // Sessions (id-bound handle)
 const s = kortix.session(workspaceId, sessionId);

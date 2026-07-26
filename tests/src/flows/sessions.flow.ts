@@ -683,20 +683,20 @@ flow(
     requires: ['daytona', 'funded'],
     timeoutMs: 300_000,
     routes: [
-      'POST /v1/projects/:projectId/sessions/warm',
-      'POST /v1/projects/:projectId/sessions/warm/claim',
+      'POST /v1/workspaces/:workspaceId/sessions/warm',
+      'POST /v1/workspaces/:workspaceId/sessions/warm/claim',
     ],
   },
   async (ctx) => {
-    const p = await ctx.fixtures.project({ seed: true });
+    const p = await ctx.fixtures.workspace({ seed: true });
     const owner = ctx.client.as(ctx.P.OWNER);
     let warmSessionId = '';
 
     await ctx.step('first ensure creates one available warm session', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/sessions/warm',
+        '/v1/workspaces/:workspaceId/sessions/warm',
         {},
-        { params: { projectId: p.id } },
+        { params: { workspaceId: p.id } },
       );
       r.status(200)
         .body()
@@ -710,9 +710,9 @@ flow(
 
     await ctx.step('second ensure reuses the same session', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/sessions/warm',
+        '/v1/workspaces/:workspaceId/sessions/warm',
         {},
-        { params: { projectId: p.id } },
+        { params: { workspaceId: p.id } },
       );
       r.status(200)
         .body()
@@ -723,9 +723,9 @@ flow(
 
     await ctx.step('claim changes the warm state atomically', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/sessions/warm/claim',
+        '/v1/workspaces/:workspaceId/sessions/warm/claim',
         { session_id: warmSessionId },
-        { params: { projectId: p.id } },
+        { params: { workspaceId: p.id } },
       );
       r.status(200)
         .body()
@@ -735,18 +735,18 @@ flow(
 
     await ctx.step('a second claim returns the stable conflict code', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/sessions/warm/claim',
+        '/v1/workspaces/:workspaceId/sessions/warm/claim',
         { session_id: warmSessionId },
-        { params: { projectId: p.id } },
+        { params: { workspaceId: p.id } },
       );
       r.status(409).body().has('$.code', 'WARM_SESSION_ALREADY_CLAIMED');
     });
 
     await ctx.step('the next ensure creates the replacement', async () => {
       const r = await owner.post(
-        '/v1/projects/:projectId/sessions/warm',
+        '/v1/workspaces/:workspaceId/sessions/warm',
         {},
-        { params: { projectId: p.id } },
+        { params: { workspaceId: p.id } },
       );
       r.status(200).body().has('$.reused', false);
       const replacementId = r.json<any>().session.session_id;

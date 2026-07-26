@@ -46,7 +46,7 @@ export interface AddSandboxMemberResult {
 }
 
 export async function listSandboxMembers(sandboxId: string): Promise<SandboxMembersResponse> {
-  throw new Error('Sandbox members moved to project access; use project members for project-session sandboxes');
+  throw new Error('Sandbox members moved to workspace access; use workspace members for workspace-session sandboxes');
 }
 
 export async function addSandboxMember(
@@ -54,11 +54,11 @@ export async function addSandboxMember(
   email: string,
   role: 'admin' | 'member' = 'member',
 ): Promise<AddSandboxMemberResult> {
-  throw new Error('Sandbox members moved to project access; invite the user to the project instead');
+  throw new Error('Sandbox members moved to workspace access; invite the user to the workspace instead');
 }
 
 export async function removeSandboxMember(sandboxId: string, userId: string): Promise<void> {
-  throw new Error('Sandbox members moved to project access; update project access instead');
+  throw new Error('Sandbox members moved to workspace access; update workspace access instead');
 }
 
 export async function updateSandboxMemberRole(
@@ -66,7 +66,7 @@ export async function updateSandboxMemberRole(
   userId: string,
   role: SandboxMemberRole,
 ): Promise<void> {
-  throw new Error('Sandbox members moved to project access; update project access instead');
+  throw new Error('Sandbox members moved to workspace access; update workspace access instead');
 }
 
 export async function updateSandboxMemberSpendCap(
@@ -74,7 +74,7 @@ export async function updateSandboxMemberSpendCap(
   userId: string,
   capCents: number | null,
 ): Promise<void> {
-  throw new Error('Sandbox member spend caps are not exposed for project-session sandboxes');
+  throw new Error('Sandbox member spend caps are not exposed for workspace-session sandboxes');
 }
 
 export type ScopeEffect = 'grant' | 'revoke' | null;
@@ -107,14 +107,14 @@ export interface SandboxViewerScopes {
 export async function getViewerSandboxScopes(
   sandboxId: string,
 ): Promise<SandboxViewerScopes> {
-  throw new Error('Sandbox scopes moved to project access for project-session sandboxes');
+  throw new Error('Sandbox scopes moved to workspace access for workspace-session sandboxes');
 }
 
 export async function getSandboxMemberScopes(
   sandboxId: string,
   userId: string,
 ): Promise<SandboxMemberScopes> {
-  throw new Error('Sandbox scopes moved to project access for project-session sandboxes');
+  throw new Error('Sandbox scopes moved to workspace access for workspace-session sandboxes');
 }
 
 export async function updateSandboxMemberScope(
@@ -123,7 +123,7 @@ export async function updateSandboxMemberScope(
   scope: string,
   effect: ScopeEffect,
 ): Promise<void> {
-  throw new Error('Sandbox scopes moved to project access for project-session sandboxes');
+  throw new Error('Sandbox scopes moved to workspace access for workspace-session sandboxes');
 }
 
 // ─── Legacy project ACL inside a sandbox ─────────────────────────────────────
@@ -203,5 +203,5 @@ export async function revokeSandboxProjectAccess(
 }
 
 export async function revokeSandboxInvite(sandboxId: string, inviteId: string): Promise<void> {
-  throw new Error('Sandbox invites moved to project access for project-session sandboxes');
+  throw new Error('Sandbox invites moved to workspace access for workspace-session sandboxes');
 }

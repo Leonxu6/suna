@@ -204,9 +204,9 @@ Also stop if the same failure survives three different fixes (use
 | 3 | API domain | DONE | `019f9afd` | 2026-07-25 | `7f08bc5cc` |
 | 4 | SDK domain | DONE | `019f9afd` | 2026-07-25 | `344a4a294` |
 | 5 | CLI domain | DONE | `019f9afd` | 2026-07-25 | `a85190ab8` |
-| 6 | Web domain and default routing | IN PROGRESS | `019f9afd` | 2026-07-25 | — |
-| 7 | Mobile, tests, and documentation | NOT STARTED | — | — | — |
-| 8 | Full local verification | NOT STARTED | — | — | — |
+| 6 | Web domain and default routing | DONE | `019f9afd` | 2026-07-26 | `d97810fde` + final audit commit |
+| 7 | Mobile, tests, and documentation | DONE | `019f9afd` | 2026-07-26 | `d97810fde` + final audit commit |
+| 8 | Full local verification | IN PROGRESS | `019f9afd` | 2026-07-26 | Post-rebase and PR checks remain |
 | 9 | Pull request | NOT STARTED | — | — | — |
 
 ---
@@ -2845,6 +2845,65 @@ The final deployed ACP and REST presentation plus question matrix passed:
 
 **Shippable to production: YES.** ACP and REST stable completion pass on
 deployed dev.
+
+---
+
+### 2026-07-26 — session `019f9afd` (Workspace domain local completion)
+
+Completed the Project to Workspace domain migration across the API, SDK, CLI,
+web, mobile, tests, starter assets, and documentation.
+
+Canonical contracts:
+
+- API: `/v1/workspaces`.
+- Web: `/workspaces`.
+- CLI: `kortix workspaces`.
+- Environment: `KORTIX_WORKSPACE_ID`.
+- Manifest actions: `workspace.*`.
+
+Deprecated compatibility remains for `/v1/projects`, `/projects`, `kortix
+projects`, published SDK Project exports, database `project*` identifiers,
+`registry:project`, manifest `project:`, and `KORTIX_PROJECT_ID`.
+
+TDD evidence:
+
+- RED: SDK member tests reported **7 pass / 9 fail** because nine messages used
+  Project terminology.
+- GREEN: SDK member tests reported **16 pass / 0 fail** with **24** assertions.
+
+Local verification:
+
+- SDK: **1279 pass / 0 fail**, **6896** assertions.
+- SDK packed-install smoke: pass.
+- CLI: **520 pass / 0 fail**, **1848** assertions.
+- Web: **2214 pass / 0 fail**, **5977** assertions.
+- Mobile: **33 pass / 0 fail**.
+- Starter: **45 pass / 0 fail**, **1195** assertions.
+- Manifest schema: **326 pass / 0 fail**, **514** assertions.
+- API contract: **43 pass / 0 fail**.
+- Registry: **37 pass / 0 fail**.
+- Database: **121 pass / 0 fail**.
+- LLM catalog: **64 pass / 0 fail**, **146** assertions.
+- `ke2e coverage`: **490/702** routes covered, **212** allowlisted, **0**
+  uncovered.
+- Web ESLint: **0 errors**, **31** existing warnings across all changed web
+  source files.
+- Public SDK surface comparison: **0** removed runtime exports and **0** removed
+  type exports.
+- Route manifest: **199** Workspace routes and **199** deprecated Project
+  routes.
+
+Known repository baselines:
+
+- Web typecheck reports two Bun typing errors in `template-url.test.ts`.
+- Web i18n audit reports 70 missing marketing keys per non-English locale and
+  1825 hardcoded UI findings.
+- The API aggregate runner has cross-file mock contamination. The isolated
+  run reported **3784 pass / 49 skip / 24 fail**. Focused Workspace limit and
+  trigger suites pass with a public test `KORTIX_URL`.
+
+**Shippable to production: NOT YET.** The latest `origin/main` rebase, final
+post-rebase gates, PR creation, and required PR checks remain.
 
 ---
 

@@ -8,16 +8,12 @@ import { Paperclip } from 'lucide-react';
 
 import type { FlatModel } from '../model-flatten';
 import type { ModelDefaultControls } from '../model-selector';
-import { ModelSelector } from '../model-selector';
 import { useReasoningEffortControl } from '../reasoning-effort-selector';
-import { ReasoningEffortSelector } from '../reasoning-effort-selector';
 import { VoiceRecorder } from '../voice-recorder';
-import { AgentSelector } from './agent-selector';
-import { ComposerOverflowMenu } from './composer-overflow-menu';
 import { hasComposerOverflowContent } from './composer-overflow';
+import { ComposerOverflowMenu } from './composer-overflow-menu';
 import { SendStopControl } from './send-stop-control';
 import { TokenProgress } from './token-progress';
-import { VariantSelector } from './variant-selector';
 
 /**
  * The composer's bottom toolbar — the piece the "make it feel like ChatGPT
@@ -65,7 +61,7 @@ export interface ComposerToolbarProps {
   selectedVariant: string | null;
   onVariantChange?: (variant: string | null) => void;
 
-  projectId: string | undefined;
+  workspaceId: string | undefined;
 
   messages: MessageWithParts[] | undefined;
   onContextClick?: () => void;
@@ -107,7 +103,7 @@ export function ComposerToolbar({
   variants,
   selectedVariant,
   onVariantChange,
-  projectId,
+  workspaceId,
   messages,
   onContextClick,
   toolbarSlot,
@@ -136,7 +132,7 @@ export function ComposerToolbar({
   // Same live capability check ReasoningEffortSelector uses internally —
   // computed here too so the overflow trigger doesn't render on a model with
   // no reasoning knob and an otherwise-empty overflow.
-  const reasoning = useReasoningEffortControl(selectedModel, projectId);
+  const reasoning = useReasoningEffortControl(selectedModel, workspaceId);
 
   const showOverflow = hasComposerOverflowContent({
     showAgent,
@@ -161,7 +157,9 @@ export function ComposerToolbar({
             </button>
           </TooltipTrigger>
           <TooltipContent side="top">
-            <p>{tHardcodedUi.raw('componentsSessionSessionChatInput.line2252JsxTextAttachFiles')}</p>
+            <p>
+              {tHardcodedUi.raw('componentsSessionSessionChatInput.line2252JsxTextAttachFiles')}
+            </p>
           </TooltipContent>
         </Tooltip>
 
@@ -171,23 +169,23 @@ export function ComposerToolbar({
             is one click away in here instead. */}
         {showOverflow && (
           <ComposerOverflowMenu
-              agents={agents}
-              selectedAgent={selectedAgent}
-              onAgentChange={onAgentChange ?? (() => {})}
-              agentSelectorLocked={agentSelectorLocked}
-              showAgent={showAgent}
-              models={models}
-              selectedModel={selectedModel}
-              onModelChange={onModelChange ?? (() => {})}
-              modelDefaultControls={modelDefaultControls}
-              providers={providers}
-              showModel={showModel}
-              variants={variants}
-              selectedVariant={selectedVariant}
-              onVariantChange={onVariantChange ?? (() => {})}
-              showVariant={showVariant}
-              reasoningModel={selectedModel}
-              projectId={projectId}
+            agents={agents}
+            selectedAgent={selectedAgent}
+            onAgentChange={onAgentChange ?? (() => {})}
+            agentSelectorLocked={agentSelectorLocked}
+            showAgent={showAgent}
+            models={models}
+            selectedModel={selectedModel}
+            onModelChange={onModelChange ?? (() => {})}
+            modelDefaultControls={modelDefaultControls}
+            providers={providers}
+            showModel={showModel}
+            variants={variants}
+            selectedVariant={selectedVariant}
+            onVariantChange={onVariantChange ?? (() => {})}
+            showVariant={showVariant}
+            reasoningModel={selectedModel}
+            workspaceId={workspaceId}
             showReasoningEffort={reasoning.visible}
           />
         )}

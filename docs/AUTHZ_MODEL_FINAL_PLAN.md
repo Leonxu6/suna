@@ -114,7 +114,7 @@ per-agent/per-actor cost rollup** endpoint.
 **Ask:** "Introduce PRIVATE triggers/webhooks. Every resource should be scoped to ownership.
 Remove the concept of everyone brings their own to profile."
 
-**Current state.** Triggers/webhooks are **project-wide visible** to anyone with `project.read`;
+**Current state.** Triggers/webhooks are **project-wide visible** to anyone with `workspace.read`;
 `project_trigger_runtime.ownerUserId` was only ever credential-resolution metadata (now removed)
 — there is **no ownership access-control**. Connectors + secrets *do* have an ownership/grant
 model (share-scope + grants); triggers/skills/commands do not.

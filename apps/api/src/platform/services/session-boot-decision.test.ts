@@ -31,7 +31,7 @@ describe('FIX-A decideSessionBoot — pinned-id boot gating', () => {
     ).toEqual({ bootByTemplateId: 'tpl_pinned' });
   });
 
-  test('a custom template never boots the pinned project-default template id', () => {
+  test('a custom template never boots the pinned workspace-default template id', () => {
     expect(
       decideSessionBoot({
         killSwitchOn: true,

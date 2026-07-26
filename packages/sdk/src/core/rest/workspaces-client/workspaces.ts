@@ -84,7 +84,7 @@ export interface WorkspaceConfigSummary {
     mode: string | null;
     source?: 'opencode' | 'kortix.toml';
     enabled?: boolean;
-    /** Agent-specific sandbox template. null or absent inherits the project default. */
+    /** Agent-specific sandbox template. null or absent inherits the workspace default. */
     sandbox?: string | null;
     /** Per-agent governance from `kortix.yaml` `agents:` (read-only mirror).
      *  `'all'` = unscoped; a list = the allowlist; `[]` = none. Absent for
@@ -362,13 +362,13 @@ export async function createWorkspaceRepo(input: CreateWorkspaceRepoInput) {
  * default. No GitHub account or repo-name uniqueness needed; the starter is
  * seeded server-side so the workspace boots immediately.
  */
-export async function provisionProject(
-  input: ProvisionProjectInput,
+export async function provisionWorkspace(
+  input: ProvisionWorkspaceInput,
   options: ApiClientOptions = {},
 ) {
   return unwrap(
-    await backendApi.post<KortixProject>(
-      '/projects/provision',
+    await backendApi.post<KortixWorkspace>(
+      '/workspaces/provision',
       {
         seed_starter: true,
         ...input,

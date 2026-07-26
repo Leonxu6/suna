@@ -28,9 +28,9 @@ export interface SSHSetupResult extends SSHConnectionInfo {
  * Returns the private key and connection details for VS Code Remote SSH.
  */
 export async function setupSSH(sandboxId?: string): Promise<SSHSetupResult> {
-  throw new Error('SSH setup is not exposed for project-session sandboxes');
+  throw new Error('SSH setup is not exposed for workspace-session sandboxes');
 }
 
 export async function getSSHConnection(sandboxId?: string): Promise<SSHConnectionInfo> {
-  throw new Error('SSH connection details are not exposed for project-session sandboxes');
+  throw new Error('SSH connection details are not exposed for workspace-session sandboxes');
 }

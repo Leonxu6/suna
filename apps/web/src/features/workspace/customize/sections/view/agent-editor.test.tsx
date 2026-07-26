@@ -22,11 +22,11 @@ const kortixFieldsSource = readFileSync(
 
 describe('agent environment editor', () => {
   test('loads sandbox templates and exposes the Environment field', () => {
-    expect(editorSource).toContain('listProjectSandboxTemplates(projectId)');
+    expect(editorSource).toContain('listWorkspaceSandboxTemplates(workspaceId)');
     expect(editorSource).toContain('options.set(initial.sandbox, initial.sandbox)');
     expect(kortixFieldsSource).toContain('label="Environment"');
     expect(kortixFieldsSource).toContain("set('sandbox'");
-    expect(kortixFieldsSource).toContain('Project default');
+    expect(kortixFieldsSource).toContain('Workspace default');
   });
 });
 

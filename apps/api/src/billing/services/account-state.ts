@@ -211,7 +211,7 @@ export async function buildMinimalAccountState(accountId: string): Promise<Accou
       | 'per_seat'
       | 'legacy',
     // Live member count = the seat quantity a per-seat subscribe bills for now
-    // (matches createPerSeatCheckoutSession). Drives the modal's workspaceed total.
+    // (matches createPerSeatCheckoutSession). Drives the modal's projected total.
     member_count: await countActiveMembers(accountId).catch(() => 1),
     seats: isPerSeatAccount(sub?.billingModel)
       ? {

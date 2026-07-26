@@ -1,6 +1,6 @@
 # `apps/sandbox`
 
-The base Docker image for every Kortix project-session sandbox.
+The base Docker image for every Kortix workspace-session sandbox.
 
 ```
 apps/sandbox/

@@ -78,12 +78,12 @@ and eventually the web UI) declares every resource kind once:
   plural: 'triggers',
   schema: TriggerSchema,                    // zod — one source for validation + docs
   verbs: {
-    list:   { action: 'project.trigger.read' },
-    get:    { action: 'project.trigger.read' },
-    create: { action: 'project.trigger.create' },
-    update: { action: 'project.trigger.update' },
-    delete: { action: 'project.trigger.delete' },
-    fire:   { action: 'project.trigger.fire' },   // kind-specific verb
+    list:   { action: 'workspace.trigger.read' },
+    get:    { action: 'workspace.trigger.read' },
+    create: { action: 'workspace.trigger.create' },
+    update: { action: 'workspace.trigger.update' },
+    delete: { action: 'workspace.trigger.delete' },
+    fire:   { action: 'workspace.trigger.fire' },   // kind-specific verb
   },
   address: 'kortix://{project}/triggers/{name}',
 }

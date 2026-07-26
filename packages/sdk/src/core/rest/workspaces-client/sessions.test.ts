@@ -4,10 +4,10 @@ import { isSessionFresh } from '../../http/fresh-sessions';
 import {
   createWorkspaceSession,
   createSessionPublicShare,
-  claimWarmProjectSession,
-  deleteProjectSession,
-  ensureWarmProjectSession,
-  getProjectSession,
+  claimWarmWorkspaceSession,
+  deleteWorkspaceSession,
+  ensureWarmWorkspaceSession,
+  getWorkspaceSession,
   getSessionAudit,
   getSessionPreviewCandidates,
   getSessionTranscript,
@@ -145,7 +145,7 @@ test('createWorkspaceSession defaults the body to {} when no input is given', as
   expect(last().body).toEqual({});
 });
 
-test('ensureWarmProjectSession POSTs the server-owned warm-session request', async () => {
+test('ensureWarmWorkspaceSession POSTs the server-owned warm-session request', async () => {
   nextResponse = {
     status: 200,
     body: {
@@ -154,22 +154,22 @@ test('ensureWarmProjectSession POSTs the server-owned warm-session request', asy
       workspace_refresh: { status: 'unchanged' },
     },
   };
-  const result = await ensureWarmProjectSession('P1');
-  expect(last().url).toBe('http://test.local/projects/P1/sessions/warm');
+  const result = await ensureWarmWorkspaceSession('P1');
+  expect(last().url).toBe('http://test.local/workspaces/P1/sessions/warm');
   expect(last().method).toBe('POST');
   expect(last().body).toEqual({});
   expect(result.session.session_id).toBe('WARM-1');
   expect(result.reused).toBe(true);
 });
 
-test('claimWarmProjectSession POSTs the selected warm session and create options', async () => {
+test('claimWarmWorkspaceSession POSTs the selected warm session and create options', async () => {
   nextResponse = { status: 200, body: { session_id: 'WARM-1' } };
-  const result = await claimWarmProjectSession('P1', {
+  const result = await claimWarmWorkspaceSession('P1', {
     session_id: 'WARM-1',
     agent_name: 'reviewer',
     sandbox_slug: 'large',
   });
-  expect(last().url).toBe('http://test.local/projects/P1/sessions/warm/claim');
+  expect(last().url).toBe('http://test.local/workspaces/P1/sessions/warm/claim');
   expect(last().method).toBe('POST');
   expect(last().body).toEqual({
     session_id: 'WARM-1',
@@ -179,7 +179,7 @@ test('claimWarmProjectSession POSTs the selected warm session and create options
   expect(result.session_id).toBe('WARM-1');
 });
 
-test('getProjectSession hits GET /projects/:id/sessions/:sid and forwards showErrors', async () => {
+test('getWorkspaceSession hits GET /workspaces/:id/sessions/:sid and forwards showErrors', async () => {
   nextResponse = { status: 200, body: { session_id: 'S1' } };
   await getWorkspaceSession('P1', 'S1', { showErrors: false });
   expect(last().url).toContain('/workspaces/P1/sessions/S1');

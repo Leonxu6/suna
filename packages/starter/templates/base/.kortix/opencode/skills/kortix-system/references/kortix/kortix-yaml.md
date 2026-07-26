@@ -108,7 +108,7 @@ agents:
   release-bot:
     sandbox: ml
     connectors: [github]
-    kortix_cli: [project.write, project.cr.open]    # may OPEN a CR, but not merge it
+    kortix_cli: [workspace.write, workspace.cr.open]    # may OPEN a CR, but not merge it
 ```
 
 ## `agents:`
@@ -140,16 +140,16 @@ agents:
   release-bot:
     sandbox: ml
     connectors: [github]
-    kortix_cli: [project.write, project.cr.open]    # may OPEN a CR, but not merge it
+    kortix_cli: [workspace.write, workspace.cr.open]    # may OPEN a CR, but not merge it
 ```
 
 **Grantable `kortix_cli` actions** (workspace-scoped only — account-level admin
 actions can never be granted to an agent; run `kortix validate --scopes`):
-`project.read|write|delete`, `project.cr.open|merge`,
-`project.session.read|start|stop|bindings.write`, `project.members.read|manage`,
-`project.trigger.read|create|update|delete|fire`,
-`project.connector.read|write|profiles.manage`
-(channels — Slack/meet/email send + connect — are gated on `project.connector.write`).
+`workspace.read|write|delete`, `workspace.cr.open|merge`,
+`workspace.session.read|start|stop|bindings.write`, `workspace.members.read|manage`,
+`workspace.trigger.read|create|update|delete|fire`,
+`workspace.connector.read|write|profiles.manage`
+(channels — Slack/meet/email send + connect — are gated on `workspace.connector.write`).
 
 **Resolution at session start:** every agent must be declared under
 `agents:`; an undeclared or disabled agent cannot be launched by the

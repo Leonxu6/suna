@@ -232,7 +232,7 @@
                 "dependency-upgrade"
               ],
               "kortix_cli": [
-                "project.cr.open"
+                "workspace.cr.open"
               ]
             }
           },
@@ -355,7 +355,7 @@
                 "kortix-slack"
               ],
               "kortix_cli": [
-                "project.cr.open"
+                "workspace.cr.open"
               ]
             }
           },
@@ -651,7 +651,7 @@
                 "compliance-sweep"
               ],
               "kortix_cli": [
-                "project.cr.open"
+                "workspace.cr.open"
               ]
             }
           },
@@ -905,7 +905,7 @@
                 "docs-sync"
               ],
               "kortix_cli": [
-                "project.cr.open"
+                "workspace.cr.open"
               ]
             }
           },
@@ -1173,7 +1173,7 @@
                 "postmortem-draft"
               ],
               "kortix_cli": [
-                "project.cr.open"
+                "workspace.cr.open"
               ]
             }
           },
@@ -1684,7 +1684,7 @@
                 "changelog-sync"
               ],
               "kortix_cli": [
-                "project.cr.open"
+                "workspace.cr.open"
               ]
             }
           },
@@ -3525,7 +3525,7 @@
                 "pr-qa"
               ],
               "kortix_cli": [
-                "project.cr.open"
+                "workspace.cr.open"
               ]
             }
           },
@@ -4698,7 +4698,7 @@
                 "subscription-audit"
               ],
               "kortix_cli": [
-                "project.cr.open"
+                "workspace.cr.open"
               ]
             }
           },
@@ -5098,7 +5098,7 @@
                 "content-decay-refresh"
               ],
               "kortix_cli": [
-                "project.cr.open"
+                "workspace.cr.open"
               ]
             }
           },
@@ -5614,7 +5614,7 @@
                 "cost-anomaly-detection"
               ],
               "kortix_cli": [
-                "project.cr.open"
+                "workspace.cr.open"
               ]
             }
           },
@@ -6030,7 +6030,7 @@
                 "flag-cleanup"
               ],
               "kortix_cli": [
-                "project.cr.open"
+                "workspace.cr.open"
               ]
             }
           },
@@ -6159,7 +6159,7 @@
                 "flaky-test-quarantine"
               ],
               "kortix_cli": [
-                "project.cr.open"
+                "workspace.cr.open"
               ]
             }
           },
@@ -7676,7 +7676,7 @@
                 "kb-gap-mining"
               ],
               "kortix_cli": [
-                "project.cr.open"
+                "workspace.cr.open"
               ]
             }
           },

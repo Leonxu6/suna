@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { AgentConfigBlock } from './agent-config';
+import type { AgentConfigBlock } from './index';
 
 describe('AgentConfigBlock', () => {
   test('accepts an agent sandbox template slug', () => {

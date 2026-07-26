@@ -36,6 +36,8 @@ export type { MemberWorkspaceAccess as MemberProjectAccess } from "../workspaces
 export type { PendingWorkspaceInvite as PendingProjectInvite } from "../workspaces-client";
 export type { ProvisionWorkspaceInput as ProvisionProjectInput } from "../workspaces-client";
 export type { ProvisionWorkspaceWithTokenResult as ProvisionProjectWithTokenResult } from "../workspaces-client";
+/** @deprecated Use `ClaimWarmWorkspaceSessionInput`. */
+export type { ClaimWarmWorkspaceSessionInput as ClaimWarmProjectSessionInput } from "../workspaces-client";
 export type { RequestWorkspaceAccessResult as RequestProjectAccessResult } from "../workspaces-client";
 export type { RequestWorkspaceConnectorInput as RequestProjectConnectorInput } from "../workspaces-client";
 export type { RequestWorkspaceSecretInput as RequestProjectSecretInput } from "../workspaces-client";
@@ -83,6 +85,10 @@ export type { WorkspaceSession as ProjectSession } from "../workspaces-client";
 export type { WorkspaceSessionSandbox as ProjectSessionSandbox } from "../workspaces-client";
 export type { WorkspaceSessionSandboxStatus as ProjectSessionSandboxStatus } from "../workspaces-client";
 export type { WorkspaceSessionStatus as ProjectSessionStatus } from "../workspaces-client";
+/** @deprecated Use `WarmWorkspaceSessionResult`. */
+export type { WarmWorkspaceSessionResult as WarmProjectSessionResult } from "../workspaces-client";
+/** @deprecated Use `WarmWorkspaceSessionWorkspaceRefresh`. */
+export type { WarmWorkspaceSessionWorkspaceRefresh as WarmProjectSessionWorkspaceRefresh } from "../workspaces-client";
 export type { WorkspaceSnapshotBuild as ProjectSnapshotBuild } from "../workspaces-client";
 export type { WorkspaceSnapshotStatus as ProjectSnapshotStatus } from "../workspaces-client";
 export type { WorkspaceSnapshotsResponse as ProjectSnapshotsResponse } from "../workspaces-client";
@@ -99,6 +105,8 @@ export { createWorkspaceCliToken as createProjectCliToken } from "../workspaces-
 export { createWorkspaceRepo as createProjectRepo } from "../workspaces-client";
 export { createWorkspaceResourceGrant as createProjectResourceGrant } from "../workspaces-client";
 export { createWorkspaceSession as createProjectSession } from "../workspaces-client";
+/** @deprecated Use `claimWarmWorkspaceSession`. */
+export { claimWarmWorkspaceSession as claimWarmProjectSession } from "../workspaces-client";
 export { createWorkspaceTrigger as createProjectTrigger } from "../workspaces-client";
 export { deletePersonalWorkspaceSecret as deletePersonalProjectSecret } from "../workspaces-client";
 export { deleteWorkspaceResourceGrant as deleteProjectResourceGrant } from "../workspaces-client";
@@ -107,6 +115,8 @@ export { deleteWorkspaceSession as deleteProjectSession } from "../workspaces-cl
 export { deleteWorkspaceTrigger as deleteProjectTrigger } from "../workspaces-client";
 export { detachGroupFromWorkspace as detachGroupFromProject } from "../workspaces-client";
 export { ensureWorkspaceConnectorProfile as ensureProjectConnectorProfile } from "../workspaces-client";
+/** @deprecated Use `ensureWarmWorkspaceSession`. */
+export { ensureWarmWorkspaceSession as ensureWarmProjectSession } from "../workspaces-client";
 export { fetchWorkspaceArchive as fetchProjectArchive } from "../workspaces-client";
 export { fetchWorkspacesForAccountWithToken as fetchProjectsForAccountWithToken } from "../workspaces-client";
 export { fireWorkspaceTrigger as fireProjectTrigger } from "../workspaces-client";

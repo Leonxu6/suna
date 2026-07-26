@@ -550,7 +550,7 @@ export const SessionCreateInputSchema = z
     // project-default fallback for every OTHER (unbound) alias ("all-or-nothing").
     // `inherit_unbound: true` keeps that fallback, so a caller can override just one
     // connector (e.g. a user's own account) without re-binding the rest. Only ever
-    // inherits the project DEFAULT profile — never another owner's — so it is not
+    // inherits the workspace DEFAULT profile — never another owner's — so it is not
     // origin-gated (any caller may set it).
     inherit_unbound: z.boolean().optional(),
     // Backend-only: the wrapper's opaque end-user handle this session acts for.
@@ -748,7 +748,7 @@ export type SessionStartStage = z.infer<typeof SessionStartStageSchema>;
 export const SessionStartResultSchema = z.object({
   /** Coarse lifecycle stage the client renders + polls on. */
   stage: SessionStartStageSchema,
-  /** Immutable project-session agent bound at session creation. */
+  /** Immutable workspace-session agent bound at session creation. */
   agent_name: z.string(),
   /** Whether polling /start again can make progress (false = terminal). */
   retriable: z.boolean(),

@@ -585,7 +585,7 @@ export const MANAGED_FLAGSHIP_MODEL_ID = (
   MANAGED_MODELS.find((m) => m.tier === 'flagship') ?? MANAGED_MODELS[0]
 ).id;
 
-/** Concrete Kortix-managed default used when no account or project default exists. */
+/** Concrete Kortix-managed default used when no account or workspace default exists. */
 export const PLATFORM_DEFAULT_MODEL_ID = 'glm-5.2';
 
 function modelsByWireId(catalog: Catalog): Map<string, CatalogModel> {

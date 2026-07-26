@@ -64,7 +64,7 @@ Facts established by direct code inspection — each of these shapes a decision 
     agent can never exceed its launching human); the executor policy engine is
     risk-tiered per-call approval for discovered external actions. Folding CLI
     into connectors would forfeit the role ceiling. What CLI *lacks* is the
-    approval tier: `project.gitops.merge` is pure allow/deny today.
+    approval tier: `workspace.gitops.merge` is pure allow/deny today.
 11. **The Members-page grant flow is agent-only** (picker hardcoded to agents;
     pyramid comment in code). **RESOLVED 2026-07-05**: `POST
     /resource-grants` now rejects any `resource_type` other than `agent`
@@ -125,11 +125,11 @@ agents:
     connectors: [github, slack]         # profile slugs | all | none
     secrets: [STRIPE_KEY, GH_TOKEN]     # renamed from `env`; names | all | none
     skills: [pdf-export]                # project skill names | all | none
-    kortix_cli: [project.session.start, project.cr.open]
+    kortix_cli: [workspace.session.start, workspace.cr.open]
     workspace: runtime                  # runtime | read | branch  (Phase 4, git boundary)
   pr-bot:
     connectors: [github]
-    kortix_cli: [project.cr.open, project.cr.merge, project.review.submit]
+    kortix_cli: [workspace.cr.open, workspace.cr.merge, workspace.review.submit]
 ```
 
 That's the WHOLE agent block — no `description`, no `model`, no `opencode:`
@@ -330,15 +330,15 @@ engine; connectors' access model has no role awareness, and faking it inside the
 executor gateway would duplicate the engine. What we take from the executor
 instead is its approval UX:
 
-- Add an optional risk tier to CLI leaf actions: `project.gitops.merge`,
-  `project.members.manage` (initial set) can be marked
-  `require_approval` per project (manifest: `approvals.kortix_cli: [project.gitops.merge]`).
+- Add an optional risk tier to CLI leaf actions: `workspace.gitops.merge`,
+  `workspace.members.manage` (initial set) can be marked
+  `require_approval` per project (manifest: `approvals.kortix_cli: [workspace.gitops.merge]`).
   Enforcement reuses `sessionToolApprovals` + the Review Center / Slack card
   machinery the executor already has — additive layer *after* the allow/deny
   gate, never a substitute for it.
 - Prerequisite (found during research, cheap to do first): an **enforcement
   audit** proving every grantable `PROJECT_ACTIONS` leaf is actually asserted on
-  a route with the token threaded (`project.gateway.*`, `project.webhook.*`,
+  a route with the token threaded (`workspace.gateway.*`, `project.webhook.*`,
   `project.schedule.*` unverified today).
 
 ### 2.7 TOML → YAML
@@ -384,11 +384,11 @@ The complexity Marko flagged collapses under one rule:
 
 | Capability | Class | Gated by |
 |---|---|---|
-| Edit agents, skills, commands, manifest, memory | git write | `project.gitops.push` / CR review; agent needs `workspace`/`git` powers (Phase 4) |
-| Merge a change request | platform action on git | `project.cr.merge` (+ optional approval tier) |
-| CRUD connectors, secrets, channels bindings, model prefs | platform action | `project.connector.write`, `project.secret.write`, … |
-| Fire/create triggers & webhooks | split: definition is git write, firing is platform | definition via CR; `project.trigger.fire` for manual fires |
-| Start/stop sessions | platform action | `project.session.*` |
+| Edit agents, skills, commands, manifest, memory | git write | `workspace.gitops.push` / CR review; agent needs `workspace`/`git` powers (Phase 4) |
+| Merge a change request | platform action on git | `workspace.cr.merge` (+ optional approval tier) |
+| CRUD connectors, secrets, channels bindings, model prefs | platform action | `workspace.connector.write`, `workspace.secret.write`, … |
+| Fire/create triggers & webhooks | split: definition is git write, firing is platform | definition via CR; `workspace.trigger.fire` for manual fires |
+| Start/stop sessions | platform action | `workspace.session.*` |
 | Member/group/role admin | platform action (account/project) | IAM roles + Enterprise entitlement for custom RBAC |
 
 - "Can he edit the agent's skills?" = "can he land a CR touching `.kortix/`" —
@@ -413,7 +413,7 @@ Each phase is independently shippable; order minimizes rework.
 | **0. Hygiene** — SHIPPED | Starter key examples removed; Members copy fix; Groups/Roles visual gating; manifest.mdx agents/channels docs; CLI-leaf enforcement audit | S |
 | **1. Schema v2 + compiler skeleton** — SHIPPED | `kortix_version: 2` YAML schema (governance-only agent block, `secrets` rename, deny-by-default, `runtime` enum, `[[channels]]` removal); server-side `compileAgentConfig` for opencode reading behavior from each agent's native `.md` frontmatter (redirected 2026-07-05 — no illegal-frontmatter gate, no nested `opencode:` block); dead-field removal; `manifest-edit`/validate-endpoint format fixes | L |
 | **2. Mandatory agents + trigger identity** — SHIPPED | `KORTIX_REQUIRE_DECLARED_AGENTS` flag (on for new projects); default-sentinel-must-resolve rule; trigger/channel sessions attributed to agent SA; web Channels management surface | M |
-| **3. Secrets v2 + approvals** — OPEN (`per_user` removal shipped early, see §2.5) | display name + per-agent values (schema + resolution + UI/CLI); CLI-action approval tier via Review Center (default set: `project.gitops.merge`) | L |
+| **3. Secrets v2 + approvals** — OPEN (`per_user` removal shipped early, see §2.5) | display name + per-agent values (schema + resolution + UI/CLI); CLI-action approval tier via Review Center (default set: `workspace.gitops.merge`) | L |
 | **4. Git boundary** | `workspace`/`git` powers per agent; resource caps stamped into session token; `authorizeGitProxy` enforces; auto-clone policy per agent | L |
 | **5. Migration & sunset** | `kortix migrate` CR generator; dashboard banner; v1 write-freeze; eventually flip remaining projects | M |
 
@@ -431,7 +431,7 @@ consolidation.
    feature scoped to interactive sessions; it is NOT preserved by keeping
    today's launcher-coupled ambient default. Removal + safe migration lands in
    Phase 3; the redesign is tracked separately.
-2. **Approval-tier default set**: `project.gitops.merge` only in new projects.
+2. **Approval-tier default set**: `workspace.gitops.merge` only in new projects.
 3. **v2 deny-by-default for `secrets`**: confirmed. Migration writes explicit
    `all` into converted manifests; only newly declared v2 agents feel it.
 4. **Timing of Phase 4** relative to bringing Codex/Claude runtimes — still

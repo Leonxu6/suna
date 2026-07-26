@@ -123,7 +123,7 @@ export async function getSandboxUpdateStatus(
   return {
     phase: 'idle',
     progress: 0,
-    message: 'Sandbox image updates are managed by project-session provisioning.',
+    message: 'Sandbox image updates are managed by workspace-session provisioning.',
     targetVersion: null,
     previousVersion: null,
     currentVersion: sandbox?.version ?? null,
@@ -193,7 +193,7 @@ export async function triggerSandboxUpdate(
   sandbox: SandboxInfo,
   version: string,
 ): Promise<SandboxUpdateResult> {
-  throw new Error('Sandbox image updates are managed by project-session provisioning');
+  throw new Error('Sandbox image updates are managed by workspace-session provisioning');
 }
 
 /**

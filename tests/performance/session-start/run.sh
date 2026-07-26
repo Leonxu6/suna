@@ -8,7 +8,7 @@
 #   ./run.sh boot-probe      # one session + daemon boot_timeline
 #   ./run.sh oclog-probe     # one session + opencode.log + baked vs runtime dep versions
 #
-# Target user/project default to a throwaway local e2e account. Override with
+# Target user/workspace default to a throwaway local e2e account. Override with
 # BENCH_EMAIL / BENCH_UID / PROJECT_ID. This RESETS the target user's password
 # (admin API) to sign in — local dev only, never point it at a real account.
 set -euo pipefail
