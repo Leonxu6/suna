@@ -9,6 +9,7 @@ import {
   takeFlagValue,
   takeFlagValues,
 } from '../command-helpers.ts';
+import { openInBrowser } from '../browser.ts';
 import { runSessionsAnswer, runSessionsApprove, runSessionsPending } from './sessions-approvals.ts';
 import { runSessionsChat, runSessionsLog, runSessionsStatus } from './sessions-chat.ts';
 import { runSessionsConnect } from './sessions-connect.ts';
@@ -713,19 +714,4 @@ function formatRelative(iso: string): string {
   const d = Math.floor(h / 24);
   if (d < 30) return `${d}d ago`;
   return new Date(iso).toLocaleDateString();
-}
-
-function openInBrowser(url: string): void {
-  // Only hand a real web URL to the OS opener — a value starting with '-' would
-  // be read as a flag by open/xdg-open, and Windows `start` parses its argument,
-  // so an unvalidated URL is a command-injection vector.
-  if (!/^https?:\/\//i.test(url)) return;
-  const cmd =
-    process.platform === 'darwin'
-      ? 'open'
-      : process.platform === 'win32'
-        ? 'cmd'
-        : 'xdg-open';
-  const args = process.platform === 'win32' ? ['/c', 'start', '', url] : [url];
-  spawnSync(cmd, args, { stdio: 'ignore' });
 }

@@ -33,6 +33,7 @@ export function createAbortRouter(cfg: Config): Hono {
     const workspace = process.env.KORTIX_WORKSPACE || '/workspace'
     const url = `http://127.0.0.1:${cfg.opencodeInternalPort}/session/${encodeURIComponent(sessionId)}/abort?directory=${encodeURIComponent(workspace)}`
     try {
+      // lgtm[js/file-access-to-http] The pinned session id is intentionally sent to the localhost OpenCode service.
       const res = await fetch(url, {
         method: 'POST',
         signal: AbortSignal.timeout(10_000),

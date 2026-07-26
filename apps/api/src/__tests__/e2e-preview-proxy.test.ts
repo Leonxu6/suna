@@ -838,7 +838,7 @@ describe('Preview proxy: forwarding', () => {
 
     expect(res.status).toBe(502);
     const body = await res.json();
-    expect(body.error).toContain('env sync failed: 401');
+    expect(body.error).toBe('workspace env sync failed');
     expect(mockFetchCalls).toHaveLength(1);
     expect(mockFetchCalls[0].url).toBe('https://preview.daytona.io/proxy-url/kortix/env');
   });
@@ -857,7 +857,7 @@ describe('Preview proxy: forwarding', () => {
 
     expect(res.status).toBe(502);
     const body = await res.json();
-    expect(body.error).toContain('env sync failed: 500');
+    expect(body.error).toBe('workspace env sync failed');
     expect(mockWakeCalls).toEqual([]);
     expect(mockFetchCalls).toHaveLength(1);
     expect(mockFetchCalls[0].url).toBe('https://preview.daytona.io/proxy-url/kortix/env');

@@ -559,6 +559,7 @@ export async function refreshGatewayCatalogFile(opts: {
   const currentModels = readCatalogFile(opts.currentCatalogFile)
   const changed = !isDeepStrictEqual(currentModels, liveModels)
   mkdirSync(dirname(opts.targetCatalogFile), { recursive: true })
+  // lgtm[js/http-to-file-access] This authenticated gateway response is the catalog file's intended source.
   writeFileSync(opts.targetCatalogFile, JSON.stringify({ models: liveModels }), { mode: 0o600 })
   logger.info('[opencode] refreshed authenticated gateway catalog', {
     changed,

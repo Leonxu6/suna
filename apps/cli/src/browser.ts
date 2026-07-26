@@ -14,17 +14,16 @@ export function openInBrowser(value: string): boolean {
   const url = normalizeBrowserUrl(value);
   if (!url) return false;
 
-  const platform = process.platform;
-  const command =
-    platform === 'darwin'
-      ? 'open'
-      : platform === 'win32'
-        ? 'rundll32.exe'
-        : 'xdg-open';
-  const args = platform === 'win32' ? ['url.dll,FileProtocolHandler', url] : [url];
-
   try {
-    const child = spawn(command, args, { stdio: 'ignore', detached: true });
+    const child =
+      process.platform === 'darwin'
+        ? spawn('/usr/bin/open', ['--', url], { stdio: 'ignore', detached: true })
+        : process.platform === 'win32'
+          ? spawn('rundll32.exe', ['url.dll,FileProtocolHandler', url], {
+              stdio: 'ignore',
+              detached: true,
+            })
+          : spawn('/usr/bin/xdg-open', ['--', url], { stdio: 'ignore', detached: true });
     child.unref();
     return true;
   } catch {

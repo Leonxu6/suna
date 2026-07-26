@@ -706,7 +706,7 @@ export async function forwardToSandbox(
             throw new Error(message);
           }
           console.warn(`[PREVIEW] Workspace env sync failed for ${sandboxId}:${port}: ${message}`);
-          return jsonProxyError({ error: message }, 502, origin);
+          return jsonProxyError({ error: 'workspace env sync failed' }, 502, origin);
         }
       }
 

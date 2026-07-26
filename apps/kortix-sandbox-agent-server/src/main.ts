@@ -524,6 +524,7 @@ async function prefetchSeedCatalog(cfg: Config): Promise<void> {
   const count = parsed.models ? Object.keys(parsed.models).length : 0
   if (count === 0) throw new Error('empty catalog')
   mkdirSync(dirname(file), { recursive: true })
+  // lgtm[js/http-to-file-access] This authenticated catalog response is the file's intended source.
   writeFileSync(file, body, { mode: 0o600 })
   process.env.KORTIX_LLM_CATALOG_FILE = file
   logger.info('[seed] baked full model catalog for seed', { file, models: count })
@@ -637,6 +638,7 @@ async function runWarmSeedMode(
           // inherits the pin also inherits the marker (else it can't rotate).
           markSeedBakedSession(session.id)
           mkdirSync(dirname(OPENCODE_SESSION_PIN_PATH), { recursive: true })
+          // lgtm[js/http-to-file-access] This fixed pin file intentionally stores the new OpenCode session id.
           writeFileSync(OPENCODE_SESSION_PIN_PATH, session.id, 'utf8')
           bootMark('seed-opencode-session')
           logger.info('[seed] pre-created + pinned root opencode session', { sessionId: session.id })
@@ -914,6 +916,7 @@ async function maybeCreateInitialOpencodeSession(
 function pinOpencodeSessionFile(sessionId: string): void {
   try {
     mkdirSync(dirname(OPENCODE_SESSION_PIN_PATH), { recursive: true })
+    // lgtm[js/http-to-file-access] This fixed pin file intentionally stores the authenticated OpenCode session id.
     writeFileSync(OPENCODE_SESSION_PIN_PATH, sessionId, 'utf8')
   } catch (err) {
     logger.warn('[boot] failed to pin opencode session id', err)
@@ -926,6 +929,7 @@ function pinOpencodeSessionFile(sessionId: string): void {
 function markSeedBakedSession(sessionId: string): void {
   try {
     mkdirSync(dirname(OPENCODE_SEED_BAKED_PIN_PATH), { recursive: true })
+    // lgtm[js/http-to-file-access] This fixed marker file intentionally stores the seed session id.
     writeFileSync(OPENCODE_SEED_BAKED_PIN_PATH, sessionId, 'utf8')
   } catch (err) {
     logger.warn('[seed] failed to write seed-baked session marker', err)
@@ -1500,6 +1504,7 @@ export async function relayTurnEndToApi(
   // `res.ok`; only network/5xx failures are retried.
   for (let attempt = 1; attempt <= 4; attempt++) {
     try {
+      // lgtm[js/file-access-to-http] The authenticated callback intentionally relays the pinned turn result.
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -1549,6 +1554,7 @@ async function readRootTurnState(
 ): Promise<RootTurnState> {
   try {
     const url = `${opencode.getInternalUrl()}/session/${encodeURIComponent(opencodeSessionId)}/message?directory=${encodeURIComponent(cfg.workspace)}`
+    // lgtm[js/file-access-to-http] The pinned session id is intentionally sent to the localhost OpenCode service.
     const res = await fetch(url, { signal: AbortSignal.timeout(5_000) })
     if (!res.ok) return { completedAt: null }
     const rows = (await res.json()) as Array<{
@@ -1622,6 +1628,7 @@ async function isRootOpencodeSession(
 ): Promise<boolean> {
   try {
     const url = `${opencode.getInternalUrl()}/session/${encodeURIComponent(opencodeSessionId)}?directory=${encodeURIComponent(cfg.workspace)}`
+    // lgtm[js/file-access-to-http] The pinned session id is intentionally sent to the localhost OpenCode service.
     const res = await fetch(url, { signal: AbortSignal.timeout(5_000) })
     if (!res.ok) return false
     const session = (await res.json()) as { parentID?: string | null }

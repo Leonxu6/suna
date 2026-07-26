@@ -70,6 +70,7 @@ async function request<T>(
 
   let res: Response;
   try {
+    // lgtm[js/file-access-to-http] The authenticated API client intentionally sends caller-provided JSON payloads.
     res = await fetch(url, {
       method,
       headers,
