@@ -1,0 +1,183 @@
+/**
+ * Unit tests for authorizeGitProxy — the git proxy's trust boundary.
+ *
+ * The proxy is the UNIVERSAL client-facing git origin (`kortix ship`, `kortix
+ * workspaces clone`, the sandbox daemon all reach a repo through it), so its
+ * authorization rules decide whether those commands work at all. Token-account
+ * equality alone was too strict: a PAT is bound to ONE account, so anyone in
+ * two accounts (personal + team) could create a workspace through the API and
+ * then never push to it — while POST /git-token, which hands out a STRONGER
+ * credential, accepted them via the per-workspace capability. These pin the
+ * rules: same account passes, a cross-account grant passes ONLY through the
+ * IAM leaf, and everything else stays denied.
+ */
+import { beforeEach, describe, expect, mock, test } from 'bun:test';
+
+const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
+const OWNER_ACCOUNT = 'acct-owner';
+const OTHER_ACCOUNT = 'acct-other';
+
+let workspaceRow: Record<string, unknown> | null = null;
+let patResult: Record<string, unknown> = {};
+let apiKeyResult: Record<string, unknown> = {};
+let authorizeAllowed = false;
+let authorizeCalls: Array<{
+  userId: string;
+  accountId: string;
+  action: string;
+  actingTokenId?: string;
+}> = [];
+
+mock.module('../shared/db', () => ({
+  db: {
+    select: () => ({
+      from: () => ({
+        where: () => ({ limit: async () => (workspaceRow ? [workspaceRow] : []) }),
+      }),
+    }),
+  },
+  hasDatabase: true,
+}));
+// Spread the real modules and override only the seams under test — replacing
+// them wholesale would strip exports other importers in this process need.
+const realAccountTokens = await import('../repositories/account-tokens');
+const realApiKeys = await import('../repositories/api-keys');
+const realIamActions = await import('../iam/actions');
+const realIamDispatcher = await import('../iam/dispatcher');
+
+mock.module('../repositories/account-tokens', () => ({
+  ...realAccountTokens,
+  validateAccountToken: async () => patResult,
+}));
+mock.module('../repositories/api-keys', () => ({
+  ...realApiKeys,
+  validateSecretKey: async () => apiKeyResult,
+}));
+mock.module('../iam/actions', () => ({ ...realIamActions }));
+mock.module('../iam/dispatcher', () => ({
+  ...realIamDispatcher,
+  authorize: async (
+    userId: string,
+    accountId: string,
+    action: string,
+    _t: unknown,
+    actingTokenId?: string,
+  ) => {
+    authorizeCalls.push({ userId, accountId, action, actingTokenId });
+    return { allowed: authorizeAllowed };
+  },
+}));
+
+const { authorizeGitProxy } = await import('../workspaces/lib/git');
+
+beforeEach(() => {
+  workspaceRow = { workspaceId: WORKSPACE_ID, accountId: OWNER_ACCOUNT, status: 'active' };
+  patResult = { isValid: true, accountId: OWNER_ACCOUNT, userId: 'user-1', tokenId: 'tok-1' };
+  apiKeyResult = { isValid: false };
+  authorizeAllowed = false;
+  authorizeCalls = [];
+});
+
+describe('authorizeGitProxy — CLI PAT', () => {
+  test('a PAT on the owning account is allowed without an IAM round-trip', async () => {
+    const res = await authorizeGitProxy('kortix_pat_x', WORKSPACE_ID, 'write');
+    expect(res.ok).toBe(true);
+    expect(authorizeCalls).toHaveLength(0);
+  });
+
+  test('a PAT on another account passes when the user holds the git capability', async () => {
+    patResult = { isValid: true, accountId: OTHER_ACCOUNT, userId: 'user-1', tokenId: 'tok-1' };
+    authorizeAllowed = true;
+
+    const res = await authorizeGitProxy('kortix_pat_x', WORKSPACE_ID, 'write');
+
+    expect(res.ok).toBe(true);
+    // Evaluated against the WORKSPACE's account, not the token's, and threading
+    // the acting token so the agent-grant fold fires.
+    expect(authorizeCalls).toEqual([
+      {
+        userId: 'user-1',
+        accountId: OWNER_ACCOUNT,
+        action: 'workspace.gitops.push',
+        actingTokenId: 'tok-1',
+      },
+    ]);
+  });
+
+  test('a PAT on another account is denied when the capability is denied', async () => {
+    patResult = { isValid: true, accountId: OTHER_ACCOUNT, userId: 'user-1', tokenId: 'tok-1' };
+    authorizeAllowed = false;
+
+    const res = await authorizeGitProxy('kortix_pat_x', WORKSPACE_ID, 'write');
+
+    expect(res).toMatchObject({ ok: false, status: 403 });
+  });
+
+  test('read and write map to different capabilities', async () => {
+    patResult = { isValid: true, accountId: OTHER_ACCOUNT, userId: 'user-1', tokenId: 'tok-1' };
+    authorizeAllowed = true;
+
+    await authorizeGitProxy('kortix_pat_x', WORKSPACE_ID, 'read');
+
+    expect(authorizeCalls[0]?.action).toBe('workspace.gitops.read');
+  });
+
+  test('a workspace-scoped PAT for a different workspace is rejected before any capability check', async () => {
+    patResult = {
+      isValid: true,
+      accountId: OWNER_ACCOUNT,
+      userId: 'user-1',
+      workspaceId: 'other-workspace',
+    };
+    authorizeAllowed = true;
+
+    const res = await authorizeGitProxy('kortix_pat_x', WORKSPACE_ID, 'write');
+
+    expect(res).toMatchObject({ ok: false, status: 403 });
+    expect(authorizeCalls).toHaveLength(0);
+  });
+
+  test('an invalid PAT is 401, never a capability lookup', async () => {
+    patResult = { isValid: false, error: 'revoked' };
+
+    const res = await authorizeGitProxy('kortix_pat_x', WORKSPACE_ID, 'write');
+
+    expect(res).toMatchObject({ ok: false, status: 401 });
+    expect(authorizeCalls).toHaveLength(0);
+  });
+
+  test('an archived workspace is 404 regardless of the token', async () => {
+    workspaceRow = { workspaceId: WORKSPACE_ID, accountId: OWNER_ACCOUNT, status: 'archived' };
+
+    const res = await authorizeGitProxy('kortix_pat_x', WORKSPACE_ID, 'write');
+
+    expect(res).toMatchObject({ ok: false, status: 404 });
+  });
+});
+
+describe('authorizeGitProxy — account API key', () => {
+  test('an API key for another account stays denied — it carries no user to evaluate', async () => {
+    patResult = { isValid: false };
+    apiKeyResult = { isValid: true, accountId: OTHER_ACCOUNT, type: 'user' };
+    authorizeAllowed = true; // would pass IF the fallback applied — it must not
+
+    const res = await authorizeGitProxy('kortix_abc', WORKSPACE_ID, 'write');
+
+    expect(res).toMatchObject({ ok: false, status: 403 });
+    expect(authorizeCalls).toHaveLength(0);
+  });
+
+  test('an API key on the owning account is allowed', async () => {
+    patResult = { isValid: false };
+    apiKeyResult = { isValid: true, accountId: OWNER_ACCOUNT, type: 'user' };
+
+    const res = await authorizeGitProxy('kortix_abc', WORKSPACE_ID, 'write');
+
+    expect(res.ok).toBe(true);
+  });
+
+  test('a non-Kortix credential is 401', async () => {
+    const res = await authorizeGitProxy('ghp_something', WORKSPACE_ID, 'read');
+    expect(res).toMatchObject({ ok: false, status: 401 });
+  });
+});

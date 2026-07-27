@@ -4,6 +4,8 @@ type WorkspaceEnvSnapshot = {
   revision: string | null
   env: Record<string, string>
   names: string[]
+  /** Union of every name this store has managed, including revoked ones. */
+  knownNames: string[]
 }
 
 type WorkspaceEnvUpdate = {
@@ -65,6 +67,9 @@ export function createWorkspaceEnvStore(
     const value = initialEnv[name]
     if (typeof value === 'string') env[name] = value
   }
+  // Every name this store has ever managed. A revoked secret drops out of
+  // `names`, so this is the only record that it must be actively cleared.
+  const knownNames = new Set<string>(names)
 
   return {
     snapshot() {
@@ -72,6 +77,7 @@ export function createWorkspaceEnvStore(
         revision,
         env: { ...env },
         names: [...names],
+        knownNames: [...knownNames].sort(),
       }
     },
 
@@ -86,6 +92,9 @@ export function createWorkspaceEnvStore(
         revision !== nextRevision ||
         JSON.stringify(env) !== JSON.stringify(nextEnv) ||
         JSON.stringify(names) !== JSON.stringify(nextNames)
+
+      for (const name of nextNames) knownNames.add(name)
+      for (const name of Object.keys(nextEnv)) knownNames.add(name)
 
       if (changed) {
         revision = nextRevision
@@ -108,7 +117,14 @@ export function mergeWorkspaceEnv(
 ): NodeJS.ProcessEnv {
   const snapshot = store.snapshot()
   const merged: NodeJS.ProcessEnv = { ...baseEnv }
-  for (const name of snapshot.names) {
+  // Clear every name this store has EVER managed, not just the ones still
+  // granted. The server pushes only currently-granted names, so a revoked
+  // secret never appears in `names` — deleting only those would leave its value
+  // in place, inherited from the daemon's own process.env, and re-inject it into
+  // opencode on the next restart (opencode.ts spawns from mergeProjectEnv).
+  // MCP servers and direct child spawns never pass through BASH_ENV, so the
+  // `unset` written to agent-env.sh does not cover them.
+  for (const name of snapshot.knownNames) {
     delete merged[name]
   }
   for (const [name, value] of Object.entries(snapshot.env)) {

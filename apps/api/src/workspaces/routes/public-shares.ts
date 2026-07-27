@@ -37,7 +37,7 @@ workspacesApp.openapi(
 
     const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
-    const visible = await loadVisibleSession(loaded, sessionId);
+    const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
     if (!visible) return c.json({ error: 'Not found' }, 404);
 
     return c.json({

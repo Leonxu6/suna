@@ -19,6 +19,18 @@ import { roleAllows } from '../access';
 import { createRoute, z } from '@hono/zod-openapi';
 import { accountGroupMembers, accountGroups, accountMembers, executorConnectors, executorExecutions, workspaceGroupGrants, workspaceSessions, sessionSandboxes } from '@kortix/db';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { getCachedAccountTier } from '../../billing/services/entitlements';
+import { tierGrantsAllModels } from '../../billing/services/tiers';
+import { config } from '../../config';
+import {
+  canChangeSessionModel,
+  mayChangeSessionModel,
+  modelChangeNeedsLivePush,
+  validateModelChangeShape,
+} from '../lib/session-model-change';
+import { pushSessionModelToSandbox } from '../lib/sandbox-env-sync';
+import { isModelServableForAccount } from '../../llm-gateway/resolution/default-model';
+import { toOpencodeModelRef } from '../../llm-gateway/resolution/effective';
 import { loadWorkspaceForUser, loadVisibleSession, lookupEmailsByUserIds, parseExpiresAtBody, assertWorkspaceCapability, isUuid, workspaceCapabilityAllowed, resolveSessionOwnerIdentities } from '../lib/access';
 import { AnyObject, ClaimWarmWorkspaceSessionInputSchema, GroupGrantSchema, OkSchema, SessionCreateAcceptedSchema, SessionCreateInputSchema, SessionSchema, WarmWorkspaceSessionResultSchema, workspacesApp } from '../lib/app';
 import { UUID_V4_REGEX, hasOwn, normalizeString, readBody, requestAuditContext, serializeSession } from '../lib/serializers';
@@ -432,7 +444,7 @@ workspacesApp.openapi(
     });
   await invalidateIamCacheForGroup(groupId);
 
-  return c.json({ workspace_id: workspaceId, group_id: groupId, role }, 201);
+  return c.json({ project_id: workspaceId, group_id: groupId, role }, 201);
 },
 );
 
@@ -498,13 +510,13 @@ workspacesApp.openapi(
 
   if (result.length === 0) return c.json({ error: 'grant not found' }, 404);
   await invalidateIamCacheForGroup(groupId);
-  return c.json({ workspace_id: workspaceId, group_id: groupId, role: body.role });
+  return c.json({ project_id: workspaceId, group_id: groupId, role: body.role });
 },
 );
 
 // DELETE /v1/workspaces/:workspaceId/group-grants/:groupId
 // Detach a group. Members of the group lose access via this grant
-// immediately; any direct workspace_members row they have is unaffected.
+// immediately; any direct project_members row they have is unaffected.
 
 workspacesApp.openapi(
   createRoute({
@@ -719,6 +731,7 @@ workspacesApp.openapi(
     subject,
     grantsBySession,
     runtimeStatusBySession,
+    callerSessionId: c.get('sessionId') ?? null,
   });
   if (!selected.authorized) {
     return c.json({ error: 'Workspace manager access is required to list every session' }, 403);
@@ -774,7 +787,7 @@ workspacesApp.openapi(
   if (!loaded) return c.json({ error: 'Not found' }, 404);
   await assertWorkspaceCapability(c, loaded.userId, loaded.row.accountId, workspaceId, WORKSPACE_ACTIONS.WORKSPACE_SESSION_READ);
 
-  const visible = await loadVisibleSession(loaded, sessionId);
+  const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
   if (!visible) return c.json({ error: 'Not found' }, 404);
   const ownerEmail = visible.row.createdBy && !visible.isOwner
     ? (await lookupEmailsByUserIds([visible.row.createdBy])).get(visible.row.createdBy) ?? null
@@ -827,7 +840,7 @@ workspacesApp.openapi(
   if (!loaded) return c.json({ error: 'Not found' }, 404);
   await assertWorkspaceCapability(c, loaded.userId, loaded.row.accountId, workspaceId, WORKSPACE_ACTIONS.WORKSPACE_SESSION_READ);
 
-  const visible = await loadVisibleSession(loaded, sessionId);
+  const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
   if (!visible) return c.json({ error: 'Not found' }, 404);
 
   const transcript = await buildSessionTranscriptDigest({
@@ -879,7 +892,7 @@ workspacesApp.openapi(
     const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
     await assertWorkspaceCapability(c, loaded.userId, loaded.row.accountId, workspaceId, WORKSPACE_ACTIONS.WORKSPACE_SESSION_READ);
-    const visible = await loadVisibleSession(loaded, sessionId);
+    const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
     if (!visible) return c.json({ error: 'Not found' }, 404);
     // The historical trail is Enterprise (`auditAccess`), but this endpoint is
     // also the approval CONTROL PLANE: write/destructive connector actions
@@ -1033,14 +1046,8 @@ workspacesApp.openapi(
 
     const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
-    await assertWorkspaceCapability(
-      c,
-      loaded.userId,
-      loaded.row.accountId,
-      workspaceId,
-      WORKSPACE_ACTIONS.WORKSPACE_SESSION_READ,
-    );
-    const visible = await loadVisibleSession(loaded, sessionId);
+    await assertWorkspaceCapability(c, loaded.userId, loaded.row.accountId, workspaceId, WORKSPACE_ACTIONS.WORKSPACE_SESSION_READ);
+    const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
     if (!visible) return c.json({ error: 'Not found' }, 404);
 
     const [page, live] = await Promise.all([
@@ -1174,7 +1181,7 @@ workspacesApp.openapi(
     }
 
     // Every unresolved pending action in the workspace, by session. (No DB join:
-    // executor_executions.session_id is `uuid` while workspace_sessions.session_id
+    // executor_executions.session_id is `uuid` while project_sessions.session_id
     // is `text` — cross-type equality errors in Postgres, so we resolve in JS
     // where both surface as strings.)
     const pendingRows = await db
@@ -1497,7 +1504,7 @@ workspacesApp.openapi(
   const loaded = await loadWorkspaceForUser(c, workspaceId, 'read');
   if (!loaded) return c.json({ error: 'Not found' }, 404);
 
-  const visible = await loadVisibleSession(loaded, sessionId);
+  const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
   if (!visible) return c.json({ error: 'Not found' }, 404);
   if (!visible.canManageSharing) {
     return c.json({ error: 'Only the session owner or a workspace manager can change sharing' }, 403);
@@ -1525,7 +1532,7 @@ workspacesApp.openapi(
 
   await setSessionSharing(sessionId, intent);
 
-  const fresh = await loadVisibleSession(loaded, sessionId);
+  const fresh = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
   return c.json(fresh ? serializeSession(fresh.row, {
     grants: fresh.grants,
     viewerId: loaded.userId,
@@ -1590,7 +1597,16 @@ workspacesApp.openapi(
   // Letting a client forge either via PATCH lets any workspace member hide
   // another member's session, block its follow-ups, and trip the reaper.
   // See SSR-7 (weekly pentest run #4).
-  const SERVER_MANAGED_METADATA_KEYS = ['deletedAt', 'deletedBy'];
+  // opencode_model is create-only by contract and changed only via
+  // PUT /sessions/{id}/model, which validates it against the account. Planting
+  // it through metadata skipped that check entirely, so a retired or
+  // account-forbidden model could be stored and booted by the next cold provision.
+  const SERVER_MANAGED_METADATA_KEYS = [
+    'deletedAt',
+    'deletedBy',
+    'opencode_model',
+    'opencode_model_source',
+  ];
   const metadataInput = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
     ? (body.metadata as Record<string, unknown>)
     : null;
@@ -1601,7 +1617,7 @@ workspacesApp.openapi(
     }
   }
 
-  const visible = await loadVisibleSession(loaded, sessionId);
+  const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
   if (!visible) return c.json({ error: 'Not found' }, 404);
   const existing = visible.row;
 
@@ -1678,7 +1694,7 @@ workspacesApp.openapi(
   assertAgentScope(c, WORKSPACE_ACTIONS.WORKSPACE_SESSION_STOP);
 
   // Stopping a session is reserved for its owner or a workspace manager.
-  const visible = await loadVisibleSession(loaded, sessionId);
+  const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
   if (!visible) return c.json({ error: 'Not found' }, 404);
   if (!visible.canManageSharing) {
     return c.json({ error: 'Only the session owner or a workspace manager can stop this session' }, 403);
@@ -1880,7 +1896,7 @@ workspacesApp.openapi(
     // Agents live in the git config → validate there, store in
     // iam_resource_grants. A typo'd grant would be a silent dead row. (Skills
     // and secrets used to be creatable here too — SECRETS routed to the share
-    // model, workspace_secret_grants — but the resourceType guard above now
+    // model, project_secret_grants — but the resourceType guard above now
     // rejects both before we get here; only 'agent' reaches this point.)
     let config;
     try {
@@ -1932,5 +1948,147 @@ workspacesApp.openapi(
     const removed = await deleteResourceGrant(grantId, workspaceId);
     if (!removed) return c.json({ error: 'grant not found' }, 404);
     return c.json({ ok: true });
+  },
+);
+
+/**
+ * Change the model a session uses, mid-flight.
+ *
+ * `opencode_model` was create-only: the sandbox reads `KORTIX_OPENCODE_MODEL`
+ * when opencode builds its config at spawn, and nothing re-pushed it — so a live
+ * box kept its boot model for the rest of the session. The only way to "change"
+ * it was to plant a value through PATCH metadata, which skipped the account
+ * servability check entirely (now blocked; see SERVER_MANAGED_METADATA_KEYS).
+ *
+ * Validates against the SAME resolver the create path uses, persists, then
+ * pushes to the live sandbox. The response says whether it is in effect NOW or
+ * only from the next boot, because those are genuinely different outcomes and
+ * the caller cannot otherwise tell.
+ */
+workspacesApp.openapi(
+  createRoute({
+    method: 'put',
+    path: '/{workspaceId}/sessions/{sessionId}/model',
+    tags: ['sessions'],
+    summary: "Change a running session's model",
+    ...auth,
+    request: {
+      params: z.object({ workspaceId: z.string(), sessionId: z.string() }),
+      body: {
+        content: {
+          'application/json': {
+            schema: z.object({ opencode_model: z.string().min(1).max(128) }),
+          },
+        },
+      },
+    },
+    responses: {
+      200: json(
+        z.object({
+          opencode_model: z.string(),
+          /** True when a live sandbox took it; false when it applies at next boot. */
+          applied_live: z.boolean(),
+          detail: z.string().optional(),
+        }),
+        'Model changed',
+      ),
+      ...errors(400, 403, 404, 409),
+    },
+  }),
+  async (c: any) => {
+    const workspaceId = c.req.param('workspaceId');
+    const sessionId = c.req.param('sessionId');
+    if (!UUID_V4_REGEX.test(sessionId)) return c.json({ error: 'Invalid session id' }, 400);
+
+    const loaded = await loadWorkspaceForUser(c, workspaceId, 'session');
+    if (!loaded) return c.json({ error: 'Not found' }, 404);
+    const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
+    if (!visible) return c.json({ error: 'Not found' }, 404);
+    // Seeing a session is not permission to mutate it: visibility 'workspace'
+    // makes it readable by every member, but changing the model restarts
+    // opencode and destroys the OWNER's in-flight turn. Same gate as the
+    // sharing and stop routes above.
+    if (!mayChangeSessionModel(visible)) {
+      return c.json(
+        { error: 'Only the session owner or a workspace manager can change this session model' },
+        403,
+      );
+    }
+
+    const body = await readBody(c);
+    const requested = typeof body?.opencode_model === 'string' ? body.opencode_model : '';
+    const shapeError = validateModelChangeShape(requested);
+    if (shapeError) {
+      return c.json({ error: shapeError.message, code: shapeError.code }, 400);
+    }
+    const stateError = canChangeSessionModel(visible.row.status);
+    if (stateError) {
+      return c.json({ error: stateError.message, code: stateError.code }, 409);
+    }
+
+    // Same servability gate as create — otherwise this endpoint becomes the very
+    // back door the PATCH guard just closed.
+    const trimmed = requested.trim();
+    const freeModelsOnly = config.KORTIX_BILLING_INTERNAL_ENABLED
+      ? !tierGrantsAllModels(await getCachedAccountTier(loaded.row.accountId))
+      : false;
+    const servable = await isModelServableForAccount({
+      userId: loaded.userId,
+      accountId: loaded.row.accountId,
+      workspaceId,
+      freeModelsOnly,
+      model: trimmed,
+    });
+    if (!servable) {
+      return c.json(
+        {
+          error: `Model "${trimmed}" is not available for this account`,
+          code: 'INVALID_SESSION_MODEL',
+        },
+        400,
+      );
+    }
+
+    const nextModel = toOpencodeModelRef(trimmed);
+    // The session model lives in metadata, not a column (sessions.ts:1102) —
+    // which is precisely why the PATCH metadata back door was dangerous.
+    const currentMetadata = (visible.row.metadata ?? {}) as Record<string, unknown>;
+    const currentModel =
+      typeof currentMetadata.opencode_model === 'string' ? currentMetadata.opencode_model : null;
+    const needsPush = modelChangeNeedsLivePush({
+      current: currentModel,
+      next: nextModel,
+      status: visible.row.status,
+    });
+
+    await db
+      .update(workspaceSessions)
+      .set({
+        metadata: {
+          ...currentMetadata,
+          opencode_model: nextModel,
+          opencode_model_source: 'explicit',
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(workspaceSessions.sessionId, sessionId));
+
+    if (!needsPush) {
+      return c.json({
+        opencode_model: nextModel,
+        applied_live: false,
+        detail:
+          currentModel === nextModel
+            ? 'already set to this model'
+            : 'stored — applies when the sandbox next starts',
+      });
+    }
+
+    const push = await pushSessionModelToSandbox({ workspaceId, sessionId, model: nextModel });
+    return c.json({
+      opencode_model: nextModel,
+      applied_live: push.applied,
+      ...(push.applied ? {} : { detail: `stored, but not pushed: ${push.reason ?? 'unknown'}` }),
+    });
   },
 );

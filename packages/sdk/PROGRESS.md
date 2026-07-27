@@ -273,6 +273,11 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B23 | **Prevent ACP prompt results from exposing a false idle window before late protocol updates settle.**                                                                                                                                                                                                                                                                                                                                          | The deployed white-label parity screenshot rendered 4 ACP tool cards and `Agent is working…`, while REST rendered 26 completed tool cards. `applyAcpEnvelope()` marks the projection idle on the prompt result, and later tool or text updates can mark it busy again.                                                                                                  | **IN PROGRESS 2026-07-26** — session `whitelabel-acp-stable-completion`; RED test, SDK fix, strengthened parity gate, merge, Deploy Dev, and deployed proof required                                                                                                                            |
 | B24 | **Accept a server-authorized initial OpenCode session pin in `useSession`.** The SDK must hydrate the cached transcript before runtime readiness without making the initial pin authoritative over the `/start` result.                                                                                                                                                                                                                          | Existing sessions wait for `/start` before `useSessionSync` can hydrate IndexedDB history. The preserved `session-load-latency` work proved the additive option and pin precedence.                                                                                                                       | **IN PROGRESS 2026-07-26** — session `api-latency-refactor`; RED test, implementation port, full SDK gates, browser proof, merge, and Deploy Dev proof required                                                                                                                               |
 | B25 | **Start project model-picker and project-detail reads in parallel.** Gateway projects must not wait for project detail before the SDK starts the compact model-picker request.                                                                                                                                                                                                                                                                   | `src/react/use-opencode-sessions/providers.ts` enables the model query only after `projectDetailQuery.isSuccess`, which creates a sequential request waterfall on project load.                                                                                                                          | **IN PROGRESS 2026-07-26** — session `api-latency-refactor`; RED test, implementation, full SDK gates, browser network proof, merge, and Deploy Dev proof required                                                                                                                            |
+| B26 | **Do not report an expected warm-session configuration mismatch as a global API error.** The web client catches `WARM_SESSION_CONFIGURATION_MISMATCH` and creates a normal session.                                                                                                                                                                                                                                                               | `src/core/rest/projects-client/sessions.ts` calls `/sessions/warm/claim` with the default `showErrors: true`, so the recoverable `409` still reaches the host error handler.                                                                                                                                | **DONE 2026-07-26** — PR #5529, merge `5c0ae97ec`; SDK tests `1280/0`; deployed US proof observed the typed `409`, normal-session fallback, exact `PONG`, and no global mismatch error                                                                                                      |
+| B27 | **Retry the transient IAM policy read that caused the all-account project query failure.** The projects page can issue one query per account.                                                                                                                                                                                                                                                                                                     | Live US shadow evidence at `2026-07-26T20:03:20Z`: one IAM-backed `GET /projects` returned `500`; the identical retry returned `200` after `1.4s`. The wrapped `DrizzleQueryError` hid the nested PostgreSQL cause from logs.                                                                                  | **DONE 2026-07-26** — PR #5529, merge `5c0ae97ec`; one bounded transient read retry fails closed; wrapped PostgreSQL details are logged; API tests `40/0`; US API rollout completed with `2/2` tasks                                                                                             |
+| B28 | **Keep an explicit project-composer agent selection through asynchronous project-default hydration.**                                                                                                                                                                                                                                                                                                                                               | The deployed US two-test session suite clicked `memory-reflector`, then `useOpenCodeLocal()` changed its selection scope when `defaultAgentName` hydrated to `kortix`. The picker reset to `kortix` for 30 seconds.                                                                                          | **DONE 2026-07-27** — PR #5533, merge `ee45f55fa`; SDK tests `1283/0`, typecheck, packed-install smoke, and deployed US two-test suite `2/2` pass; both sessions returned exact `PONG`, and the mismatch fallback emitted no global error                                                                                                                                    |
+| B29 | **Preserve ACP upstream message boundaries in the projected transcript.**                                                                                                                                                                                                                                                                                                                                                                              | Dev session `ee41f742-9384-4f34-88e7-63ae3d765cae` emitted distinct `session/update.messageId` values for assistant steps, but `src/core/acp/projection.ts` discarded `messageId` and appended every text or reasoning chunk to one generated assistant message.                                                                                      | **DONE 2026-07-27** — implementation `60b06c6e4`; focused projection/controller tests `27/0`, full SDK tests `1299/0`, typecheck, packed-install smoke, supplied-transcript replay, and local ACP Chromium flow pass                                                                                                                                                                                          |
+| B30 | **Expose message-based session rewind and restore through both REST and ACP transports.** Editing an earlier user message must rewind the same canonical session instead of creating a fork. The removed path must remain recoverable until the replacement prompt commits.                                                                                                                                                                      | `apps/web/src/features/session/session-chat.tsx` contains `TODO(session-rewind)`. OpenCode exposes `/session/{sessionID}/revert` and `/unrevert`; ACP has no standard rewind method and needs a Kortix bridge extension plus transcript reload.                                                               | **DONE 2026-07-27** — implementation `eab4eef0f`; SDK, daemon, web, browser, and live REST plus ACP gates pass. PR merge, Deploy Dev, deployed SHA proof, and deployed behavior proof remain release gates |
 
 > **Paths above are as of today (pre-Task-4).** After the restructure they move:
 > `platform/api/` → `core/http/api/`, `opencode/` → `core/runtime/`,
@@ -2846,6 +2851,23 @@ and deployed Workspace browser and API verification remain.
 
 ---
 
+### 2026-07-26 — session `use2-session-readiness` (B26 and B27 claim)
+
+Claimed two notification regressions found during live US shadow verification.
+
+- Warm-session configuration mismatches must remain recoverable without a
+  global error notification.
+- All-account project queries must let React Query retry transient failures
+  without a global error notification.
+
+Implementation will follow RED -> GREEN -> REFACTOR. Required gates are focused
+SDK tests, full SDK typecheck, suite, packed-install smoke, web lint, PR merge,
+Deploy Dev SHA proof, and US shadow verification.
+
+**Status:** IN PROGRESS.
+
+---
+
 ### 2026-07-26 — session `api-latency-refactor` (B24 and B25 claims)
 
 Claimed two additive React SDK changes.
@@ -3420,3 +3442,186 @@ PR CI remains the aggregate API gate.
 **Status:** IMPLEMENTATION COMPLETE.
 
 **Shippable to production: NOT YET.** The branch push and all PR checks remain.
+
+---
+
+### 2026-07-26 — session `use2-session-readiness` (B26 and B27 completion)
+
+Completed both US shadow readiness fixes in PR #5529.
+
+- `claimWarmProjectSession()` keeps the recoverable configuration `409` out of
+  the global error sink.
+- The IAM custom-policy read retries one transient database failure.
+- Database error logging extracts the nested PostgreSQL cause from a wrapped
+  `DrizzleQueryError`.
+- The US shadow deployment requires managed models.
+
+Verification:
+
+- Merge commit: `5c0ae97ec7676f3cd439f7f19db154b53602feda`.
+- Deploy Dev run `30222230764`: success for the exact merge commit.
+- SDK typecheck: exit 0.
+- SDK suite: **1280 pass / 0 fail** with **5707** assertions.
+- SDK packed-install smoke: pass.
+- API typecheck: exit 0.
+- Focused API tests: **40 pass / 0 fail** with **82** assertions.
+- US API: `0.10.16-dev.5c0ae97e`.
+- US ECS API: task definition revision `11`, desired `2`, running `2`,
+  pending `0`, rollout `COMPLETED`.
+- US frontend: Vercel deployment
+  `dpl_DSe54pvhXpCgUyG7wVWnb7VdNm9M`.
+- Deployed real runtime flow: exact `PONG` and Files view loaded.
+- Deployed warm mismatch flow: typed `409`, normal session creation, exact
+  `PONG`, no global mismatch error, **27.4 seconds**.
+
+Production routing and production data were unchanged.
+
+**Status:** COMPLETE.
+
+**Shippable to production: YES.**
+
+---
+
+### 2026-07-27 — session `acp-message-turns` (B29 implementation)
+
+Preserved ACP upstream `messageId` values in the projected transcript.
+
+- User and assistant chunks now retain their upstream message IDs.
+- Text and reasoning chunks now update their owning assistant message.
+- A new upstream assistant message completes the previous assistant message.
+- Late tool updates now find the assistant message that owns the matching
+  `callID`.
+- ACP events without `messageId` still use generated IDs.
+
+TDD and local verification:
+
+- Implementation commit: `60b06c6e41f82d786f24095d366876483af85b68`.
+- Focused projection and controller suite: **27 pass / 0 fail** with **75**
+  assertions.
+- SDK typecheck: exit 0.
+- SDK suite: **1299 pass / 0 fail** with **5756** assertions.
+- SDK packed-install smoke: pass.
+- `git diff --check`: exit 0.
+- Supplied transcript replay produced **1** user message and **18** separate
+  assistant messages.
+- The replay preserved upstream assistant IDs and tool-call ownership.
+- Local Chromium ACP flow: **1 pass / 0 fail** in **58.3 seconds**.
+- The browser flow covered prompt streaming, hard reload, permission response,
+  question response, and the absence of REST `/prompt_async`.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
+and deployed ACP transcript verification remain.
+
+---
+
+### 2026-07-27 — session `session-message-revert` (B30 local completion)
+
+Implemented message-based session rewind and restore in `eab4eef0f`.
+
+The implementation keeps one canonical OpenCode session. It does not create a
+fork. Native REST uses `session.revert` and `session.unrevert`. ACP uses the
+Kortix `session/revert` and `session/unrevert` extensions. The daemon forwards
+both ACP extensions to native OpenCode history routes.
+
+ACP transcript replay preserves native OpenCode message IDs. The controller
+resolves an optimistic `acp-user-*` ID to its canonical `msg_*` ID before
+rewind. REST transcript synchronization keeps removed messages hidden until
+cleanup completes. The next accepted prompt commits the replacement path.
+
+`useSession` now exposes `rewindMessageId`, `rewindPending`, `rewindError`,
+`rewind(messageId)`, and `restoreRewind()`. The web session UI adds Edit,
+confirmation, replacement composer prefill, staged-rewind status, and Restore.
+
+TDD evidence:
+
+- RED: the core rewind projection helper did not exist.
+- RED: the ACP client had no revert or unrevert extension methods.
+- RED: ACP transcript replay generated local IDs instead of native `msg_*` IDs.
+- RED: the ACP controller had no reversible rewind state.
+- RED: `useSession` had no provider-agnostic rewind contract.
+- RED: the web message action still contained `TODO(session-rewind)`.
+- GREEN focused SDK, daemon, and web suite: **145 pass / 0 fail**.
+- GREEN ACP controller after optimistic-ID resolution: **20 pass / 0 fail**.
+
+SDK gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit 0.
+- `pnpm --filter @kortix/sdk test`: **1309 pass / 0 fail**, **5779**
+  assertions across **111** files.
+- `pnpm --filter @kortix/sdk run smoke:install`: packed install and Node ESM
+  import passed.
+
+Daemon and web gates:
+
+- `pnpm --filter @kortix/sandbox-agent-server typecheck`: exit 0.
+- `pnpm --filter @kortix/sandbox-agent-server test`: **306 pass / 0 fail**,
+  **739** assertions across **33** files.
+- Web source contract: **5 pass / 0 fail**, **11** assertions.
+- Touched web ESLint: exit 0.
+- Web `tsc --noEmit`: zero errors in the three touched session files. Two
+  existing errors remain in `template-url.test.ts`.
+- `git diff --check`: exit 0.
+
+Local browser proof:
+
+- Playwright ACP runtime canary: **1 pass / 0 fail**. The test ran for **1.6
+  minutes**. Total runtime was **6.8 minutes** including snapshot provisioning.
+- The canary verified Edit, destructive confirmation, `session/revert`,
+  transcript truncation, replacement prefill, Restore, `session/unrevert`,
+  replacement send, and old-path deletion.
+
+Live local REST and ACP proof used one disposable canonical OpenCode session:
+
+- ACP session: `ses_05b51aa3affeB0XyuUkhYt8L6n`.
+- ACP rewind message: `msg_fa4ae82cc001LquUy2MNmLt5T5`.
+- ACP restore: `true`.
+- ACP replacement: `true`.
+- ACP file result: `ACP_REWIND_REPLACEMENT`.
+- REST session: `ses_05b51aa3affeB0XyuUkhYt8L6n`.
+- REST rewind message: `msg_fa4aed6ad001VvRt8OASgvwlmU`.
+- REST restore: `true`.
+- REST replacement: `true`.
+- REST file result: `REST_REWIND_REPLACEMENT`.
+- Smoke result: `PASS`.
+
+**Status:** LOCAL IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** PR merge, Deploy Dev, deployed SHA proof,
+and deployed REST, ACP, and web verification remain.
+
+---
+
+### 2026-07-27 — session `019f9afd` (Workspace refactor conflict resolution)
+
+Merged `origin/main` through `2b2c4192b` into PR #5480.
+
+The conflict resolution preserves the canonical Workspace API. It also
+preserves deprecated Project compatibility aliases and physical database names.
+The connector-profile API emits `workspace`. Database rows continue to store
+`project`.
+
+Verification:
+
+- API suite: **4158 pass / 53 skip / 0 fail**.
+- API trigger suite: **24 pass / 0 fail**.
+- SDK suite: **1320 pass / 0 fail**.
+- SDK connector suite: **28 pass / 0 fail**.
+- Web suite: **2343 pass / 0 fail**.
+- Sandbox-agent suite: **311 pass / 0 fail**.
+- White-label suite: **89 pass / 3 skip / 0 fail**.
+- Gateway suite: **24 pass / 0 fail**.
+- API-contract suite: **46 pass / 0 fail**.
+- API, SDK, gateway, and white-label typechecks: exit 0.
+- CLI and voice-agent suites: exit 0.
+- Conflict-marker scan: zero matches.
+- `git diff --check`: exit 0.
+
+The focused connection-profile integration fixture returns `404` before its
+roster assertion. The default API suite excludes integration files.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** The current `origin/main` merge, branch
+push, and PR checks remain. The user must approve the PR merge.

@@ -6,7 +6,6 @@ import {
   workspaceTriggerRuntime,
   workspaces,
 } from '@kortix/db';
-import { Cron } from 'croner';
 import { and, desc, eq, gt, ne, or, sql } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { config } from '../../config';
@@ -24,6 +23,18 @@ import {
   sessionBackpressureState,
 } from '../session-lifecycle';
 import {
+  type TriggerExecutionRow,
+  claimDueScheduleSlots,
+  claimTriggerExecutions,
+  countUncatalogedTriggerWorkspaces,
+  markTriggerExecutionDispatched,
+  markTriggerExecutionFailed,
+  markTriggerExecutionSkipped,
+  markTriggerExecutionSucceeded,
+} from '../trigger-execution-store';
+import { reconcileWorkspaceTriggerRuntime } from '../trigger-runtime-catalog';
+import { validateTriggerCron, validateTriggerTimezone } from '../trigger-schedule';
+import {
   GIT_TRIGGER_SESSION_MODES,
   type GitTriggerSessionMode,
   type GitTriggerSpec,
@@ -36,7 +47,6 @@ import {
   synthesizeBlankManifest,
   triggerSpecToTomlEntry,
 } from '../triggers';
-import { reconcileWorkspaceTriggerRuntime } from '../trigger-runtime-catalog';
 import { parseGitHubRepoUrl, resolveWorkspaceGitAuth, withWorkspaceGitAuth } from './git';
 import {
   type WorkspaceRow,
@@ -156,7 +166,7 @@ export async function triggerBackpressureState(accountId: string, workspaceId: s
 //
 // Public fire endpoint for GIT-BACKED webhook triggers. The trigger config
 // lives in `.opencode/triggers/<slug>.md` in the workspace repo; the signing
-// secret lives in `workspace_secrets` (referenced from the file via
+// secret lives in `project_secrets` (referenced from the file via
 // `secret_env`). On a valid signed POST, we render the prompt template and
 // spawn a session — same as the DB-backed `/v1/webhooks/:triggerId` path,
 // but the source of truth is git.
@@ -170,6 +180,7 @@ export const globalForWorkspaceTriggers = globalThis as typeof globalThis & {
 export let triggerSchedulerTimer: TriggerSchedulerTimer | null = null;
 
 export let triggerSweepRunning = false;
+let triggerExecutionDrainRunning = false;
 
 // In-memory heartbeat for the trigger scheduler, surfaced at /health so an
 // operator can tell at a glance whether the leader's sweep is alive and what
@@ -189,6 +200,29 @@ export interface TriggerSchedulerHealth {
     skipped: number;
   } | null;
   lastError: string | null;
+  catalogPendingWorkspaces: number | null;
+  lastCatalogSweepCompletedAt: string | null;
+  lastCatalogSweepResult: {
+    scanned: number;
+    synced: number;
+    errors: number;
+  } | null;
+  lastCatalogSweepError: string | null;
+  catalogCursor: string | null;
+  discoveryCursor: string | null;
+  catalogCycleCompletedAt: string | null;
+  discoveryCycleCompletedAt: string | null;
+  lastClaimLagMs: number | null;
+  maxObservedClaimLagMs: number | null;
+  lastExecutionDrainStartedAt: string | null;
+  lastExecutionDrainCompletedAt: string | null;
+  lastExecutionResult: {
+    fired: number;
+    queued: number;
+    failed: number;
+    skipped: number;
+  } | null;
+  lastExecutionError: string | null;
 }
 const schedulerHealth: TriggerSchedulerHealth = {
   lastSweepStartedAt: null,
@@ -196,9 +230,36 @@ const schedulerHealth: TriggerSchedulerHealth = {
   lastSweepDurationMs: null,
   lastResult: null,
   lastError: null,
+  catalogPendingWorkspaces: null,
+  lastCatalogSweepCompletedAt: null,
+  lastCatalogSweepResult: null,
+  lastCatalogSweepError: null,
+  catalogCursor: null,
+  discoveryCursor: null,
+  catalogCycleCompletedAt: null,
+  discoveryCycleCompletedAt: null,
+  lastClaimLagMs: null,
+  maxObservedClaimLagMs: null,
+  lastExecutionDrainStartedAt: null,
+  lastExecutionDrainCompletedAt: null,
+  lastExecutionResult: null,
+  lastExecutionError: null,
 };
 export function getTriggerSchedulerHealth(): TriggerSchedulerHealth {
   return schedulerHealth;
+}
+
+export function initialCatalogBackfillIncomplete(
+  health: Pick<
+    TriggerSchedulerHealth,
+    'catalogCycleCompletedAt' | 'discoveryCycleCompletedAt' | 'catalogPendingWorkspaces'
+  >,
+): boolean {
+  return (
+    health.catalogCycleCompletedAt === null ||
+    health.discoveryCycleCompletedAt === null ||
+    (health.catalogPendingWorkspaces ?? 1) > 0
+  );
 }
 
 // ─── Reliability: timeouts + stall detection ─────────────────────────────────
@@ -213,23 +274,6 @@ export function getTriggerSchedulerHealth(): TriggerSchedulerHealth {
 export function triggerFireTimeoutMs(): number {
   const raw = Number(process.env.KORTIX_TRIGGER_FIRE_TIMEOUT_MS);
   return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 45_000;
-}
-/** Hard cap on loading one workspace's manifest from its git mirror. */
-export function triggerLoadTimeoutMs(): number {
-  const raw = Number(process.env.KORTIX_TRIGGER_LOAD_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 30_000;
-}
-
-/** Hard cap on resolving git credentials for one workspace. */
-export function triggerAuthTimeoutMs(): number {
-  const raw = Number(process.env.KORTIX_TRIGGER_AUTH_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 15_000;
-}
-
-/** Number of workspaces whose trigger manifests can load in parallel. */
-export function triggerWorkspaceConcurrency(): number {
-  const raw = Number(process.env.KORTIX_TRIGGER_WORKSPACE_CONCURRENCY);
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 8;
 }
 
 /** Number of workspace manifests the connector reconciler processes in parallel. */
@@ -362,12 +406,17 @@ export function connectorSweepIntervalMs() {
 
 export function triggerSchedulerIntervalMs() {
   const raw = Number((config as any).KORTIX_TRIGGER_SCHEDULER_INTERVAL_MS);
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 60_000;
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1_000;
 }
 
-export function nextCronRun(schedule: string, from: Date, timezone?: string): Date | null {
-  const job = new Cron(schedule, { paused: true, ...(timezone ? { timezone } : {}) });
-  return job.nextRun(from);
+export function triggerScheduleClaimLimit(): number {
+  const raw = Number(process.env.KORTIX_TRIGGER_SCHEDULE_CLAIM_LIMIT);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 250;
+}
+
+export function triggerExecutionConcurrency(): number {
+  const raw = Number(process.env.KORTIX_TRIGGER_EXECUTION_CONCURRENCY);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 8;
 }
 
 /**
@@ -446,12 +495,14 @@ export async function runWorkspaceTriggerSweep(now = new Date()): Promise<{
     schedulerHealth.lastSweepDurationMs = Date.now() - startedMs;
     schedulerHealth.lastResult = result;
     triggerSweepRunning = false;
-    console.log('[workspace-triggers] sweep completed', {
-      status,
-      durationMs: schedulerHealth.lastSweepDurationMs,
-      ...result,
-      error: schedulerHealth.lastError,
-    });
+    if (status === 'failed' || result.scanned > 0) {
+      console.log('[workspace-triggers] schedule claim completed', {
+        status,
+        durationMs: schedulerHealth.lastSweepDurationMs,
+        ...result,
+        error: schedulerHealth.lastError,
+      });
+    }
   }
 }
 
@@ -461,24 +512,6 @@ export async function runWorkspaceTriggerSweep(now = new Date()): Promise<{
  * UI CRUD and `kortix ship` reconcile inline. The discovery batch catches raw
  * git pushes. The catalog batch refreshes known trigger and connector workspaces.
  */
-
-/** Select only active workspaces that have at least one trigger catalog row. */
-async function selectTriggerCatalogWorkspaces(): Promise<WorkspaceRow[]> {
-  return db
-    .select()
-    .from(workspaces)
-    .where(
-      and(
-        eq(workspaces.status, 'active'),
-        sql`exists (
-          select 1
-          from ${workspaceTriggerRuntime}
-          where ${workspaceTriggerRuntime.workspaceId} = ${workspaces.workspaceId}
-        )`,
-      ),
-    )
-    .orderBy(workspaces.workspaceId);
-}
 
 let manifestCatalogCursor: string | null = null;
 
@@ -551,12 +584,16 @@ export async function runWorkspaceConnectorSweep(): Promise<{
   const startedMs = Date.now();
   const out = { scanned: 0, synced: 0, errors: 0 };
   let status: 'completed' | 'failed' = 'completed';
+  let catalogCycleCompleted = false;
+  let discoveryCycleCompleted = false;
   try {
     const { syncWorkspaceConnectors } = await import('../../executor/sync');
     const [catalogWorkspaces, discoveryWorkspaces] = await Promise.all([
       selectManifestCatalogWorkspaces(),
       selectManifestDiscoveryWorkspaces(),
     ]);
+    catalogCycleCompleted = manifestCatalogCursor === null;
+    discoveryCycleCompleted = manifestDiscoveryCursor === null;
     const uniqueWorkspaces = new Map<string, WorkspaceRow>();
     for (const workspace of [...catalogWorkspaces, ...discoveryWorkspaces]) {
       uniqueWorkspaces.set(workspace.workspaceId, workspace);
@@ -589,15 +626,29 @@ export async function runWorkspaceConnectorSweep(): Promise<{
       out.synced += result.synced;
       out.errors += result.errors;
     }
+    schedulerHealth.catalogPendingWorkspaces = await countUncatalogedTriggerWorkspaces();
+    schedulerHealth.lastCatalogSweepError = null;
     return out;
   } catch (error) {
     status = 'failed';
     out.errors += 1;
+    schedulerHealth.lastCatalogSweepError = error instanceof Error ? error.message : String(error);
     console.error('[workspace-connectors] sweep failed', {
       error: error instanceof Error ? error.message : String(error),
     });
     return out;
   } finally {
+    const completedAt = new Date().toISOString();
+    schedulerHealth.lastCatalogSweepCompletedAt = completedAt;
+    schedulerHealth.lastCatalogSweepResult = out;
+    schedulerHealth.catalogCursor = manifestCatalogCursor;
+    schedulerHealth.discoveryCursor = manifestDiscoveryCursor;
+    if (status === 'completed' && catalogCycleCompleted) {
+      schedulerHealth.catalogCycleCompletedAt = completedAt;
+    }
+    if (status === 'completed' && discoveryCycleCompleted) {
+      schedulerHealth.discoveryCycleCompletedAt = completedAt;
+    }
     connectorSweepRunning = false;
     console.log('[workspace-connectors] sweep completed', {
       status,
@@ -614,7 +665,7 @@ export async function runWorkspaceConnectorSweep(): Promise<{
 // Triggers can ALSO live in the workspace repo at `.opencode/triggers/<slug>.md`
 // — see ./triggers.ts for the file format. The repo is the source of truth
 // for config (cron expr, prompt, secret_env reference). Runtime state
-// (last_fired_at) lives in `workspace_trigger_runtime` because writing the
+// (last_fired_at) lives in `project_trigger_runtime` because writing the
 // repo on every fire would amplify a 5s scheduler tick into a flood of
 // git commits.
 
@@ -635,7 +686,7 @@ export async function resolveGitTriggerActor(accountId: string): Promise<string 
  * standing-role fallback an unactivated agent SA relies on — see
  * `resolveActingActor` in iam/engine-v2.ts). This is intentionally NOT the
  * run's recorded identity: see `attributeFiredTriggerSession` below, which
- * overwrites `workspace_sessions.created_by` to the agent's own service account
+ * overwrites `project_sessions.created_by` to the agent's own service account
  * right after the row exists — "attribution and authorization stop sharing
  * one field" (docs/specs/2026-07-05-agent-first-config-unification.md §2.2).
  * What a run can actually ACCESS is governed by the AGENT's declared scope in
@@ -692,29 +743,6 @@ export async function attributeFiredTriggerSession(input: {
       agentName: input.agentName,
       error: err instanceof Error ? err.message : String(err),
     });
-  }
-}
-
-export function isGitCronSpecDue(
-  spec: GitTriggerSpec,
-  lastFiredAt: Date | null,
-  now: Date,
-): boolean {
-  // One-off ("run once") schedules: fire exactly once at/after `runAt`. The
-  // last_fired_at stamp written on the first fire keeps it dormant forever
-  // after — no cron, no self-disable needed.
-  if (spec.runAt) {
-    if (lastFiredAt) return false;
-    const at = Date.parse(spec.runAt);
-    return !Number.isNaN(at) && at <= now.getTime();
-  }
-  if (!spec.cron) return false;
-  try {
-    const baseline = lastFiredAt ?? new Date(0);
-    const next = nextCronRun(spec.cron, baseline, spec.timezone);
-    return Boolean(next && next.getTime() <= now.getTime());
-  } catch {
-    return false;
   }
 }
 
@@ -789,7 +817,7 @@ export async function markGitTriggerAttemptFailed(
 /**
  * Find the canonical session to reuse for a `session_mode = "reuse"` trigger:
  * the most recent NON-failed session this trigger created. Sessions are matched
- * via the `trigger_slug` + `trigger_kind` we stamp into `workspace_sessions.metadata`
+ * via the `trigger_slug` + `trigger_kind` we stamp into `project_sessions.metadata`
  * at fire time (no extra column / migration needed). Failed sessions are skipped
  * so a dead run is abandoned in favor of a freshly-created canonical session.
  */
@@ -818,7 +846,7 @@ export async function findReusableTriggerSession(
 /**
  * The `session_mode = "keyed"` analogue of {@link findReusableTriggerSession}:
  * the most recent non-failed session this trigger created *for this key*. Uses
- * the same `workspace_sessions.metadata` stamping trick, so keyed routing needs
+ * the same `project_sessions.metadata` stamping trick, so keyed routing needs
  * no extra column and no migration.
  *
  * The key is matched exactly and is caller-supplied data (a chat id, a customer
@@ -907,7 +935,7 @@ async function enqueueTriggerPrompt(input: {
 
 /**
  * Fire a git-backed trigger. Triggers are file-defined (kortix.yaml), so there
- * is no DB trigger/event row — the workspace_sessions row carries `trigger_slug`
+ * is no DB trigger/event row — the project_sessions row carries `trigger_slug`
  * in metadata so audits can still reconstruct the firing path.
  */
 
@@ -1101,15 +1129,6 @@ export function summarizeTriggerPayload(payload: Record<string, unknown>): Recor
   return rest;
 }
 
-/**
- * Walk all active workspaces, load their git-backed triggers, and fire any
- * cron triggers that are due. Runtime state (last_fired_at) lives in
- * `workspace_trigger_runtime`, keyed by workspace + slug.
- *
- * We swallow per-workspace errors so one busted repo can't break the sweep
- * for everyone else.
- */
-
 export async function runGitTriggerSweep(
   now: Date,
   accumulator: {
@@ -1122,166 +1141,126 @@ export async function runGitTriggerSweep(
     skipped: number;
   },
 ): Promise<void> {
-  const workspacesForSweep = await selectTriggerCatalogWorkspaces();
-  const results = await mapWithConcurrency(
-    workspacesForSweep,
-    triggerWorkspaceConcurrency(),
-    (workspace) => runGitTriggerWorkspace(workspace, now),
-  );
+  const claimedSlots = await claimDueScheduleSlots({
+    now,
+    limit: triggerScheduleClaimLimit(),
+  });
+  if (claimedSlots.length > 0) {
+    const batchMaxClaimLagMs = Math.max(
+      ...claimedSlots.map((slot) =>
+        Math.max(0, now.getTime() - slot.execution.scheduledFor.getTime()),
+      ),
+    );
+    schedulerHealth.lastClaimLagMs = batchMaxClaimLagMs;
+    schedulerHealth.maxObservedClaimLagMs = Math.max(
+      schedulerHealth.maxObservedClaimLagMs ?? 0,
+      batchMaxClaimLagMs,
+    );
+  }
+  accumulator.scanned += claimedSlots.length;
+  accumulator.workspaces += new Set(claimedSlots.map((slot) => slot.execution.workspaceId)).size;
+}
 
-  for (const result of results) {
-    accumulator.workspaces += 1;
-    accumulator.workspaceFailures += result.workspaceFailures;
-    accumulator.scanned += result.scanned;
-    accumulator.fired += result.fired;
-    accumulator.queued += result.queued;
-    accumulator.failed += result.failed;
-    accumulator.skipped += result.skipped;
+async function executeTriggerExecution(
+  row: TriggerExecutionRow,
+): Promise<'fired' | 'queued' | 'failed' | 'skipped'> {
+  const [workspace] = await db
+    .select()
+    .from(workspaces)
+    .where(eq(workspaces.workspaceId, row.workspaceId))
+    .limit(1);
+  if (!workspace || workspace.status !== 'active' || triggersPausedForWorkspace(workspace.metadata)) {
+    const reason = !workspace
+      ? 'workspace not found'
+      : workspace.status !== 'active'
+        ? 'workspace is not active'
+        : 'workspace triggers are paused';
+    await markTriggerExecutionSkipped({
+      row,
+      skippedAt: new Date(),
+      reason,
+    });
+    return 'skipped';
+  }
+
+  const spec = row.spec as unknown as GitTriggerSpec;
+  const payload = row.payload as Record<string, unknown>;
+  const renderedPrompt = renderPromptTemplate(spec.promptTemplate, payload);
+  const idempotencyKey = `trigger:cron:${row.workspaceId}:${row.slug}:${row.scheduleRevision}:${row.scheduledFor.toISOString()}`;
+  try {
+    await markTriggerExecutionDispatched({ row, dispatchedAt: new Date() });
+    const result = await withTimeout(
+      fireGitTrigger({
+        spec,
+        workspace,
+        payload,
+        renderedPrompt,
+        source: 'cron',
+        idempotencyKey,
+      }),
+      triggerFireTimeoutMs(),
+      `execute scheduled trigger ${row.executionId}`,
+    );
+    const completedAt = new Date();
+    if (result.status === 'fired' || result.status === 'queued') {
+      await Promise.all([
+        markTriggerExecutionSucceeded({
+          row,
+          completedAt,
+          sessionId: result.sessionId,
+          commandId: result.commandId,
+        }),
+        markGitTriggerFired(
+          row.workspaceId,
+          row.slug,
+          completedAt,
+          result.status === 'queued' ? 'queued' : 'fired',
+        ),
+      ]);
+      return result.status;
+    }
+    const error = result.error ?? result.reason ?? 'scheduled trigger execution failed';
+    const state = await markTriggerExecutionFailed({ row, failedAt: completedAt, error });
+    await markGitTriggerAttemptFailed(row.workspaceId, row.slug, completedAt, error);
+    return state === 'queued' ? 'queued' : 'failed';
+  } catch (error) {
+    const failedAt = new Date();
+    const message = error instanceof Error ? error.message : String(error);
+    const state = await markTriggerExecutionFailed({ row, failedAt, error: message });
+    await markGitTriggerAttemptFailed(row.workspaceId, row.slug, failedAt, message).catch(() => {});
+    return state === 'queued' ? 'queued' : 'failed';
   }
 }
 
-export async function runGitTriggerWorkspace(
-  workspace: WorkspaceRow,
-  now: Date,
-): Promise<{
-  workspaceFailures: number;
-  scanned: number;
-  fired: number;
-  queued: number;
-  failed: number;
-  skipped: number;
-}> {
-  const out = {
-    workspaceFailures: 0,
-    scanned: 0,
-    fired: 0,
-    queued: 0,
-    failed: 0,
-    skipped: 0,
-  };
-
-  if (triggersPausedForWorkspace(workspace.metadata)) return out;
-
-  let specs: GitTriggerSpec[];
+export async function drainTriggerExecutionQueue(
+  now = new Date(),
+): Promise<{ fired: number; queued: number; failed: number; skipped: number }> {
+  if (triggerExecutionDrainRunning) {
+    return { fired: 0, queued: 0, failed: 0, skipped: 0 };
+  }
+  triggerExecutionDrainRunning = true;
+  schedulerHealth.lastExecutionDrainStartedAt = now.toISOString();
   try {
-    const gitWorkspace = await withTimeout(
-      withWorkspaceGitAuth(workspace),
-      triggerAuthTimeoutMs(),
-      `resolve git auth ${workspace.workspaceId}`,
-    );
-    const manifest = await withTimeout(
-      readManifest(gitWorkspace),
-      triggerLoadTimeoutMs(),
-      `load manifest ${workspace.workspaceId}`,
-    );
-    if (!manifest) {
-      throw new Error('kortix manifest not found or unreadable');
-    }
-
-    const loaded = extractTriggers(manifest);
-    specs = loaded.specs;
-    await reconcileWorkspaceTriggerRuntime(workspace.workspaceId, specs);
-
-    for (const error of loaded.errors) {
-      console.warn('[workspace-triggers/git] parse error', {
-        workspaceId: workspace.workspaceId,
-        slug: error.slug,
-        error: error.error,
-      });
-      if (/^[a-z0-9][a-z0-9_-]{0,127}$/.test(error.slug)) {
-        await markGitTriggerAttemptFailed(
-          workspace.workspaceId,
-          error.slug,
-          now,
-          `parse error: ${error.error}`,
-        );
-      }
-    }
-  } catch (error) {
-    out.workspaceFailures = 1;
-    console.warn('[workspace-triggers/git] manifest load failed', {
-      workspaceId: workspace.workspaceId,
-      error: error instanceof Error ? error.message : String(error),
+    const rows = await claimTriggerExecutions({
+      now,
+      workerId: `trigger-execution:${process.pid}:${now.getTime()}`,
+      limit: triggerScheduleClaimLimit(),
     });
-    return out;
+    const outcomes = await mapWithConcurrency(rows, triggerExecutionConcurrency(), (row) =>
+      executeTriggerExecution(row),
+    );
+    const result = { fired: 0, queued: 0, failed: 0, skipped: 0 };
+    for (const outcome of outcomes) result[outcome] += 1;
+    schedulerHealth.lastExecutionResult = result;
+    schedulerHealth.lastExecutionError = null;
+    return result;
+  } catch (error) {
+    schedulerHealth.lastExecutionError = error instanceof Error ? error.message : String(error);
+    throw error;
+  } finally {
+    schedulerHealth.lastExecutionDrainCompletedAt = new Date().toISOString();
+    triggerExecutionDrainRunning = false;
   }
-
-  const runtimeRows = await db
-    .select()
-    .from(workspaceTriggerRuntime)
-    .where(eq(workspaceTriggerRuntime.workspaceId, workspace.workspaceId));
-  const runtimeBySlug = new Map(runtimeRows.map((row) => [row.slug, row]));
-
-  for (const spec of specs) {
-    if (spec.type !== 'cron' || !spec.enabled) continue;
-    out.scanned += 1;
-
-    const lastFired = runtimeBySlug.get(spec.slug)?.lastFiredAt ?? null;
-    if (!isGitCronSpecDue(spec, lastFired, now)) {
-      out.skipped += 1;
-      continue;
-    }
-
-    const payload = {
-      cron: {
-        schedule: spec.cron ?? spec.runAt,
-        timezone: spec.timezone,
-        fired_at: now.toISOString(),
-        last_fired_at: lastFired?.toISOString() ?? null,
-      },
-      trigger: { slug: spec.slug, type: spec.type, kind: 'git' },
-    };
-    const renderedPrompt = renderPromptTemplate(spec.promptTemplate, payload);
-    const scheduledAt = now.toISOString();
-    const dueSlotKey =
-      (spec.cron
-        ? nextCronRun(spec.cron, lastFired ?? new Date(0), spec.timezone)?.toISOString()
-        : spec.runAt) ?? scheduledAt;
-
-    let result: Awaited<ReturnType<typeof fireGitTrigger>>;
-    try {
-      result = await withTimeout(
-        fireGitTrigger({
-          spec,
-          workspace,
-          payload,
-          renderedPrompt,
-          source: 'cron',
-          idempotencyKey: `trigger:cron:${workspace.workspaceId}:${spec.slug}:${dueSlotKey}`,
-        }),
-        triggerFireTimeoutMs(),
-        `fire ${spec.slug} ${workspace.workspaceId}`,
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error('[workspace-triggers/git] fire failed', {
-        workspaceId: workspace.workspaceId,
-        slug: spec.slug,
-        error: message,
-      });
-      await markGitTriggerAttemptFailed(workspace.workspaceId, spec.slug, now, message).catch(() => {});
-      out.failed += 1;
-      continue;
-    }
-
-    if (result.status === 'fired') {
-      await markGitTriggerFired(workspace.workspaceId, spec.slug, now, 'fired');
-      out.fired += 1;
-    } else if (result.status === 'queued') {
-      await markGitTriggerFired(workspace.workspaceId, spec.slug, now, 'queued');
-      out.queued += 1;
-    } else {
-      await markGitTriggerAttemptFailed(
-        workspace.workspaceId,
-        spec.slug,
-        now,
-        result.error ?? result.reason ?? 'trigger fire failed',
-      );
-      out.failed += 1;
-    }
-  }
-
-  return out;
 }
 
 export function startWorkspaceTriggerScheduler(): void {
@@ -1314,8 +1293,14 @@ export function startWorkspaceTriggerScheduler(): void {
       });
 
     runWorkspaceTriggerSweep()
+      .then(() => drainTriggerExecutionQueue())
+      .then((result) => {
+        if (result.fired || result.queued || result.failed || result.skipped) {
+          console.log('[workspace-triggers] execution drain completed', result);
+        }
+      })
       .catch((error) => {
-        console.error('[workspace-triggers] sweep failed:', error);
+        console.error('[workspace-triggers] scheduler tick failed:', error);
       });
 
     // Connector reconcile backstop — slower cadence than the trigger sweep so
@@ -1324,7 +1309,19 @@ export function startWorkspaceTriggerScheduler(): void {
     if (Date.now() - lastConnectorSweepAt >= connectorSweepIntervalMs()) {
       lastConnectorSweepAt = Date.now();
       runWorkspaceConnectorSweep()
+        .then(() => {
+          if (initialCatalogBackfillIncomplete(schedulerHealth)) {
+            // On a new scheduler release, drain the bounded catalog batches
+            // continuously instead of waiting two minutes between each batch.
+            // Once both cursors complete a full cycle with no pending rows, the
+            // normal connector cadence resumes. Individual workspace failures
+            // retry on that bounded cadence; a permanently inaccessible repo
+            // must not force an unbounded full-fleet reconciliation loop.
+            lastConnectorSweepAt = 0;
+          }
+        })
         .catch((error) => {
+          lastConnectorSweepAt = 0;
           console.error('[workspace-connectors] sweep failed:', error);
         });
     }
@@ -1526,6 +1523,8 @@ export function parseTriggerDraft(
 
   if (type === 'cron') {
     const timezone = normalizeString((body as any).timezone) ?? 'UTC';
+    const timezoneError = validateTriggerTimezone(timezone);
+    if (timezoneError) return { error: timezoneError };
     // One-off ("run once") schedules carry `run_at` instead of `cron`.
     const runAtRaw = normalizeString((body as any).run_at ?? (body as any).runAt);
     if (runAtRaw) {
@@ -1554,6 +1553,8 @@ export function parseTriggerDraft(
     const cron = normalizeString((body as any).cron ?? (body as any).schedule);
     if (!cron)
       return { error: 'cron triggers must declare a `cron` expression or a one-off `run_at`' };
+    const cronError = validateTriggerCron(cron, timezone);
+    if (cronError) return { error: cronError };
     return {
       slug,
       name,
@@ -1576,7 +1577,7 @@ export function parseTriggerDraft(
   const secretEnv = normalizeString((body as any).secret_env ?? (body as any).secretEnv);
   if (!secretEnv) return { error: 'webhook triggers must declare `secret_env`' };
   if (!/^[A-Z_][A-Z0-9_]*$/.test(secretEnv)) {
-    return { error: `secret_env must look like a workspace_secrets name (got "${secretEnv}")` };
+    return { error: `secret_env must look like a project_secrets name (got "${secretEnv}")` };
   }
   return {
     slug,

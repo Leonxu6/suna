@@ -33,12 +33,15 @@ import { useEffect, useRef } from 'react';
 
 export function SessionVoiceTranscriptPanel({
   workspaceId,
-  projectSessionId,
+  workspaceSessionId,
 }: {
   workspaceId?: string;
-  projectSessionId?: string;
+  workspaceSessionId?: string;
 }) {
-  const { data, isLoading, isError, refetch } = useVoiceTranscript(workspaceId, projectSessionId);
+  const { data, isLoading, isError, refetch } = useVoiceTranscript(
+    workspaceId,
+    workspaceSessionId,
+  );
   const turns = data?.turns ?? [];
   const live = data?.live ?? false;
 

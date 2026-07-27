@@ -56,6 +56,8 @@ export interface WorkspaceSession {
    *  'backend'; a human web session is 'user'. See Kortix-as-a-Backend. */
   origin?: 'user' | 'trigger' | 'schedule' | 'backend' | 'system';
   /** The wrapper's end-user this session acts for (backend origin only). */
+  end_user_ref?: string | null;
+  /** @deprecated Renamed to `end_user_ref`. Echoed with the same value. */
   origin_ref?: string | null;
   /** The per-session secrets allowlist that was applied (identifiers); null = none. */
   secrets_allowlist?: string[] | null;
@@ -109,11 +111,26 @@ export interface CreateWorkspaceSessionInput {
    */
   inherit_unbound?: boolean;
   /**
+   * Interactive-only: connectors the acting user must have connected themselves
+   * for this session (by alias, e.g. `['gmail']`). The server resolves each to
+   * the caller's OWN member profile; if one isn't connected, create fails with a
+   * structured `CONNECTOR_CONNECTION_REQUIRED` naming the connector so a UI can
+   * prompt a connect. Implies `inherit_unbound`. Rejected for backend / service-
+   * account tokens (they have no single "current user" — use `connector_bindings`).
+   */
+  require_connectors?: string[];
+  /**
    * Kortix-as-a-Backend (backend-origin callers only — a PAT / service-account
    * bearer). The wrapper's opaque end-user this session acts for; recorded on the
    * session and surfaced to the sandbox as KORTIX_ORIGIN_REF. A non-backend
    * caller supplying it is rejected 403. Attribution only — pass the user's
    * connectors via connector_bindings.
+   */
+  /** Your opaque handle for the END-USER this session acts for. Backend origin only. */
+  end_user_ref?: string;
+  /**
+   * @deprecated Renamed to `end_user_ref`. Still accepted; sending both is fine
+   * only if they agree (disagreeing values are rejected 400).
    */
   origin_ref?: string;
   /**
@@ -302,6 +319,7 @@ export async function claimWarmWorkspaceSession(
     await backendApi.post<WorkspaceSession>(
       `/workspaces/${workspaceId}/sessions/warm/claim`,
       input,
+      { showErrors: false },
     ),
   );
   markSessionFresh(session.session_id);
@@ -499,3 +517,27 @@ export async function stopWorkspaceSession(workspaceId: string, sessionId: strin
     ),
   );
 }
+
+/**
+ * Change the model a session uses, mid-flight.
+ *
+ * `opencode_model` is set at create; this re-points an existing session. When
+ * the sandbox is live the change takes effect immediately (opencode restarts to
+ * rebuild its config), which ends any in-flight turn. `applied_live: false`
+ * means it was stored and will apply when the sandbox next starts.
+ */
+export async function setWorkspaceSessionModel(
+  workspaceId: string,
+  sessionId: string,
+  opencodeModel: string,
+): Promise<{ opencode_model: string; applied_live: boolean; detail?: string }> {
+  return unwrap(
+    await backendApi.put<{ opencode_model: string; applied_live: boolean; detail?: string }>(
+      `/workspaces/${workspaceId}/sessions/${encodeURIComponent(sessionId)}/model`,
+      { opencode_model: opencodeModel },
+    ),
+  );
+}
+
+/** @deprecated Use `setWorkspaceSessionModel`. */
+export const setProjectSessionModel = setWorkspaceSessionModel;

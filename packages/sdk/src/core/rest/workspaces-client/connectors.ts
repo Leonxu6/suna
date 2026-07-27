@@ -105,7 +105,7 @@ export interface ConnectorAuthDiscovery {
 export interface ConnectionProfile {
   profile_id: string;
   connector_alias: string;
-  owner_type: 'workspace' | 'agent' | 'member' | 'subject' | 'external';
+  owner_type: 'workspace' | 'project' | 'agent' | 'member' | 'subject' | 'external';
   owner_id: string | null;
   label: string;
   status: 'active' | 'revoked' | 'error';
@@ -115,8 +115,11 @@ export interface ConnectionProfile {
 
 export interface ReconcileConnectionProfileInput {
   connector_alias: string;
-  owner_type: 'agent' | 'member' | 'subject' | 'external';
-  owner_id: string;
+  /** `workspace` = a team-shared connection. `project` remains a compatibility input. */
+  owner_type: 'workspace' | 'project' | 'agent' | 'member' | 'subject' | 'external';
+  owner_id?: string;
+  /** Distinguishes several connections on one connector for the same owner
+   *  ("Support", "Sales", "Work"). Reconciling the same label updates in place. */
   label: string;
   metadata?: Record<string, unknown>;
 }
@@ -218,12 +221,45 @@ export async function listConnectionProfiles(workspaceId: string) {
   );
 }
 
+/**
+ * One row of the owner/admin roster. Deliberately NARROWER than
+ * `ConnectionProfile`: it carries identity + status only. `label` and `metadata`
+ * are excluded because they are a member's own annotations on a PRIVATE
+ * connection and can hold personal identifiers a peer manager needn't see.
+ */
+export interface ConnectionRosterEntry {
+  profile_id: string;
+  connector_alias: string;
+  owner_type: 'workspace' | 'project' | 'agent' | 'member' | 'subject' | 'external';
+  owner_id: string | null;
+  status: 'active' | 'revoked' | 'error';
+}
+
+/**
+ * Owner/admin read-only roster: who connected each connector in the workspace
+ * and whether it still works — not just the caller's own connections. Requires
+ * the connector-profiles manage capability. Never returns credentials, and never
+ * a peer's private label/metadata (see ConnectionRosterEntry).
+ */
+export async function listAllConnectionProfiles(workspaceId: string) {
+  return unwrap(
+    await backendApi.get<{ profiles: ConnectionRosterEntry[] }>(
+      `/workspaces/${workspaceId}/connector-profiles/all`,
+    ),
+  );
+}
+
 export async function reconcileConnectionProfile(
   workspaceId: string,
   input: ReconcileConnectionProfileInput,
 ) {
+  const normalizedInput =
+    input.owner_type === 'project' ? { ...input, owner_type: 'workspace' as const } : input;
   return unwrap(
-    await backendApi.post<ConnectionProfile>(`/workspaces/${workspaceId}/connector-profiles`, input),
+    await backendApi.post<ConnectionProfile>(
+      `/workspaces/${workspaceId}/connector-profiles`,
+      normalizedInput,
+    ),
   );
 }
 
@@ -359,6 +395,21 @@ export async function activateConnectionProfile(workspaceId: string, profileId: 
   );
 }
 
+/**
+ * Make this the DEFAULT connection for its owner scope — the one a session uses
+ * when it doesn't name a connection explicitly. Defaults are per-owner: one for
+ * the project (team-shared) and one per member, so this only displaces the
+ * previous default within the same scope.
+ */
+export async function setDefaultConnectionProfile(projectId: string, profileId: string) {
+  return unwrap(
+    await backendApi.put<{ ok: true }>(
+      `/projects/${projectId}/connector-profiles/${profileId}/default`,
+      {},
+    ),
+  );
+}
+
 export async function pipedreamConnectConnectionProfile(
   workspaceId: string,
   profileId: string,
@@ -429,11 +480,38 @@ export interface ConnectorPolicyRule {
   action: ConnectorPolicyAction;
 }
 
+/** Which policy scope decided an action. Workspace rules always win. */
+export type ConnectorPolicySource =
+  | 'workspace'
+  | 'connection'
+  | 'connector'
+  | 'risk_default'
+  | 'allow_all';
+
+export interface ConnectorEffectivePolicy {
+  /** Connector-relative tool path, e.g. `send_email`. */
+  path: string;
+  action: ConnectorPolicyAction;
+  source: ConnectorPolicySource;
+}
+
 export async function getConnectorPolicies(workspaceId: string, slug: string) {
   return unwrap(
-    await backendApi.get<{ policies: ConnectorPolicyRule[] }>(
-      `/executor/workspaces/${workspaceId}/connectors/${encodeURIComponent(slug)}/policies`,
-    ),
+    await backendApi.get<{
+      policies: ConnectorPolicyRule[];
+      /**
+       * Resolved per tool through the same function the call gate uses. Present
+       * so an editor can show WHICH scope decided — without it a connector rule
+       * that a workspace-scope rule silently overrules still renders as if it applied.
+       * Older servers omit this; treat as empty.
+       */
+      effective?: ConnectorEffectivePolicy[];
+      /** Workspace-scope rules, which are evaluated first and win. */
+      workspace_policies?: ConnectorPolicyRule[];
+      /** @deprecated Use `workspace_policies`. */
+      project_policies?: ConnectorPolicyRule[];
+      default_mode?: 'risk' | 'allow_all';
+    }>(`/executor/workspaces/${workspaceId}/connectors/${encodeURIComponent(slug)}/policies`),
   );
 }
 
@@ -692,6 +770,38 @@ export async function pipedreamFinalize(workspaceId: string, slug: string) {
     await backendApi.post<{ connected: boolean; accountId?: string }>(
       `/executor/workspaces/${workspaceId}/connectors/${encodeURIComponent(slug)}/connect/finalize`,
       {},
+    ),
+  );
+}
+
+/* ─── Per-connection permissions ──────────────────────────────────────────── */
+
+/**
+ * Rules for ONE connection, keyed by its profile_id.
+ *
+ * A connector can hold several connections (support@, sales@, a member's own
+ * mailbox). These sit between the project and connector scopes: a project rule
+ * still wins, but a connection rule beats the connector default — which is what
+ * lets two mailboxes under one connector carry different permissions.
+ */
+export async function getConnectionPolicies(projectId: string, profileId: string) {
+  return unwrap(
+    await backendApi.get<{ policies: ConnectorPolicyRule[] }>(
+      `/projects/${projectId}/connector-profiles/${encodeURIComponent(profileId)}/policies`,
+    ),
+  );
+}
+
+/** Replaces the whole list — a rule omitted here is deleted, never merged. */
+export async function setConnectionPolicies(
+  projectId: string,
+  profileId: string,
+  policies: ConnectorPolicyRule[],
+) {
+  return unwrap(
+    await backendApi.put<{ ok: boolean }>(
+      `/projects/${projectId}/connector-profiles/${encodeURIComponent(profileId)}/policies`,
+      { policies },
     ),
   );
 }

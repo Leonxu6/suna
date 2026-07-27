@@ -56,6 +56,7 @@ describe('workspace environment contract', () => {
     expect(store.snapshot()).toEqual({
       revision: 'workspace-revision',
       names: ['WORKSPACE_SECRET'],
+      knownNames: ['WORKSPACE_SECRET'],
       env: { WORKSPACE_SECRET: 'workspace-value' },
     })
   })
@@ -70,6 +71,7 @@ describe('workspace environment contract', () => {
     expect(store.snapshot()).toEqual({
       revision: 'project-revision',
       names: ['PROJECT_SECRET'],
+      knownNames: ['PROJECT_SECRET'],
       env: { PROJECT_SECRET: 'project-value' },
     })
   })

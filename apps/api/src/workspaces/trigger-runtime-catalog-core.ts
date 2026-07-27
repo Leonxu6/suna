@@ -1,8 +1,11 @@
+import { triggerScheduleRevision } from './trigger-schedule';
 import type { GitTriggerSpec } from './triggers';
 
 export interface TriggerRuntimeCatalogStore {
-  list(workspaceId: string): Promise<Array<{ slug: string; sessionId?: string | null }>>;
-  upsert(workspaceId: string, spec: GitTriggerSpec): Promise<void>;
+  list(
+    workspaceId: string,
+  ): Promise<Array<{ slug: string; sessionId?: string | null; scheduleRevision?: string | null }>>;
+  upsert(workspaceId: string, spec: GitTriggerSpec, scheduleRevision: string): Promise<void>;
   remove(workspaceId: string, slug: string): Promise<void>;
 }
 
@@ -24,8 +27,13 @@ export async function reconcileWorkspaceTriggerRuntimeWithStore(
 
   for (const spec of specs) {
     const current = existingBySlug.get(spec.slug);
-    if (!current || (current.sessionId ?? null) !== spec.pinnedSessionId) {
-      await store.upsert(workspaceId, spec);
+    const scheduleRevision = triggerScheduleRevision(spec);
+    if (
+      !current ||
+      (current.sessionId ?? null) !== spec.pinnedSessionId ||
+      current.scheduleRevision !== scheduleRevision
+    ) {
+      await store.upsert(workspaceId, spec, scheduleRevision);
       upserted += 1;
     }
   }

@@ -35,6 +35,7 @@ import { setupApp } from './setup';
 import { supabaseAuth, combinedAuth } from './middleware/auth';
 import { createCorsMiddleware } from './middleware/cors';
 import { requestDeadline, isRequestDeadlineHTTPException } from './middleware/request-deadline';
+import { inspectDatabaseError } from './shared/database-errors';
 import { isPlatinumSandboxNotRunningError } from './shared/platinum';
 import { isDaytonaRateLimitError, primeDaytonaRateLimitClassifier } from './shared/daytona-rate-limit';
 import {
@@ -66,6 +67,7 @@ import { accessControlApp } from './access-control';
 import { startAccessControlCache, stopAccessControlCache } from './shared/access-control-cache';
 import { startTmpReaper, stopTmpReaper } from './snapshots/tmp-reaper';
 import {
+  isLeader,
   startLeaderElection,
   stopLeaderElection,
   runsSingletonWorkers,
@@ -79,6 +81,7 @@ import {
   workspacesApp,
   startWorkspaceTriggerScheduler,
   stopWorkspaceTriggerScheduler,
+  getTriggerSchedulerHealth,
 } from './workspaces';
 import {
   projectCompatibilityMiddleware,
@@ -154,6 +157,7 @@ const app = new OpenAPIHono();
 // Exported so tooling/tests can introspect the route table (app.routes) without
 // booting the server. See the import.meta.main guard around startup below.
 export { app };
+app.onError(handleAppError);
 
 app.use('*', async (c, next) => {
   const path = c.req.path;
@@ -360,6 +364,11 @@ const HealthSchema = z
     timestamp: z.string(),
     environment: z.string(),
     version: z.string(),
+    commit: z.string(),
+    started_at: z.string(),
+    instance: z.string(),
+    scheduler_leader: z.boolean(),
+    trigger_scheduler: z.record(z.string(), z.unknown()),
   })
   .openapi('Health');
 
@@ -370,6 +379,11 @@ const healthHandler = (c: any) =>
     timestamp: new Date().toISOString(),
     environment: config.INTERNAL_KORTIX_ENV,
     version: API_VERSION,
+    commit: API_COMMIT,
+    started_at: STARTED_AT,
+    instance: API_INSTANCE,
+    scheduler_leader: isLeader(),
+    trigger_scheduler: getTriggerSchedulerHealth(),
   });
 
 app.openapi(
@@ -711,6 +725,32 @@ app.openapi(
 
 app.route('/v1/router', router); // /v1/router/chat/completions, /v1/router/models, /v1/router/web-search, /v1/router/tavily/*, etc.
 
+// The deprecated executor project path must remain available in Bun's isolated
+// tests, which expose `app` before the first top-level dynamic import resumes.
+// Dispatch through a lazy sub-app so auth variables and error responses stay in
+// one Hono request context without recursively calling the root app.
+let executorCompatibilityTarget: Promise<OpenAPIHono> | null = null;
+function getExecutorCompatibilityTarget(): Promise<OpenAPIHono> {
+  executorCompatibilityTarget ??= import('./executor').then(({ executorApp }) => {
+    const target = new OpenAPIHono();
+    target.onError(handleAppError);
+    target.use('/workspaces/*', combinedAuth);
+    target.route('/', executorApp);
+    return target;
+  });
+  return executorCompatibilityTarget;
+}
+
+{
+  app.use('/v1/executor/projects/*', projectCompatibilityMiddleware);
+  app.all('/v1/executor/projects/*', async (c) => {
+    const url = new URL(c.req.url);
+    url.pathname = toCanonicalWorkspacePath(url.pathname).replace(/^\/v1\/executor/, '');
+    const target = await getExecutorCompatibilityTarget();
+    return target.fetch(new Request(url, c.req.raw), c.env);
+  });
+}
+
 {
   // LLM gateway surfaces: in-API /v1/llm (full pipeline), /internal/gateway
   // control-plane RPC, and the /v1/llm-gateway reverse proxy. See ./llm-gateway/wire.
@@ -764,12 +804,6 @@ app.route('/v1/skills', skillsApp); // GET /v1/skills, /v1/skills/:name[?full=1]
 {
   const { executorApp } = await import('./executor');
   app.use('/v1/executor/workspaces/*', combinedAuth);
-  app.use('/v1/executor/projects/*', projectCompatibilityMiddleware);
-  app.all('/v1/executor/projects/*', async (c) => {
-    const url = new URL(c.req.url);
-    url.pathname = toCanonicalWorkspacePath(url.pathname);
-    return app.fetch(new Request(url, c.req.raw), c.env);
-  });
   app.use('/v1/executor/connect-status', combinedAuth); // deployment capability flag (authed)
   app.route('/v1/executor', executorApp); // /v1/executor/connectors, /call, /workspaces/:id/connectors[/sync|/:slug/sharing]
 }
@@ -860,7 +894,7 @@ app.route('/v1/p', sandboxProxyApp);
 
 // === Error Handling ===
 
-app.onError((err, c) => {
+function handleAppError(err: Error, c: any) {
   const method = c.req.method;
   const path = c.req.path;
   const errName = err.constructor?.name || 'Error';
@@ -1029,12 +1063,8 @@ app.onError((err, c) => {
   }
 
   // Database / postgres.js errors — extract the useful info, not the full SQL dump
-  const isDbError =
-    errName === 'PostgresError' ||
-    (err as any).severity ||
-    (err as any).code?.match?.(/^[0-9]{5}$/);
-  if (isDbError) {
-    const pgErr = err as any;
+  const databaseError = inspectDatabaseError(err);
+  if (databaseError) {
     // Pool-exhaustion (Supabase pooler / PgBouncer session-mode saturation on
     // the us-east-2 shadow deployment) is a TRANSIENT infra/pooler-capacity
     // class, NOT a code bug — `(EMAXCONNSESSION) max clients reached in
@@ -1050,29 +1080,39 @@ app.onError((err, c) => {
     // follow-up (raise the shadow pooler's `pool_size` / move to transaction
     // mode) is a human-owned external action recorded in the sweep ledger.
     // Better Stack patterns 721b7efe… (API) + b38179c5… (frontend symptom).
-    const isPoolExhaustion = isSentryIgnoredError(errName, err.message);
+    const databaseMessage =
+      databaseError.causeMessage ?? databaseError.outerMessage;
+    const isPoolExhaustion = isSentryIgnoredError(
+      databaseError.causeName ?? databaseError.outerName,
+      databaseMessage,
+    );
     if (!isPoolExhaustion) {
       captureException(err, {
         method,
         path,
         errorType: 'database',
-        pgCode: pgErr.code,
-        table: pgErr.table,
-        schema: pgErr.schema_name || pgErr.schema,
+        pgCode: databaseError.pgCode,
+        table: databaseError.table,
+        schema: databaseError.schema,
       });
     }
     appLogger.error(
-      `${method} ${path} -> 500 [DB ${pgErr.severity || 'ERROR'} ${pgErr.code || '?'}]`,
+      `${method} ${path} -> 500 [DB ${databaseError.severity || 'ERROR'} ${databaseError.pgCode || '?'}]`,
       {
         method,
         path,
         errorType: isPoolExhaustion ? 'database-pool-exhaustion' : 'database',
         transient: isPoolExhaustion || undefined,
-        pgCode: pgErr.code,
-        table: pgErr.table,
-        hint: pgErr.hint,
-        detail: pgErr.detail,
-        message: err.message.split('\n')[0],
+        outerErrorType: databaseError.outerName,
+        causeErrorType: databaseError.causeName,
+        pgCode: databaseError.pgCode,
+        severity: databaseError.severity,
+        table: databaseError.table,
+        schema: databaseError.schema,
+        hint: databaseError.hint,
+        detail: databaseError.detail,
+        message: databaseError.outerMessage.split('\n')[0],
+        causeMessage: databaseError.causeMessage?.split('\n')[0] ?? null,
       },
     );
   } else {
@@ -1094,7 +1134,7 @@ app.onError((err, c) => {
     },
     500,
   );
-});
+}
 
 // === 404 Handler ===
 

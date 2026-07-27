@@ -157,6 +157,7 @@ export function registerGlobalMocks() {
   // existing test, and enough for stopAccountSandboxes' static imports to
   // resolve without needing a real DB/provider.
   mock.module('../../shared/db', () => ({
+    hasDatabase: false,
     db: {
       select: () => ({
         from: () => ({

@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from 'bun:test';
 
 mock.module('../config', () => ({
+  SANDBOX_VERSION: '0.0.0-test',
   config: {
     KORTIX_BILLING_INTERNAL_ENABLED: false,
     INTERNAL_SERVICE_KEY: 'internal-test-key',

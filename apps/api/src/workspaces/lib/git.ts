@@ -11,6 +11,13 @@ import { accountGithubInstallationStates, accountGithubInstallations, accountMem
 import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { ttlMemo } from '../../shared/ttl-memo';
+// Imported from the leaf modules, not the `../../iam` barrel: this file is
+// pulled in by most of the workspace surface, and several suites mock the barrel
+// with a partial shape — a barrel import here turns those into module-load
+// SyntaxErrors far from anything they're testing.
+import { WORKSPACE_ACTIONS } from '../../iam/actions';
+import { authorize } from '../../iam/dispatcher';
+import type { RequestContext } from '../../iam/engine';
 import { registerPrincipalScopedMemo } from '../../iam/cache-invalidation';
 import { WORKSPACE_GIT_AUTH_SECRET_NAME, WorkspaceGitConnectionRow, WorkspaceGitCredentialRow, WorkspaceRow, normalizeJsonObject, normalizeString } from './serializers';
 
@@ -599,18 +606,28 @@ export type GitProxyAuth =
  *  - sandbox runtime token → must be scoped to an active sandbox of THIS
  *    workspace (read + write);
  *  - account API key (kortix_…) → the account must own the workspace;
- *  - CLI PAT (kortix_pat_…) → account must own the workspace; a workspace-scoped
- *    PAT must match this workspace.
+ *  - CLI PAT (kortix_pat_…) → the account owns the workspace, OR the token's user
+ *    holds `workspace.gitops.push` / `.read` on it; a workspace-scoped PAT must
+ *    match this workspace either way.
  *
- * (Finer per-workspace role gating for account-level PAT writes lands with M2 —
- * for now account ownership grants write, which is safe since only account
- * members can mint these tokens.)
+ * Account ownership alone grants write, which is safe since only account
+ * members can mint these tokens. (Finer per-workspace role gating for THAT case
+ * lands with M2.)
+ *
+ * The per-workspace fallback exists because token-account equality was too strict
+ * to be the only rule: a PAT is bound to ONE account, so anybody in two
+ * accounts (personal + team, the common case) could create a workspace through
+ * the API and then never push to it. A workspace-grant collaborator was likewise
+ * accepted by POST /git-token — which hands out a STRONGER credential, a raw
+ * provider token — while being refused here. This is parity with that endpoint,
+ * not new reach.
  */
 
 export async function authorizeGitProxy(
   token: string,
   workspaceId: string,
-  _scope: GitScope,
+  scope: GitScope,
+  requestCtx: RequestContext = {},
 ): Promise<GitProxyAuth> {
   const [workspace] = await db
     .select()
@@ -620,6 +637,25 @@ export async function authorizeGitProxy(
   if (!workspace || workspace.status === 'archived') {
     return { ok: false, status: 404, message: 'Not found' };
   }
+
+  /** Does this token's USER hold the git capability this operation needs? */
+  const grantedByWorkspaceRole = async (
+    userId: string | null | undefined,
+    actingTokenId?: string,
+  ): Promise<boolean> => {
+    if (!userId) return false;
+    const action =
+      scope === 'write' ? WORKSPACE_ACTIONS.WORKSPACE_GITOPS_PUSH : WORKSPACE_ACTIONS.WORKSPACE_GITOPS_READ;
+    const verdict = await authorize(
+      userId,
+      workspace.accountId,
+      action,
+      { type: 'workspace', id: workspaceId },
+      actingTokenId,
+      requestCtx,
+    );
+    return verdict.allowed;
+  };
 
   // CLI PAT first — `isKortixToken` also matches the `kortix_pat_` prefix, so
   // the account-token check MUST run before the API-key check (mirrors the auth
@@ -633,7 +669,11 @@ export async function authorizeGitProxy(
       return { ok: false, status: 403, message: 'token is scoped to a different workspace' };
     }
     if (result.accountId !== workspace.accountId) {
-      return { ok: false, status: 403, message: 'token does not own this workspace' };
+      // Thread the acting token so the agent-grant fold fires (userRole ∩ grant)
+      // — a bare authorize() would silently skip it.
+      if (!(await grantedByWorkspaceRole(result.userId, result.tokenId))) {
+        return { ok: false, status: 403, message: 'token is not authorized for this workspace' };
+      }
     }
     return { ok: true, workspace };
   }
@@ -662,7 +702,9 @@ export async function authorizeGitProxy(
       }
       return { ok: true, workspace };
     }
-    // Account-scoped user API key.
+    // Account-scoped user API key. No per-workspace fallback here: an API key
+    // carries no user identity, so there is no principal to evaluate workspace
+    // grants against — account ownership stays the only rule.
     if (result.accountId !== workspace.accountId) {
       return { ok: false, status: 403, message: 'token does not own this workspace' };
     }
@@ -776,7 +818,7 @@ export async function resolveGitHubImportWithPat(input: {
 /**
  * Create (or re-point) a workspace backed by an existing GitHub repo via a
  * stored PAT — no GitHub App installation required. The PAT is encrypted into
- * `workspace_git_credentials` and the connection is `workspace_credential`, which
+ * `project_git_credentials` and the connection is `workspace_credential`, which
  * `resolveWorkspaceGitAuth` already knows how to use for session clone/push.
  */
 

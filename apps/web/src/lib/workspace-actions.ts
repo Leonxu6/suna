@@ -49,6 +49,7 @@ export const WORKSPACE_ACTIONS = {
   WORKSPACE_SECRET_WRITE: 'workspace.secret.write',
   WORKSPACE_CONNECTOR_READ: 'workspace.connector.read',
   WORKSPACE_CONNECTOR_WRITE: 'workspace.connector.write',
+  WORKSPACE_CONNECTOR_PROFILES_MANAGE: 'workspace.connector.profiles.manage',
 
   WORKSPACE_REVIEW_READ: 'workspace.review.read',
   WORKSPACE_REVIEW_SUBMIT: 'workspace.review.submit',

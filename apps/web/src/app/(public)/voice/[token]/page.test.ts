@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { isJoinLinkToken } from './page';
+import { isJoinLinkToken } from './_components/join-link-token';
 
 describe('isJoinLinkToken', () => {
   test('true for the short, server-resolved join-link token scheme', () => {

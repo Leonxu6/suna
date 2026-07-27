@@ -9,6 +9,12 @@ import { takeFlagValue, takeFlagBool } from '../command-helpers.ts';
 import { selectFromList } from '../tui-select.ts';
 import { confirm, prompt, promptSecret } from '../prompts.ts';
 import { loadLocalManifest, lintManifest, type EnvSpec, type LocalManifest } from '../manifest.ts';
+import {
+  configureWorkspaceGitAuth,
+  workspaceIsManaged,
+  resolveWorkspaceGitTarget,
+  type WorkspaceGitTarget,
+} from '../workspace-git.ts';
 import { C, help, status } from '../style.ts';
 import { workspaceWebUrl } from '../web-url.ts';
 import type {
@@ -107,47 +113,15 @@ interface GitTokenResponse {
   repo_url: string;
 }
 
-type ShipCredentialMode = 'none' | 'kortix-token' | 'managed-git-token';
-
-interface ShipGitTarget {
-  repoUrl: string;
-  credentialMode: ShipCredentialMode;
+/** Both ship paths use the shared resolver (see ../workspace-git.ts) so ship,
+ *  clone, and the git credential helper can never disagree about how to reach
+ *  a workspace's repo again. */
+export function resolveProvisionShipGitTarget(workspace: ProvisionResponse): WorkspaceGitTarget {
+  return resolveWorkspaceGitTarget(workspace);
 }
 
-function isGitProxyUrl(url: string | undefined | null): boolean {
-  return Boolean(url && /\/v1\/git\//.test(url));
-}
-
-function workspaceIsManaged(workspace: WorkspaceSummary): boolean {
-  const meta = (workspace.metadata ?? {}) as Record<string, any>;
-  const git = meta.git as { managed?: boolean } | undefined;
-  return git?.managed === true;
-}
-
-export function resolveProvisionShipGitTarget(workspace: ProvisionResponse): ShipGitTarget {
-  return {
-    repoUrl: workspace.repo_url,
-    credentialMode: 'managed-git-token',
-  };
-}
-
-export function resolveExistingShipGitTarget(workspace: WorkspaceSummary): ShipGitTarget {
-  if (workspaceIsManaged(workspace)) {
-    return {
-      repoUrl: workspace.repo_url,
-      credentialMode: 'managed-git-token',
-    };
-  }
-  if (isGitProxyUrl(workspace.git_origin_url)) {
-    return {
-      repoUrl: workspace.git_origin_url!,
-      credentialMode: 'kortix-token',
-    };
-  }
-  return {
-    repoUrl: workspace.repo_url,
-    credentialMode: 'none',
-  };
+export function resolveExistingShipGitTarget(workspace: WorkspaceSummary): WorkspaceGitTarget {
+  return resolveWorkspaceGitTarget(workspace);
 }
 
 export async function runShip(argv: string[]): Promise<number> {
@@ -578,9 +552,6 @@ export async function linkGitHubBackedWorkspace(
   throw new Error('GitHub App still not detected after several tries — install it, or use --github-token <PAT>.');
 }
 
-/** @deprecated Use `linkGitHubBackedWorkspace`. */
-export const linkGitHubBackedProject = linkGitHubBackedWorkspace;
-
 // ── First ship: create the cloud workspace, wire the remote, push ─────────────
 async function shipFirstTime(
   client: ApiClient,
@@ -604,7 +575,7 @@ async function shipFirstTime(
   const byoUrl = explicitUrl ?? existingOrigin;
 
   let workspace: WorkspaceSummary;
-  let repoUrl: string;
+  let gitTarget: WorkspaceGitTarget;
   let pushToken: string | null = null;
   let pushUsername = 'x-access-token';
 
@@ -626,7 +597,9 @@ async function shipFirstTime(
     workspace = github
       ? await linkGitHubBackedWorkspace(client, { repoUrl: byoUrl, name, accountId, githubToken: flags.githubToken, yes: flags.yes })
       : await client.post<WorkspaceSummary>('/workspaces', { repo_url: byoUrl, name, account_id: accountId });
-    repoUrl = workspace.repo_url;
+    bindShippedFolder(workspace, hostName, auth);
+    // BYO stays BYO: push with the user's own git credentials, to their remote.
+    gitTarget = { repoUrl: workspace.repo_url, credentialMode: 'none' };
     // Only touch the remote when the user named one explicitly — an existing
     // `origin` is left exactly as-is so their credential setup keeps working.
     if (explicitUrl) setOrigin(explicitUrl);
@@ -646,44 +619,49 @@ async function shipFirstTime(
       account_id: accountId,
     });
     workspace = prov;
-    const target = resolveProvisionShipGitTarget(prov);
-    repoUrl = target.repoUrl;
-    pushToken = prov.push_token;
-    pushUsername = prov.git_username ?? pushUsername;
-    // Older/self-hosted provision responses may omit an exportable token even
-    // though the managed workspace can mint a repo-scoped App token afterward.
-    // Heal that boundary before attempting git push; never fall back to a
-    // server-global PAT.
-    if (!pushToken) {
-      const tok = await client.post<GitTokenResponse>(
-        `/workspaces/${workspace.workspace_id}/git-token`,
-      );
-      pushToken = tok.push_token;
-      pushUsername = tok.git_username ?? pushUsername;
+    // Bind the folder to the workspace the INSTANT it exists — before resolving a
+    // push credential, committing, or pushing, any of which can fail. Without
+    // this, a failure after provision left an unlinked cloud workspace behind and
+    // the retry provisioned a SECOND one, silently burning the account's
+    // workspace quota until creation started 403ing on the limit.
+    bindShippedFolder(workspace, hostName, auth);
+    gitTarget = resolveProvisionShipGitTarget(prov);
+    if (gitTarget.credentialMode === 'kortix-token') {
+      // Proxy origin — we push with our own Kortix token; the API resolves the
+      // upstream + host credential server-side. No provider token is exported.
+      pushToken = auth.token;
+    } else {
+      pushToken = prov.push_token;
+      pushUsername = prov.git_username ?? pushUsername;
+      // Proxy-less host: fall back to a repo-scoped provider token. Older
+      // provision responses may omit it even though /git-token can mint one.
+      // Never fall back to a server-global PAT (the server refuses to export it).
+      if (!pushToken) {
+        const tok = await client.post<GitTokenResponse>(
+          `/workspaces/${workspace.workspace_id}/git-token`,
+        );
+        pushToken = tok.push_token;
+        pushUsername = tok.git_username ?? pushUsername;
+      }
     }
-    setOrigin(repoUrl);
+    setOrigin(gitTarget.repoUrl);
+    if (gitTarget.credentialMode === 'kortix-token') {
+      configureWorkspaceGitAuth(process.cwd(), gitTarget.repoUrl);
+    }
   }
-
-  saveLink({
-    workspace_id: workspace.workspace_id,
-    account_id: workspace.account_id,
-    host: hostName ?? activeHostName() ?? 'default',
-    host_url: auth.api_base,
-    linked_at: new Date().toISOString(),
-  });
 
   const committed = commitIfNeeded(flags);
   if (committed === 'error') return 1;
 
   await ensureWorkspaceEnv(client, workspace.workspace_id, env, flags);
 
-  const pushed = pushCurrentBranch(repoUrl, pushToken, pushUsername);
+  const pushed = await pushWorkspaceBranch(client, workspace, gitTarget, pushToken, pushUsername);
   if (!pushed) return 1;
 
   await reconcileShippedManifest(client, workspace.workspace_id);
   await ensureConnectorsConnected(client, workspace.workspace_id, flags);
 
-  reportShipped(auth, workspace, repoUrl);
+  reportShipped(auth, workspace, gitTarget.repoUrl);
   return 0;
 }
 
@@ -704,7 +682,8 @@ async function shipExisting(
     throw err;
   }
   const target = resolveExistingShipGitTarget(workspace);
-  const managed = target.credentialMode === 'managed-git-token';
+  const mintsProviderToken = target.credentialMode === 'managed-git-token';
+  const kortixOwnsOrigin = target.credentialMode !== 'none';
   const repoUrl = target.repoUrl;
 
   process.stdout.write(
@@ -715,35 +694,40 @@ async function shipExisting(
 
   if (flags.dryRun) {
     process.stdout.write(
-      `  ${C.dim}[dry-run] would: ${managed ? 'mint push token, ' : ''}commit + push to ${repoUrl}${C.reset}\n\n`,
+      `  ${C.dim}[dry-run] would: ${mintsProviderToken ? 'mint push token, ' : ''}commit + push to ${repoUrl}${C.reset}\n\n`,
     );
     return 0;
   }
 
-  // Push credential: managed repos use a fresh provider token and push to the
-  // managed upstream URL. Non-managed proxy pushes use the Kortix CLI token.
+  // Push credential: through the proxy we authenticate with our own Kortix
+  // token; a proxy-less host mints a fresh repo-scoped provider token per ship
+  // (never persisted in .git/config).
   let pushToken: string | null = null;
   let pushUsername = 'x-access-token';
   if (target.credentialMode === 'kortix-token') {
     pushToken = auth.token;
-  } else if (target.credentialMode === 'managed-git-token') {
+  } else if (mintsProviderToken) {
     const tok = await client.post<GitTokenResponse>(`/workspaces/${workspaceId}/git-token`);
     pushToken = tok.push_token;
     pushUsername = tok.git_username ?? pushUsername;
   }
-  // Managed workspaces own the remote URL, so keep origin aligned with the
-  // upstream that matches the freshly minted provider token. BYO repos may
-  // have lost their remote (fresh clone of a linked repo); heal only when
-  // missing so user-managed credentials stay untouched.
-  if (managed) setOrigin(repoUrl);
+  // Kortix owns the remote URL for proxy + managed workspaces, so keep origin
+  // aligned with the target the credential above matches. BYO repos may have
+  // lost their remote (fresh clone of a linked repo); heal only when missing so
+  // user-managed credentials stay untouched.
+  if (kortixOwnsOrigin) setOrigin(repoUrl);
   else ensureOrigin(repoUrl);
+  // Leave the repo able to `git push` on its own afterwards, same as a
+  // `kortix workspaces clone` — the helper hands git a Kortix token on demand
+  // without ever writing one into .git/config.
+  if (target.credentialMode === 'kortix-token') configureWorkspaceGitAuth(process.cwd(), repoUrl);
 
   const committed = commitIfNeeded(flags);
   if (committed === 'error') return 1;
 
   await ensureWorkspaceEnv(client, workspaceId, env, flags);
 
-  const pushed = pushCurrentBranch(repoUrl, pushToken, pushUsername);
+  const pushed = await pushWorkspaceBranch(client, workspace, target, pushToken, pushUsername);
   if (!pushed) return 1;
 
   await reconcileShippedManifest(client, workspaceId);
@@ -753,15 +737,32 @@ async function shipExisting(
   return 0;
 }
 
+/** Write `.kortix/link.json` so this folder is bound to the cloud workspace.
+ *  Called the moment the workspace exists — see the note at its first-ship call
+ *  site for why ordering matters. */
+function bindShippedFolder(
+  workspace: WorkspaceSummary,
+  hostName: string | undefined,
+  auth: Auth,
+): void {
+  saveLink({
+    workspace_id: workspace.workspace_id,
+    account_id: workspace.account_id,
+    host: hostName ?? activeHostName() ?? 'default',
+    host_url: auth.api_base,
+    linked_at: new Date().toISOString(),
+  });
+}
+
 // ── git helpers ─────────────────────────────────────────────────────────────
 
-/** The display name from kortix.yaml's project.name, if present. Lets a
+/** The display name from kortix.yaml's workspace.name, if present. Lets a
  *  first ship honor the manifest instead of defaulting to the folder name. */
 function manifestWorkspaceName(): string | undefined {
   try {
     const m = loadLocalManifest();
-    const project = m?.data?.project as { name?: unknown } | undefined;
-    const name = typeof project?.name === 'string' ? project.name.trim() : '';
+    const workspace = m?.data?.workspace as { name?: unknown } | undefined;
+    const name = typeof workspace?.name === 'string' ? workspace.name.trim() : '';
     return name || undefined;
   } catch {
     return undefined;
@@ -850,6 +851,7 @@ function pushCurrentBranch(
   repoUrl: string,
   pushToken: string | null,
   gitUsername = 'x-access-token',
+  opts: { quietOnFailure?: boolean } = {},
 ): string | null {
   const branch = run('git', ['rev-parse', '--abbrev-ref', 'HEAD']).stdout.trim();
   if (!branch || branch === 'HEAD') {
@@ -864,13 +866,57 @@ function pushCurrentBranch(
 
   const push = run('git', args, { inheritStdio: true });
   if (!push.ok) {
-    process.stderr.write(`\n${status.err(`git push failed (exit ${push.code}).`)}\n`);
+    if (!opts.quietOnFailure) {
+      process.stderr.write(`\n${status.err(`git push failed (exit ${push.code}).`)}\n`);
+    }
     return null;
   }
   process.stdout.write(
     `\n${status.ok(`Pushed ${C.bold}${branch}${C.reset} → ${C.bold}origin/${branch}${C.reset}`)}\n`,
   );
   return branch;
+}
+
+/**
+ * Push the current branch, with ONE fallback transport.
+ *
+ * The proxy origin is the right default — it works whatever a host's managed
+ * git is configured with, and no provider credential ever reaches the client.
+ * But the CLI talks to hosts it wasn't shipped with: an older API authorizes
+ * the proxy on ACCOUNT OWNERSHIP alone, so a token bound to a different account
+ * of the same user is refused there while POST /git-token (which gates on the
+ * per-workspace `gitops.push` capability) would still serve it. So when a proxy
+ * push fails on a managed repo, retry once against the raw upstream with a
+ * minted repo-scoped token before giving up: either transport being unavailable
+ * is survivable, only both failing is a real error. Returns the branch, or null.
+ */
+async function pushWorkspaceBranch(
+  client: ApiClient,
+  workspace: WorkspaceSummary,
+  target: WorkspaceGitTarget,
+  pushToken: string | null,
+  pushUsername: string,
+): Promise<string | null> {
+  const canRetry = target.credentialMode === 'kortix-token' && workspaceIsManaged(workspace);
+  const pushed = pushCurrentBranch(target.repoUrl, pushToken, pushUsername, {
+    quietOnFailure: canRetry,
+  });
+  if (pushed || !canRetry) return pushed;
+
+  let minted: GitTokenResponse;
+  try {
+    minted = await client.post<GitTokenResponse>(`/workspaces/${workspace.workspace_id}/git-token`);
+  } catch {
+    // No second transport available — report the push failure we swallowed.
+    process.stderr.write(`\n${status.err('git push failed.')}\n`);
+    return null;
+  }
+  process.stdout.write(
+    `  ${status.warn('Proxy push rejected — retrying against the managed upstream.')}\n`,
+  );
+  const upstreamUrl = minted.repo_url || workspace.repo_url;
+  setOrigin(upstreamUrl);
+  return pushCurrentBranch(upstreamUrl, minted.push_token, minted.git_username || pushUsername);
 }
 
 /** `-c http.<scheme>://<host>/.extraheader=AUTHORIZATION: basic <b64>` —
@@ -1030,9 +1076,14 @@ function surface(err: unknown): number {
     if (err.status === 401) {
       process.stderr.write(`${status.err('Token rejected. Run `kortix login`.')}\n`);
     } else if (err.status === 503) {
+      // Don't diagnose — the server owns the reason. The one thing we DO know
+      // is that a stale CLI is a common cause (older builds pushed to the raw
+      // upstream with a minted provider token instead of the Kortix git proxy,
+      // which a token-configured host can't hand out), so say that and stop.
       process.stderr.write(
         `${status.err(err.message)}\n` +
-          `  ${C.dim}Managed git isn't configured on this host. Pass ${C.reset}${C.cyan}--origin <git-url>${C.reset}${C.dim} to use your own remote.${C.reset}\n`,
+          `  ${C.dim}Update first — ${C.reset}${C.cyan}kortix update${C.reset}${C.dim} — then retry. Still failing? ` +
+          `Pass ${C.reset}${C.cyan}--origin <git-url>${C.reset}${C.dim} to push to your own remote instead.${C.reset}\n`,
       );
     } else {
       process.stderr.write(`${status.err(`HTTP ${err.status}: ${err.message}`)}\n`);

@@ -182,6 +182,8 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
     transactionsSummary: P.getBillingTransactionsSummary,
     creditBreakdown: P.getBillingCreditBreakdown,
     usageHistory: P.getBillingUsageHistory,
+    /** Usage rollup (/v1/usage) — supports group_by 'end_user_ref' for wrappers. */
+    usageRollup: P.getUsageRollup,
     tierConfigurations: P.getBillingTierConfigurations,
 
     /** Stripe checkout — start a subscription and confirm it post-redirect. */
@@ -425,6 +427,7 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
           P.setConnectorSensitive(workspaceId, ...a),
         profiles: {
           list: () => P.listConnectionProfiles(workspaceId),
+          listAll: () => P.listAllConnectionProfiles(workspaceId),
           reconcile: (...a: DropFirst<Parameters<typeof P.reconcileConnectionProfile>>) =>
             P.reconcileConnectionProfile(workspaceId, ...a),
           reconcileMember: (
@@ -437,6 +440,8 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
             P.revokeConnectionProfile(workspaceId, ...a),
           activate: (...a: DropFirst<Parameters<typeof P.activateConnectionProfile>>) =>
             P.activateConnectionProfile(workspaceId, ...a),
+          setDefault: (...a: DropFirst<Parameters<typeof P.setDefaultConnectionProfile>>) =>
+            P.setDefaultConnectionProfile(workspaceId, ...a),
           pipedreamConnect: (
             ...a: DropFirst<Parameters<typeof P.pipedreamConnectConnectionProfile>>
           ) => P.pipedreamConnectConnectionProfile(workspaceId, ...a),
@@ -902,6 +907,16 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
       setModel: (model: SessionModel | undefined) => {
         _model = model;
       },
+      /**
+       * PERSIST a new model for this session server-side, re-pointing the
+       * running sandbox. Distinct from `setModel`, which only chooses what the
+       * NEXT local `send` asks for and never leaves this handle.
+       *
+       * Restarting the runtime is how the change takes effect, so an in-flight
+       * turn ends. `applied_live` reports whether a running session took it now
+       * or whether it applies at next start.
+       */
+      changeModel: (model: string) => P.setWorkspaceSessionModel(workspaceId, sessionId, model),
       /** Pick the agent `send` will use for subsequent prompts (until changed). */
       setAgent: (agent: string | undefined) => {
         _agent = agent;
@@ -925,7 +940,27 @@ export function createKortix(config: KortixPlatformConfig, opts?: { global?: boo
       /** Abort the agent's current run in this session. */
       abort: async () => {
         const { opencodeSessionId, runtimeUrl } = await ensureReady();
-        return getClientForUrl(runtimeUrl).session.abort({ sessionID: opencodeSessionId });
+        return getClientForUrl(runtimeUrl).session.abort({
+          sessionID: opencodeSessionId,
+        });
+      },
+      /**
+       * Stage a reversible rollback at one user message on this same canonical
+       * OpenCode session. The next prompt commits the new path.
+       */
+      rewind: async (messageId: string) => {
+        const { opencodeSessionId, runtimeUrl } = await ensureReady();
+        return getClientForUrl(runtimeUrl).session.revert({
+          sessionID: opencodeSessionId,
+          messageID: messageId,
+        });
+      },
+      /** Restore the path removed by `rewind()` before another prompt commits it. */
+      restoreRewind: async () => {
+        const { opencodeSessionId, runtimeUrl } = await ensureReady();
+        return getClientForUrl(runtimeUrl).session.unrevert({
+          sessionID: opencodeSessionId,
+        });
       },
       /**
        * Live SSE stream of THIS session's runtime events (message/part

@@ -31,6 +31,14 @@ mock.module('../shared/crypto', () => ({
   isKortixToken: (t: string) => t.startsWith('kortix_'),
 }));
 
+// mock.module REPLACES the module wholesale — any export omitted here becomes a
+// SyntaxError for whatever else in the import graph needs it, which takes the
+// WHOLE FILE down to 0 tests rather than failing one case. So the unused exports
+// are stubbed too, and they throw: if the graph ever really calls one, it should
+// be loud rather than silently returning undefined.
+const unmocked = (name: string) => () => {
+  throw new Error(`${name} is not stubbed in this suite`);
+};
 mock.module('../repositories/api-keys', () => ({
   createApiKey: async () => ({ apiKey: {}, secretKey: 'test' }),
   listApiKeys: async () => [],
@@ -66,6 +74,12 @@ mock.module('../repositories/service-accounts', () => ({
     }
     return { isValid: false, error: 'invalid' };
   },
+  listServiceAccounts: unmocked('service-accounts.listServiceAccounts'),
+  getServiceAccount: unmocked('service-accounts.getServiceAccount'),
+  createServiceAccount: unmocked('service-accounts.createServiceAccount'),
+  listAgentServiceAccounts: unmocked('service-accounts.listAgentServiceAccounts'),
+  disableServiceAccount: unmocked('service-accounts.disableServiceAccount'),
+  deleteServiceAccount: unmocked('service-accounts.deleteServiceAccount'),
 }));
 
 mock.module('../shared/jwt-verify', () => ({
@@ -103,9 +117,11 @@ mock.module('../shared/preview-ownership', () => ({
   // Not exercised by this suite (no workspace-scoped PATs here) — stub so the
   // real module's shape stays satisfied for anything that imports it.
   resolveSandboxWorkspaceId: async () => null,
+  clearPreviewOwnershipCache: () => {},
+  invalidatePreviewCacheForUser: () => {},
 }));
 
-const { authenticatePreviewPrincipal, extractPreviewToken } = await import('../sandbox-proxy/preview-auth');
+const { authenticatePreviewPrincipal, authenticatePreviewPrincipalDetailed, extractPreviewToken } = await import('../sandbox-proxy/preview-auth');
 const { previewSubdomainAuthCacheKeyForTest } = await import('../sandbox-proxy/subdomain');
 
 beforeEach(() => {
@@ -219,5 +235,26 @@ describe('preview subdomain auth cache key', () => {
     expect(previewSubdomainAuthCacheKeyForTest('sbx', 3000, c)).not.toBe(
       previewSubdomainAuthCacheKeyForTest('sbx', 3000, a),
     );
+  });
+});
+
+describe('authenticatePreviewPrincipalDetailed — session binding', () => {
+  test('a sandbox PAT reports the session it is bound to', async () => {
+    // This is what separates one KaaB end-user from another: every session
+    // shares the wrapper's userId, so only the token's own sessionId can.
+    const p = await authenticatePreviewPrincipalDetailed('kortix_pat_owner', SANDBOX_ID);
+    expect(p?.userId).toBe('pat-user-owner');
+    expect(p).toHaveProperty('sessionId');
+  });
+
+  test('non-PAT credentials report no session binding', async () => {
+    expect((await authenticatePreviewPrincipalDetailed('kortix_sa_owner', SANDBOX_ID))?.sessionId).toBeNull();
+    expect((await authenticatePreviewPrincipalDetailed('kortix_owner', SANDBOX_ID))?.sessionId).toBeNull();
+    expect((await authenticatePreviewPrincipalDetailed('jwt-owner', SANDBOX_ID))?.sessionId).toBeNull();
+  });
+
+  test('the string wrapper still behaves exactly as before', async () => {
+    expect(await authenticatePreviewPrincipal('kortix_pat_owner', SANDBOX_ID)).toBe('pat-user-owner');
+    expect(await authenticatePreviewPrincipal('kortix_pat_bad', SANDBOX_ID)).toBeNull();
   });
 });

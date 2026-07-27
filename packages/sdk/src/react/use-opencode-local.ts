@@ -18,6 +18,7 @@ import type { Agent, Config, ProviderListResponse } from '@opencode-ai/sdk/v2/cl
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useKortixRouteWorkspaceId } from './route-workspace';
+import { createAgentSelectionScope } from './agent-selection-scope';
 import {
   connectedGatewayProviderIdsFromSecretNames,
   normalizeProviderList,
@@ -332,7 +333,15 @@ export function useOpenCodeLocal({
   // Resolve the current agent name (see `resolveCurrentAgentName`): per-session
   // slot -> server-bound workspace agent -> workspace default -> global last-used.
   const sessionAgentName = sessionId ? modelStore.getSessionAgentName(sessionId) : undefined;
-  const agentSelectionScope = `${sessionId ?? ''}\u0000${boundAgentName ?? ''}\u0000${defaultAgentName ?? ''}`;
+  // Scope a composer override to the route workspace, not the asynchronously
+  // loaded workspace default. Workspace-config hydration can change
+  // `defaultAgentName` after the user picks an agent. Including that value in
+  // this key discarded the explicit pick and reset the composer to the default.
+  const agentSelectionScope = createAgentSelectionScope({
+    sessionId,
+    boundAgentName,
+    workspaceId,
+  });
   const [explicitAgentSelection, setExplicitAgentSelection] = useState<{
     scope: string;
     name: string | undefined;

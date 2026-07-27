@@ -90,9 +90,8 @@ import { mergeCallRecord, toCallRecordEntries, unrecordedLive } from './_compone
 import { PresenceRail } from './_components/presence-rail';
 import { RoomHeader } from './_components/room-header';
 import { TranscriptFeed } from './_components/transcript-feed';
+import { isJoinLinkToken } from './_components/join-link-token';
 import type { CallRecordEntry, ConnectionPhase, LiveUtterance, PresenceEntry } from './_components/types';
-
-const JOIN_LINK_TOKEN_PREFIX = 'vjl_';
 
 /**
  * How often to pull new lines of the durable call record.
@@ -106,13 +105,6 @@ const JOIN_LINK_TOKEN_PREFIX = 'vjl_';
  * reader waits on.
  */
 const RECORD_POLL_INTERVAL_MS = 2_000;
-
-/** Whether a URL path segment is a short, server-resolved join-link token
- *  (`vjl_...`) rather than a legacy raw LiveKit access token embedded
- *  directly in the URL — see the file header. */
-export function isJoinLinkToken(pathSegment: string): boolean {
-  return pathSegment.startsWith(JOIN_LINK_TOKEN_PREFIX);
-}
 
 export default function VoiceBridgePage() {
   const [phase, setPhase] = useState<ConnectionPhase>('connecting');

@@ -26,6 +26,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Trash2,
+  Users,
   X,
   Zap,
 } from 'lucide-react';
@@ -91,6 +92,10 @@ import {
   useSlackMode,
   useUpdateEmailPolicy,
 } from '@/hooks/channels/use-channels-installations';
+import {
+  usePipedreamConnectMember,
+  withPipedreamOverlayEscape,
+} from '@/hooks/connectors/use-pipedream-connect-member';
 import { useNewWorkspaceSession } from '@/hooks/workspaces/use-new-workspace-session';
 import { isConnectorsEnabled } from '@/lib/config';
 import { WORKSPACE_ACTIONS } from '@/lib/workspace-actions';
@@ -114,17 +119,23 @@ import {
   getConnectorPolicies,
   getConnectStatus,
   getWorkspaceDetail,
+  listAllConnectionProfiles,
+  getConnectionPolicies,
   listConnectionProfiles,
   listConnectors,
+  listWorkspaceAccess,
   listPipedreamApps,
   type OAuth2DeviceAuthorizationStartResult,
   pipedreamConnect,
-  pipedreamConnectConnectionProfile,
   pipedreamFinalize,
-  pipedreamFinalizeConnectionProfile,
   pollConnectionProfileOAuth2DeviceAuthorization,
   putConnectionProfileOAuth2Application,
-  reconcileMemberConnectionProfile,
+  type ConnectionProfile,
+  pipedreamConnectConnectionProfile,
+  pipedreamFinalizeConnectionProfile,
+  reconcileConnectionProfile,
+  setConnectionPolicies,
+  setDefaultConnectionProfile,
   revokeConnectionProfile,
   setConnectorCredential,
   setConnectorName,
@@ -149,6 +160,7 @@ import {
 import { OAuth2ApplicationFields } from './connector-oauth2-application-fields';
 import { OAuth2CredentialFields } from './connector-oauth2-fields';
 import { DiscoverCatalogue } from './discover-catalogue';
+import { connectorConnectionRows } from './view/connector-connections';
 
 const PROVIDER_ICON: Record<AdminConnector['provider'], LucideIcon> = {
   pipedream: Zap,
@@ -177,45 +189,6 @@ function providerLabel(p: AdminConnector['provider']): string {
   if (p === 'computer') return 'Computer';
   if (p === 'postman') return 'Postman';
   return p.toUpperCase();
-}
-
-const PIPEDREAM_IFRAME_SELECTOR = 'iframe[id^="pipedream-connect-iframe-"]';
-
-function withPipedreamOverlayEscape(): () => void {
-  if (typeof document === 'undefined') return () => {};
-
-  const releasePointerEvents = () => {
-    document.querySelectorAll<HTMLIFrameElement>(PIPEDREAM_IFRAME_SELECTOR).forEach((el) => {
-      el.style.pointerEvents = 'auto';
-    });
-  };
-  const observer = new MutationObserver(releasePointerEvents);
-  observer.observe(document.body, { childList: true });
-  releasePointerEvents();
-
-  const isPipedreamFrame = (node: EventTarget | null): boolean =>
-    node instanceof Element && node.matches(PIPEDREAM_IFRAME_SELECTOR);
-
-  const guardFocus = (event: FocusEvent) => {
-    if (isPipedreamFrame(event.target) || isPipedreamFrame(event.relatedTarget)) {
-      event.stopImmediatePropagation();
-    }
-  };
-  document.addEventListener('focusin', guardFocus, true);
-  document.addEventListener('focusout', guardFocus, true);
-
-  const guardEscape = (event: KeyboardEvent) => {
-    if (event.key !== 'Escape') return;
-    if (document.querySelector(PIPEDREAM_IFRAME_SELECTOR)) event.stopImmediatePropagation();
-  };
-  document.addEventListener('keydown', guardEscape, true);
-
-  return () => {
-    observer.disconnect();
-    document.removeEventListener('focusin', guardFocus, true);
-    document.removeEventListener('focusout', guardFocus, true);
-    document.removeEventListener('keydown', guardEscape, true);
-  };
 }
 
 function usePipedreamConnect(workspaceId: string, slug: string, onConnected: () => void) {
@@ -257,17 +230,17 @@ function usePipedreamConnect(workspaceId: string, slug: string, onConnected: () 
 }
 
 /**
- * Connect the CURRENT USER's own private (member-owned) account for a Pipedream
- * connector: mint a member profile, run the same Pipedream OAuth handshake as the
- * shared connect, then finalize. The result is usable ONLY in this user's own
- * private sessions and is never shared with the team. Mirrors usePipedreamConnect.
+ * Connect ANOTHER team-shared account under one connector (support@ alongside
+ * sales@). Mints a labelled workspace-owned connection, then runs that profile's
+ * OAuth handshake — the same per-profile flow the personal connect uses.
  */
-function usePipedreamConnectMember(workspaceId: string, slug: string, onConnected: () => void) {
+function usePipedreamConnectTeam(workspaceId: string, slug: string, onConnected: () => void) {
   return useMutation({
-    mutationFn: async () => {
-      const profile = await reconcileMemberConnectionProfile(workspaceId, {
+    mutationFn: async (input: { label: string }) => {
+      const profile = await reconcileConnectionProfile(workspaceId, {
         connector_alias: slug,
-        label: 'Private connection',
+        owner_type: 'workspace',
+        label: input.label.trim(),
       });
       const { token, app } = await pipedreamConnectConnectionProfile(workspaceId, profile.profile_id);
       if (!token || !app) throw new Error('App connect is not configured');
@@ -297,7 +270,7 @@ function usePipedreamConnectMember(workspaceId: string, slug: string, onConnecte
     },
     onSuccess: (res) => {
       if (!res.connected) return;
-      successToast('Connected privately — only you can use this');
+      successToast('Team connection added');
       onConnected();
     },
     onError: (err: Error) => errorToast(err.message),
@@ -331,14 +304,15 @@ function ConnectorsMasterDetail({ workspaceId }: { workspaceId: string }) {
     staleTime: 60_000,
   });
   const connectors = useMemo(() => query.data?.connectors ?? [], [query.data]);
-  const emailChannelEnabled = workspaceQuery.data?.workspace?.experimental?.agentmail_email === true;
+  const emailChannelEnabled =
+    workspaceQuery.data?.workspace?.experimental?.agentmail_email === true;
   const discoverEnabled =
     workspaceQuery.data?.workspace?.experimental?.connectors_api_discover === true;
   const isForbidden = query.isError && /403|forbidden/i.test((query.error as Error)?.message ?? '');
   // READ vs WRITE: the section is visible to workspace.connector.read, but every
   // mutating control (rename/remove/reconnect/credentials/permissions/channels/
   // config) is gated on workspace.connector.write. Fails closed until the probe
-  // resolves, matching the backend's assertWorkspaceCapability on those routes.
+  // resolves, matching the backend's assertProjectCapability on those routes.
   const canWrite =
     useWorkspaceCan(workspaceId, WORKSPACE_ACTIONS.WORKSPACE_CONNECTOR_WRITE).allowed === true;
 
@@ -395,11 +369,11 @@ function ConnectorsMasterDetail({ workspaceId }: { workspaceId: string }) {
           tone="warning"
           icon={ShieldAlert}
           title={tI18nHardcoded.raw(
-            'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitleAdminb2173330',
+            'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleAdminb2173330',
           )}
         >
           {tI18nHardcoded.raw(
-            'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextOnlyWorkspace51266c7d',
+            'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextOnlyProject51266c7d',
           )}
         </InfoBanner>
       </div>
@@ -411,7 +385,7 @@ function ConnectorsMasterDetail({ workspaceId }: { workspaceId: string }) {
         <InfoBanner
           tone="destructive"
           title={tI18nHardcoded.raw(
-            'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitleFailed959d47d5',
+            'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleFailed959d47d5',
           )}
           action={
             <Button variant="outline" size="sm" onClick={() => query.refetch()}>
@@ -473,10 +447,10 @@ function ConnectorsMasterDetail({ workspaceId }: { workspaceId: string }) {
             <EmptyState
               icon={Plug}
               title={tI18nHardcoded.raw(
-                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitlePickd2faa3e2',
+                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitlePickd2faa3e2',
               )}
               description={tI18nHardcoded.raw(
-                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrDescriptionChoose1df54e4e',
+                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrDescriptionChoose1df54e4e',
               )}
             />
           </div>
@@ -504,7 +478,7 @@ function ConnectorStatusBadge({ connector }: { connector: AdminConnector }) {
     return (
       <Badge variant="outline" size="sm">
         {tI18nHardcoded.raw(
-          'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextNoAuth45c43558',
+          'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextNoAuth45c43558',
         )}
       </Badge>
     );
@@ -512,7 +486,7 @@ function ConnectorStatusBadge({ connector }: { connector: AdminConnector }) {
     return (
       <Badge variant="warning" size="sm">
         {tI18nHardcoded.raw(
-          'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextNeedsSetupbefdbc49',
+          'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextNeedsSetupbefdbc49',
         )}
       </Badge>
     );
@@ -545,7 +519,7 @@ function SaveBar({
       <span className="text-muted-foreground mr-auto flex items-center gap-1.5 text-xs">
         <span className="bg-kortix-orange size-1.5 rounded-full" />
         {tI18nHardcoded.raw(
-          'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextUnsavedChanges4682b870',
+          'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextUnsavedChanges4682b870',
         )}
       </span>
       {onReset && (
@@ -600,7 +574,7 @@ function ConnectorRail({
           >
             <Plus className="h-4 w-4" />
             {tI18nHardcoded.raw(
-              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextAddAppb53818fa',
+              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextAddAppb53818fa',
             )}
           </Button>
         )}
@@ -610,7 +584,7 @@ function ConnectorRail({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder={tI18nHardcoded.raw(
-              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrPlaceholderSearch833758cc',
+              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrPlaceholderSearch833758cc',
             )}
             className="h-8 pl-8 text-sm"
           />
@@ -621,10 +595,10 @@ function ConnectorRail({
         <RailItem
           icon={ShieldCheck}
           title={tI18nHardcoded.raw(
-            'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitleGlobal199e18a1',
+            'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleGlobal199e18a1',
           )}
           subtitle={tI18nHardcoded.raw(
-            'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrSubtitleApply5b0aa03c',
+            'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrSubtitleApply5b0aa03c',
           )}
           active={selection.kind === 'global'}
           onClick={() => onSelect({ kind: 'global' })}
@@ -633,7 +607,7 @@ function ConnectorRail({
         {connectors.length === 0 ? (
           <p className="text-muted-foreground px-3 py-6 text-center text-xs">
             {tI18nHardcoded.raw(
-              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextNoConnectors6d11de92',
+              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextNoConnectors6d11de92',
             )}
           </p>
         ) : (
@@ -653,7 +627,7 @@ function ConnectorRail({
             {needsSetup.length > 0 && (
               <RailGroupLabel>
                 {tI18nHardcoded.raw(
-                  'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextNeedsSetupbefdbc49',
+                  'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextNeedsSetupbefdbc49',
                 )}
               </RailGroupLabel>
             )}
@@ -663,7 +637,7 @@ function ConnectorRail({
                 leading={<ConnectorAppIcon connector={c} size="sm" />}
                 title={c.name || c.slug}
                 subtitle={tI18nHardcoded.raw(
-                  'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrSubtitleNot1feeff2e',
+                  'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrSubtitleNot1feeff2e',
                 )}
                 dot={statusDot(c)}
                 active={isSel(c.slug)}
@@ -673,7 +647,7 @@ function ConnectorRail({
             {filtered.length === 0 && (
               <p className="text-muted-foreground px-3 py-6 text-center text-xs">
                 {tI18nHardcoded.raw(
-                  'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextNoMatchf1f9a197',
+                  'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextNoMatchf1f9a197',
                 )}
                 {q}”.
               </p>
@@ -697,7 +671,7 @@ function ConnectorRail({
               <RefreshCw className="h-3.5 w-3.5" />
             )}
             {tI18nHardcoded.raw(
-              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextSyncFromb820661f',
+              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextSyncFromb820661f',
             )}
           </Button>
         </div>
@@ -831,123 +805,549 @@ function RailItem({
   );
 }
 
-/**
- * Read-only display of a connector's connection `profile_id` — the id a backend
- * passes in `connector_bindings` (Kortix as a Backend) to run a session AS this
- * connection. Surfaced nowhere else in the product, so we show + copy it here.
- */
-function ConnectionIdField({ profileId }: { profileId: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    // The Clipboard API is absent in insecure contexts (navigator.clipboard is
-    // undefined → a synchronous throw) and writeText can also reject (denied
-    // permission). Guard both so a copy attempt never crashes the handler.
-    const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
-    if (!clipboard) {
-      errorToast('Could not copy — select and copy the ID manually.');
-      return;
-    }
-    clipboard.writeText(profileId).then(
-      () => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      },
-      () => errorToast('Could not copy — select and copy the ID manually.'),
-    );
-  };
+/** One row in the connections list — a single connected account. */
+function ConnectionRow({
+  profile,
+  isMine,
+  canManage,
+  onSetDefault,
+  onDisconnect,
+  onStartSession,
+  onCopyId,
+  onEditPermissions,
+  pending,
+}: {
+  profile: ConnectionProfile;
+  isMine: boolean;
+  canManage: boolean;
+  onSetDefault: () => void;
+  onDisconnect: () => void;
+  onStartSession?: () => void;
+  onCopyId: (profileId: string) => void;
+  onEditPermissions: () => void;
+  pending: boolean;
+}) {
+  const isTeam = profile.owner_type === 'workspace';
+  const active = profile.status === 'active';
+  // Only the owner of a connection may change it: your own personal connection,
+  // or — for a team connection — a workspace manager.
+  const mayMutate = isTeam ? canManage : isMine;
   return (
-    <div className="bg-muted/40 rounded-md border px-4 py-3">
-      <div className="flex items-center gap-1.5">
-        <span className="text-muted-foreground text-xs font-medium">Connection ID</span>
-        <Hint label="Use this ID in the backend (connector_bindings) to run a session as this connection — see Kortix as a Backend.">
-          <span className="inline-flex cursor-help">
-            <Info className="text-muted-foreground size-3.5" />
-          </span>
-        </Hint>
+    <li className="group bg-popover flex items-center gap-3 rounded-md border px-4 py-2.5 transition-colors">
+      <span
+        className={cn(
+          'flex size-9 shrink-0 items-center justify-center rounded-sm',
+          isTeam ? 'bg-kortix-blue/15' : 'bg-kortix-purple/15',
+        )}
+      >
+        {isTeam ? (
+          <Users className="text-kortix-blue size-5" />
+        ) : (
+          <Lock className="text-kortix-purple size-5" />
+        )}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-sm font-medium">{profile.label}</span>
+          {profile.is_default && (
+            <Badge variant="outline" size="xs">
+              Default
+            </Badge>
+          )}
+        </div>
+        <InlineMeta>
+          {isTeam ? 'Shared with the team' : 'Private — only you'}
+          {active ? null : profile.status === 'revoked' ? 'Disconnected' : 'Error'}
+          {/* Every connection carries its own id — this is what a backend passes
+              in connector_bindings to run as THIS account. Truncated to keep the
+              row readable; the row menu copies the full value. */}
+          <Hint label="Connection ID — use it in the backend (connector_bindings) to run as this connection.">
+            <code className="cursor-help font-mono">{profile.profile_id.slice(0, 8)}…</code>
+          </Hint>
+        </InlineMeta>
       </div>
-      <div className="mt-1.5 flex items-center gap-2">
-        <code className="min-w-0 flex-1 truncate font-mono text-xs">{profileId}</code>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-7 shrink-0"
-          onClick={copy}
-          aria-label="Copy connection ID"
-        >
-          {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-        </Button>
-      </div>
-    </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0"
+            aria-label={`Actions for ${profile.label}`}
+            disabled={pending}
+          >
+            {pending ? <Loading className="size-4 shrink-0" /> : <ChevronDown className="size-4" />}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-48">
+          {/* Per-CONNECTION permissions. The connector's own Permissions tab
+              applies to EVERY connection under it; this one applies to just
+              this account, which is what lets support@ and sales@ differ. */}
+          {mayMutate && (
+            <DropdownMenuItem onClick={onEditPermissions}>
+              <ShieldAlert className="size-4 shrink-0" />
+              Permissions for this connection
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onClick={() => onCopyId(profile.profile_id)}>
+            Copy connection ID
+          </DropdownMenuItem>
+          {mayMutate && isMine && active && onStartSession && (
+            <DropdownMenuItem onClick={onStartSession}>Use in a new session</DropdownMenuItem>
+          )}
+          {mayMutate && !profile.is_default && active && (
+            <DropdownMenuItem onClick={onSetDefault}>
+              Use by default{isTeam ? ' for the team' : ''}
+            </DropdownMenuItem>
+          )}
+          {mayMutate && (
+            <DropdownMenuItem variant="destructive" onClick={onDisconnect}>
+              Disconnect
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </li>
   );
 }
 
 /**
- * A member's OWN private connection for a connector, shown alongside the shared
- * (team) connection. Connect/disconnect here affects only the current user, and
- * the connection resolves only in their own private sessions. Any workspace member
- * can use it (no editor rights required — the profile is owned by their token).
+ * Every connection under one connector: the team-shared accounts and the current
+ * user's own. A connector can hold several of each (support@ + sales@ for the
+ * team, "Work" + "Personal" for a member) — the DEFAULT in each scope is the one
+ * a session uses when it doesn't name a connection explicitly.
  */
-function PrivateConnectionBanner({
+
+/**
+ * Permissions for ONE connection.
+ *
+ * The connector's own Permissions tab applies to every connection under it. This
+ * applies to a single account, and sits between the workspace and connector scopes:
+ * a workspace rule still wins, but this beats the connector default — which is what
+ * lets support@ be read-only while sales@ may send.
+ */
+function ConnectionPermissionsModal({
+  workspaceId,
+  profile,
+  tools,
   displayName,
-  connected,
-  connecting,
-  disconnecting,
-  onConnect,
-  onDisconnect,
+  open,
+  onOpenChange,
+}: {
+  workspaceId: string;
+  profile: ConnectionProfile | null;
+  tools: AdminConnector['actions'];
+  displayName: string;
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+}) {
+  const [perTool, setPerTool] = useState<Record<string, ConnectorPolicyAction>>({});
+  const [search, setSearch] = useState('');
+  const [serverSig, setServerSig] = useState('');
+
+  const policiesQuery = useQuery({
+    queryKey: ['connection-policies', workspaceId, profile?.profile_id],
+    queryFn: () => getConnectionPolicies(workspaceId, profile!.profile_id),
+    enabled: open && !!profile,
+    staleTime: 15_000,
+  });
+
+  useEffect(() => {
+    if (!policiesQuery.data) return;
+    const next: Record<string, ConnectorPolicyAction> = {};
+    for (const rule of policiesQuery.data.policies) next[rule.match] = rule.action;
+    setPerTool(next);
+    setServerSig(JSON.stringify(next));
+  }, [policiesQuery.data]);
+
+  const save = useMutation({
+    mutationFn: () =>
+      setConnectionPolicies(
+        workspaceId,
+        profile!.profile_id,
+        Object.entries(perTool).map(([match, action]) => ({ match, action })),
+      ),
+    onSuccess: () => {
+      successToast(`Permissions saved for ${profile?.label ?? 'this connection'}`);
+      onOpenChange(false);
+    },
+    onError: (e: Error) => errorToast(e.message || 'Failed to save permissions'),
+  });
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? tools.filter((t) => t.path.toLowerCase().includes(q)) : tools;
+  }, [tools, search]);
+  const dirty = JSON.stringify(perTool) !== serverSig;
+  const overrideCount = Object.keys(perTool).length;
+
+  return (
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="sm:max-w-2xl">
+        <ModalHeader>
+          <ModalTitle>Permissions for “{profile?.label}”</ModalTitle>
+          <ModalDescription>
+            Applies to this {displayName} connection only. Anything left on Default follows the
+            connector&apos;s own permissions. A workspace-wide rule still overrides both.
+          </ModalDescription>
+        </ModalHeader>
+        <ModalBody className="space-y-3">
+          {tools.length > 6 && (
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter tools…"
+              className="h-8 text-sm"
+            />
+          )}
+          {policiesQuery.isLoading ? (
+            <div className="text-muted-foreground flex items-center gap-2 px-1 py-6 text-sm">
+              <Loading className="size-4 shrink-0" />
+              Loading permissions…
+            </div>
+          ) : (
+            <div className="max-h-[46vh] overflow-y-auto rounded-md border">
+              {filtered.map((tool) => (
+                <div
+                  key={tool.path}
+                  className="border-border/60 flex items-center gap-2.5 border-t px-3 py-1.5 first:border-t-0"
+                >
+                  <span className="text-foreground min-w-0 flex-1 truncate font-mono text-xs">
+                    {tool.path}
+                  </span>
+                  <PermissionPicker
+                    value={perTool[tool.path] ?? 'default'}
+                    onChange={(choice) =>
+                      setPerTool((current) => {
+                        const next = { ...current };
+                        if (choice === 'default') delete next[tool.path];
+                        else next[tool.path] = choice;
+                        return next;
+                      })
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <span className="text-muted-foreground mr-auto text-xs">
+            {overrideCount === 0
+              ? 'No overrides — follows the connector'
+              : `${overrideCount} override${overrideCount === 1 ? '' : 's'}`}
+          </span>
+          <Button variant="outline-ghost" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={() => save.mutate()} disabled={!dirty || save.isPending}>
+            {save.isPending && <Loading className="size-4 shrink-0" />}
+            Save
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
+function ConnectionsList({
+  workspaceId,
+  connector,
+  displayName,
+  canManageProfiles,
+  onChanged,
   onStartSession,
 }: {
+  workspaceId: string;
+  connector: AdminConnector;
   displayName: string;
-  connected: boolean;
-  connecting: boolean;
-  disconnecting: boolean;
-  onConnect: () => void;
-  onDisconnect: () => void;
-  onStartSession: () => void;
+  canManageProfiles: boolean;
+  onChanged: () => void;
+  onStartSession?: () => void;
 }) {
-  if (connected) {
-    return (
-      <InfoBanner
-        tone="success"
-        icon={Lock}
-        title="Connected privately — only you"
-        action={
-          <div className="flex shrink-0 items-center gap-2">
-            <Button size="sm" onClick={onStartSession}>
-              Use in a new session
+  const [addScope, setAddScope] = useState<'workspace' | 'member' | null>(null);
+  const [labelDraft, setLabelDraft] = useState('');
+  const [confirmDisconnect, setConfirmDisconnect] = useState<ConnectionProfile | null>(null);
+  const [permissionsFor, setPermissionsFor] = useState<ConnectionProfile | null>(null);
+
+  const profilesQuery = useQuery({
+    queryKey: ['connector-profiles', workspaceId],
+    queryFn: () => listConnectionProfiles(workspaceId),
+    staleTime: 30_000,
+  });
+  const refresh = () => {
+    void profilesQuery.refetch();
+    onChanged();
+  };
+
+  const rows = connectorConnectionRows(profilesQuery.data?.profiles, connector.slug);
+
+  const copyConnectionId = (profileId: string) => {
+    // The Clipboard API is absent in insecure contexts (navigator.clipboard is
+    // undefined -> a synchronous throw) and writeText can also reject.
+    const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+    if (!clipboard) {
+      errorToast('Could not copy — open the connection and copy the ID manually.');
+      return;
+    }
+    clipboard.writeText(profileId).then(
+      () => successToast('Connection ID copied'),
+      () => errorToast('Could not copy — open the connection and copy the ID manually.'),
+    );
+  };
+
+  const addTeam = usePipedreamConnectTeam(workspaceId, connector.slug, () => {
+    setAddScope(null);
+    setLabelDraft('');
+    refresh();
+  });
+  const addMine = usePipedreamConnectMember(workspaceId, connector.slug, () => {
+    setAddScope(null);
+    setLabelDraft('');
+    refresh();
+  });
+  const setDefault = useMutation({
+    mutationFn: (profileId: string) => setDefaultConnectionProfile(workspaceId, profileId),
+    onSuccess: () => {
+      successToast('Default connection updated');
+      refresh();
+    },
+    onError: (e: Error) => errorToast(e.message || 'Failed to set the default'),
+  });
+  const disconnect = useMutation({
+    mutationFn: (profileId: string) => revokeConnectionProfile(workspaceId, profileId),
+    onSuccess: () => {
+      successToast('Disconnected');
+      setConfirmDisconnect(null);
+      refresh();
+    },
+    onError: (e: Error) => errorToast(e.message || 'Failed to disconnect'),
+  });
+
+  const adding = addTeam.isPending || addMine.isPending;
+  const submitAdd = () => {
+    if (!labelDraft.trim()) return;
+    if (addScope === 'workspace') addTeam.mutate({ label: labelDraft });
+    else addMine.mutate({ label: labelDraft });
+  };
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <Label>Connections</Label>
+        <div className="flex items-center gap-2">
+          {canManageProfiles && (
+            <Button size="sm" variant="secondary" onClick={() => setAddScope('workspace')}>
+              <Plus className="size-4" />
+              Add team connection
             </Button>
-            <Button size="sm" variant="ghost" onClick={onDisconnect} disabled={disconnecting}>
-              {disconnecting ? <Loading className="size-4 shrink-0" /> : null}
-              Disconnect
-            </Button>
-          </div>
-        }
+          )}
+          <Button size="sm" variant="outline" onClick={() => setAddScope('member')}>
+            <Lock className="size-3.5 shrink-0" />
+            Add my own
+          </Button>
+        </div>
+      </div>
+
+      {profilesQuery.isLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-14 rounded-md" />
+          <Skeleton className="h-14 rounded-md" />
+        </div>
+      ) : rows.length === 0 ? (
+        <EmptyState
+          size="sm"
+          icon={Plug}
+          title={`No ${displayName} connections yet`}
+          description="Connect a shared account for the team, or your own private one."
+        />
+      ) : (
+        <ul className="space-y-2">
+          {rows.map((profile) => (
+            <ConnectionRow
+              key={profile.profile_id}
+              profile={profile}
+              isMine={profile.owner_type === 'member'}
+              canManage={canManageProfiles}
+              pending={
+                (setDefault.isPending && setDefault.variables === profile.profile_id) ||
+                (disconnect.isPending && disconnect.variables === profile.profile_id)
+              }
+              onSetDefault={() => setDefault.mutate(profile.profile_id)}
+              onDisconnect={() => setConfirmDisconnect(profile)}
+              onStartSession={onStartSession}
+              onCopyId={copyConnectionId}
+              onEditPermissions={() => setPermissionsFor(profile)}
+            />
+          ))}
+        </ul>
+      )}
+
+      <Modal
+        open={addScope !== null}
+        onOpenChange={(open) => {
+          if (!open && !adding) {
+            setAddScope(null);
+            setLabelDraft('');
+          }
+        }}
       >
-        Your own {displayName} connection, usable only in your private sessions — separate from the
-        team's shared connection.
-      </InfoBanner>
+        <ModalContent className="lg:max-w-md">
+          <ModalHeader>
+            <ModalTitle>
+              {addScope === 'workspace' ? `Add a team ${displayName} connection` : `Add your own ${displayName}`}
+            </ModalTitle>
+            <ModalDescription>
+              {addScope === 'workspace'
+                ? 'Everyone on this workspace can use it. Name it so people can tell your accounts apart.'
+                : 'Only you can use it, in your own private sessions. Name it to tell your accounts apart.'}
+            </ModalDescription>
+          </ModalHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitAdd();
+            }}
+          >
+            <ModalBody>
+              <Field>
+                <FieldLabel htmlFor="connection-label">Name</FieldLabel>
+                <Input
+                  id="connection-label"
+                  value={labelDraft}
+                  onChange={(e) => setLabelDraft(e.target.value)}
+                  placeholder={addScope === 'workspace' ? 'Support inbox' : 'Work'}
+                  maxLength={255}
+                  autoFocus
+                />
+                <FieldDescription>
+                  You'll authorize the account in the next step.
+                </FieldDescription>
+              </Field>
+            </ModalBody>
+            <ModalFooter className="sm:justify-between">
+              <Button
+                type="button"
+                variant="outline-ghost"
+                onClick={() => {
+                  setAddScope(null);
+                  setLabelDraft('');
+                }}
+                disabled={adding}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={adding || !labelDraft.trim()}>
+                {adding ? <Loading className="size-4 shrink-0" /> : null}
+                Continue
+              </Button>
+            </ModalFooter>
+          </form>
+        </ModalContent>
+      </Modal>
+
+      <ConnectionPermissionsModal
+        workspaceId={workspaceId}
+        profile={permissionsFor}
+        tools={connector.actions}
+        displayName={displayName}
+        open={permissionsFor !== null}
+        onOpenChange={(next) => !next && setPermissionsFor(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmDisconnect !== null}
+        onOpenChange={(open) => !open && setConfirmDisconnect(null)}
+        title={`Disconnect "${confirmDisconnect?.label ?? ''}"?`}
+        description={
+          confirmDisconnect?.owner_type === 'workspace'
+            ? 'Everyone on this workspace loses access to this account. Sessions bound to it will stop working.'
+            : 'Your own connection is removed. Sessions bound to it will stop working.'
+        }
+        confirmLabel="Disconnect"
+        confirmVariant="destructive"
+        isPending={disconnect.isPending}
+        onConfirm={() => confirmDisconnect && disconnect.mutate(confirmDisconnect.profile_id)}
+      />
+    </section>
+  );
+}
+
+function RosterStatusBadge({ status }: { status: 'active' | 'revoked' | 'error' }) {
+  if (status === 'active') {
+    return (
+      <Badge variant="outline" size="sm" className="text-emerald-600">
+        Connected
+      </Badge>
     );
   }
   return (
-    <InfoBanner
-      tone="neutral"
-      icon={Lock}
-      title={`Connect ${displayName} just for you`}
-      action={
-        <Button
-          size="sm"
-          variant="outline"
-          className="shrink-0 gap-2"
-          onClick={onConnect}
-          disabled={connecting}
-        >
-          {connecting ? <Loading className="size-4 shrink-0" /> : <Lock className="h-4 w-4" />}
-          Connect for just me
-        </Button>
-      }
-    >
-      A private connection only you can use, in your own private sessions — separate from the team's
-      shared {displayName}.
-    </InfoBanner>
+    <Badge variant="outline" size="sm" className="text-muted-foreground">
+      {status === 'revoked' ? 'Disconnected' : 'Error'}
+    </Badge>
+  );
+}
+
+/**
+ * Owner/admin read-only roster: which workspace members have connected their OWN
+ * account for this connector, and its status. Manage-gated at the API; never
+ * shows credentials (only existence + status + owner). Read-only.
+ */
+function ConnectionRoster({
+  workspaceId,
+  connectorSlug,
+  displayName,
+}: {
+  workspaceId: string;
+  connectorSlug: string;
+  displayName: string;
+}) {
+  const profilesQuery = useQuery({
+    queryKey: ['connector-profiles-all', workspaceId],
+    queryFn: () => listAllConnectionProfiles(workspaceId),
+    staleTime: 30_000,
+  });
+  const accessQuery = useQuery({
+    queryKey: ['workspace-access', workspaceId],
+    queryFn: () => listWorkspaceAccess(workspaceId),
+    staleTime: 60_000,
+  });
+  const emailByUser = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const member of accessQuery.data?.members ?? []) {
+      if (member.email) map.set(member.user_id, member.email);
+    }
+    return map;
+  }, [accessQuery.data]);
+  const rows = (profilesQuery.data?.profiles ?? []).filter(
+    (p) => p.connector_alias === connectorSlug && p.owner_type === 'member',
+  );
+  return (
+    <div className="overflow-hidden rounded-md border">
+      <div className="text-muted-foreground border-b px-4 py-2.5 text-xs font-medium">
+        Team members' own {displayName} connections
+      </div>
+      {profilesQuery.isLoading ? (
+        <div className="text-muted-foreground px-4 py-3 text-sm">Loading…</div>
+      ) : rows.length === 0 ? (
+        <div className="text-muted-foreground px-4 py-3 text-sm">
+          No team member has connected their own {displayName} yet.
+        </div>
+      ) : (
+        <ul className="divide-y">
+          {rows.map((profile) => (
+            <li
+              key={profile.profile_id}
+              className="flex items-center justify-between gap-3 px-4 py-2.5"
+            >
+              <span className="min-w-0 truncate text-sm">
+                {emailByUser.get(profile.owner_id ?? '') ?? profile.owner_id ?? 'Unknown member'}
+              </span>
+              <RosterStatusBadge status={profile.status} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -993,40 +1393,56 @@ function ConnectorDetail({
     (p) => p.connector_alias === connector.slug && p.owner_type === 'member',
   );
   const reconnect = usePipedreamConnect(workspaceId, connector.slug, onChanged);
-  const privateConnect = usePipedreamConnectMember(workspaceId, connector.slug, () => {
-    void profilesQuery.refetch();
-    onChanged();
-  });
-  const disconnectPrivate = useMutation({
-    mutationFn: async () => {
-      if (!myPrivateProfile) throw new Error('No private connection');
-      return revokeConnectionProfile(workspaceId, myPrivateProfile.profile_id);
-    },
-    onSuccess: () => {
-      successToast('Disconnected your private connection');
-      void profilesQuery.refetch();
-      onChanged();
-    },
-    onError: (e: Error) => errorToast(e.message || 'Failed to disconnect'),
-  });
+  // Administering TEAM connections (adding another, changing the team default)
+  // is manager-gated; a member always manages their OWN connections.
+  const canManageProfiles =
+    useWorkspaceCan(workspaceId, WORKSPACE_ACTIONS.WORKSPACE_CONNECTOR_PROFILES_MANAGE).allowed === true;
   // Start a new session that uses this member's OWN connection for this connector.
   // `inherit_unbound` keeps the workspace default for every OTHER connector the agent
   // uses, so binding just this one doesn't null the rest. The session is private by
   // default, which is required for a member-owned binding to resolve.
   const newSession = useNewWorkspaceSession(workspaceId);
   const startPrivateSession = () => {
-    if (!myPrivateProfile) return;
-    newSession({
-      create: {
-        connector_bindings: { [connector.slug]: { profile_id: myPrivateProfile.profile_id } },
-        inherit_unbound: true,
-      },
-    });
+    // Require THIS user's own connection by alias — the server resolves their
+    // member profile and, if it was revoked, the connect-to-start gate re-prompts.
+    newSession({ create: { require_connectors: [connector.slug] } });
   };
   const [credOpen, setCredOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const displayName = connector.name?.trim() || connector.slug;
+
+  // Which tabs this connector actually has. Pipedream connectors hold many
+  // connections (team + per-member), so they get Connections; everything else
+  // has at most one shared credential, which lives under Connection.
+  const showConnections = isPipedream && !isChannel && !isComputer;
+  const showProfileTab = !isPipedream && !isManaged;
+  const showRoster = showConnections && canManageProfiles;
+  const defaultDetailTab = showConnections
+    ? 'connections'
+    : showProfileTab
+      ? 'profile'
+      : 'permissions';
+  // Permissions is always present; the other three are conditional.
+  const detailTabCount =
+    1 + (showConnections ? 1 : 0) + (showProfileTab ? 1 : 0) + (showRoster ? 1 : 0);
+  const [detailTab, setDetailTab] = useState(defaultDetailTab);
+  // Re-pin when the user switches to a connector whose tab set differs.
+  useEffect(() => setDetailTab(defaultDetailTab), [defaultDetailTab, connector.slug]);
+
+  // Same query key + filter as ConnectionsList, so the badge can never disagree
+  // with the rows it counts (react-query dedupes the fetch).
+  const detailProfilesQuery = useQuery({
+    queryKey: ['connector-profiles', workspaceId],
+    queryFn: () => listConnectionProfiles(workspaceId),
+    staleTime: 30_000,
+    enabled: showConnections,
+  });
+  const connectionCount = connectorConnectionRows(
+    detailProfilesQuery.data?.profiles,
+    connector.slug,
+  ).length;
+
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(displayName);
   useEffect(() => {
@@ -1083,7 +1499,7 @@ function ConnectorDetail({
                 className="h-9 w-9"
                 disabled={rename.isPending}
                 aria-label={tI18nHardcoded.raw(
-                  'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrAriaLabela08f6c74',
+                  'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrAriaLabela08f6c74',
                 )}
               >
                 {rename.isPending ? (
@@ -1170,9 +1586,6 @@ function ConnectorDetail({
       </div>
 
       <div className="mt-7 space-y-5">
-        {connected && connectionProfile && !isChannel && !isComputer && (
-          <ConnectionIdField profileId={connectionProfile.profile_id} />
-        )}
         {/* Computer connectors are connected + permissioned in the Computers tab
             (device pairing, per-capability grants, audit) — point management
             there instead of the generic credential / connection / remove UI. */}
@@ -1197,12 +1610,16 @@ function ConnectorDetail({
             you control who can use it and review its tools.
           </InfoBanner>
         )}
-        {/* Prominent connect CTA — the first thing you see on an unconnected connector. */}
+        {/* Prominent connect CTA — the first thing you see on an unconnected
+            connector. This is the SHARED (team) connection: everyone on the
+            workspace uses it. The private, per-user alternative is the banner
+            below — the two are labelled as an explicit either/or so nobody
+            connects a personal account thinking it stays personal. */}
         {connector.authSecret && !connected && !isChannel && (
           <InfoBanner
             tone="info"
-            icon={KeyRound}
-            title={`Connect ${displayName}`}
+            icon={Users}
+            title={`Connect ${displayName} for the whole team`}
             action={
               canWrite ? (
                 <Button
@@ -1212,42 +1629,80 @@ function ConnectorDetail({
                   disabled={isPipedream && reconnect.isPending}
                 >
                   {isPipedream && reconnect.isPending && <Loading className="size-4 shrink-0" />}
-                  {isPipedream ? `Connect ${displayName}` : 'Set credential'}
+                  {isPipedream ? 'Connect for the team' : 'Set shared credential'}
                 </Button>
               ) : undefined
             }
           >
             {isPipedream
-              ? `Authorize your ${displayName} account so the agent and your triggers can use it.`
-              : `Add the credential so the agent and your triggers can use ${displayName}.`}
+              ? `One shared ${displayName} account that everyone on this workspace uses — the agent and your triggers run on it. To connect your own account instead, use the private option below.`
+              : `One shared credential that everyone on this workspace uses — the agent and your triggers run on it.`}
           </InfoBanner>
         )}
-        {/* A member's own private connection (Pipedream OAuth apps only) — lets a
-            user bring their OWN account (e.g. their Gmail) without sharing it with
-            the team. Resolves only in that user's private sessions. */}
-        {isPipedream && !isChannel && !isComputer && (
-          <PrivateConnectionBanner
-            displayName={displayName}
-            connected={!!myPrivateProfile}
-            connecting={privateConnect.isPending}
-            disconnecting={disconnectPrivate.isPending}
-            onConnect={() => privateConnect.mutate()}
-            onDisconnect={() => disconnectPrivate.mutate()}
-            onStartSession={startPrivateSession}
-          />
-        )}
-        {/* The sensitive toggle lives under Permissions (it IS a permission
-            default), so Profile only exists when there's a connection to
-            manage — for Pipedream/managed connectors it would be empty. */}
+        {/* One tab per question this page answers: what can I use (Connections),
+            what may the agent do with it (Permissions), who on the team has
+            connected their own (Team members). Before this, everything stacked
+            into one long scroll above a lone "Permissions" tab, because the only
+            other trigger — Profile — is hidden for Pipedream connectors. */}
         <Tabs
-          defaultValue={!isPipedream && !isManaged ? 'profile' : 'permissions'}
+          value={detailTab}
+          onValueChange={setDetailTab}
           className="gap-3"
         >
-          <TabsList>
-            {!isPipedream && !isManaged && <TabsTrigger value="profile">Profile</TabsTrigger>}
-            <TabsTrigger value="permissions">Permissions</TabsTrigger>
+          {/* A single trigger is not a choice — it reads as a broken tab bar.
+              Computer connectors are managed in Computers, so Permissions is
+              all they have left here. */}
+          <TabsList
+            type="underline"
+            className={cn(
+              'flex w-full items-center justify-start',
+              detailTabCount < 2 && 'hidden',
+            )}
+          >
+            {showConnections && (
+              <TabsTrigger value="connections" className="w-fit flex-none gap-2">
+                Connections
+                {connectionCount > 0 ? (
+                  <Badge variant="secondary" size="sm">
+                    {connectionCount}
+                  </Badge>
+                ) : null}
+              </TabsTrigger>
+            )}
+            {showProfileTab && (
+              <TabsTrigger value="profile" className="w-fit flex-none">
+                Connection
+              </TabsTrigger>
+            )}
+            <TabsTrigger value="permissions" className="w-fit flex-none">
+              Permissions
+            </TabsTrigger>
+            {showRoster && (
+              <TabsTrigger value="roster" className="w-fit flex-none">
+                Team members
+              </TabsTrigger>
+            )}
           </TabsList>
-          {!isPipedream && !isManaged && (
+          {/* Every connection under this connector — the team's shared accounts and
+              this member's own. A connector can hold several of each; the DEFAULT
+              in each scope is what a session uses when it names no connection. */}
+          {showConnections && (
+            <TabsContent value="connections" className="space-y-5">
+              <ConnectionsList
+                workspaceId={workspaceId}
+                connector={connector}
+                displayName={displayName}
+                canManageProfiles={canManageProfiles}
+                onChanged={onChanged}
+                onStartSession={startPrivateSession}
+              />
+            </TabsContent>
+          )}
+          {/* The sensitive toggle lives under Permissions (it IS a permission
+              default), so this tab only exists when there's a single shared
+              credential to manage — for Pipedream connectors the Connections
+              tab owns that, and this one would be empty. */}
+          {showProfileTab && (
             <TabsContent value="profile" className="space-y-5">
               {isChannel ? (
                 <ChannelConnectionSection
@@ -1274,8 +1729,21 @@ function ConnectorDetail({
               connector={connector}
               onChanged={onChanged}
               canWrite={canWrite}
+              connectionCount={connectionCount}
+              onOpenConnections={
+                showConnections ? () => setDetailTab('connections') : undefined
+              }
             />
           </TabsContent>
+          {showRoster && (
+            <TabsContent value="roster" className="space-y-5">
+              <ConnectionRoster
+                workspaceId={workspaceId}
+                connectorSlug={connector.slug}
+                displayName={displayName}
+              />
+            </TabsContent>
+          )}
         </Tabs>
 
         {canWrite && !isManaged && !isChannel && (
@@ -1284,12 +1752,12 @@ function ConnectorDetail({
               <div className="min-w-0">
                 <p className="text-foreground text-sm font-medium">
                   {tI18nHardcoded.raw(
-                    'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitleRemove74be1411',
+                    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleRemove74be1411',
                   )}
                 </p>
                 <p className="text-muted-foreground mt-0.5 text-xs text-pretty">
                   {tI18nHardcoded.raw(
-                    'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrDescriptionDeletes0a130396',
+                    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrDescriptionDeletes0a130396',
                   )}
                 </p>
               </div>
@@ -1314,16 +1782,16 @@ function ConnectorDetail({
         description={
           <>
             {tI18nHardcoded.raw(
-              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextThisRemoves82d0b969',
+              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextThisRemoves82d0b969',
             )}
             <code className="font-mono">{connector.slug}</code>{' '}
             {tI18nHardcoded.raw(
-              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextFromKortixeb47b479',
+              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextFromKortixeb47b479',
             )}
           </>
         }
         confirmLabel={tI18nHardcoded.raw(
-          'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrConfirmLabelRemoved2120640',
+          'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrConfirmLabelRemoved2120640',
         )}
         confirmVariant="destructive"
         confirmIcon={<Trash2 className="h-4 w-4" />}
@@ -1401,7 +1869,7 @@ function ChannelConnectionSection({
   }
   if (platform === 'voice') {
     // Voice genuinely has nothing to connect: no OAuth, no API key, no
-    // workspace to link. Calls run on Kortix's own LiveKit project, and each
+    // workspace to link. Calls run on Kortix's own LiveKit workspace, and each
     // one is scoped to the session that spawned it. Falling through to the
     // warning below told people their profile was broken when it was complete.
     return (
@@ -2366,7 +2834,7 @@ function ConnectionSection({
       <Label>Connection</Label>
       <p className="text-muted-foreground -mt-2 text-xs">
         {tI18nHardcoded.raw(
-          'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrDescriptionHowa31daf50',
+          'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrDescriptionHowa31daf50',
         )}
       </p>
       <div className="bg-popover rounded-md border px-4 py-5">
@@ -2374,7 +2842,7 @@ function ConnectionSection({
           <InfoBanner
             tone="destructive"
             title={tI18nHardcoded.raw(
-              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitleCouldn277b73a0',
+              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleCouldn277b73a0',
             )}
             action={
               <Button size="sm" variant="outline" onClick={() => configQuery.refetch()}>
@@ -2430,7 +2898,7 @@ function ConnectionSection({
                 onSave={() => save.mutate()}
                 onReset={reset}
                 label={tI18nHardcoded.raw(
-                  'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrLabelSave8c6f945f',
+                  'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrLabelSave8c6f945f',
                 )}
               />
             )}
@@ -2565,11 +3033,16 @@ function PermissionsSection({
   connector,
   onChanged,
   canWrite = false,
+  connectionCount = 0,
+  onOpenConnections,
 }: {
   workspaceId: string;
   connector: AdminConnector;
   onChanged: () => void;
   canWrite?: boolean;
+  /** How many connections this connector holds — these rules apply to all of them. */
+  connectionCount?: number;
+  onOpenConnections?: () => void;
 }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
@@ -2655,6 +3128,18 @@ function PermissionsSection({
   const governingRule = (path: string) =>
     rules.find((r) => r.match.trim() && clientMatch(r.match.trim(), path));
 
+  // Tools a PROJECT-scope rule already decides. Workspace rules are evaluated
+  // before connector rules and cannot be overridden here (executor/policy.ts),
+  // so without this the panel would show a connector rule the runtime ignores.
+  // The server resolves this through the same function the call gate uses.
+  const projectDecided = useMemo(() => {
+    const decided = new Map<string, ConnectorPolicyAction>();
+    for (const entry of policiesQuery.data?.effective ?? []) {
+      if (entry.source === 'workspace') decided.set(entry.path, entry.action);
+    }
+    return decided;
+  }, [policiesQuery.data]);
+
   // ── Multi-select + bulk apply ──
   const filteredPaths = useMemo(() => filtered.map((t) => t.path), [filtered]);
   const allFilteredSelected =
@@ -2705,7 +3190,7 @@ function PermissionsSection({
           <h3 className="text-sm font-medium">Permissions</h3>
           <p className="text-muted-foreground mt-1 text-xs">
             {tI18nHardcoded.raw(
-              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrDescriptionWhat4e375237',
+              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrDescriptionWhat4e375237',
             )}
           </p>
         </div>
@@ -2716,13 +3201,48 @@ function PermissionsSection({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={tI18nHardcoded.raw(
-                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrPlaceholderFiltere5f64efb',
+                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrPlaceholderFiltere5f64efb',
               )}
               className="h-8 pl-8 text-sm"
             />
           </div>
         ) : null}
       </div>
+      {/* These are CONNECTOR-wide. With several connections under one connector
+          people come here looking for per-connection permissions (it is the tab
+          literally called Permissions) and find no way to differ — so point at
+          the place that does it, instead of letting them conclude it is missing. */}
+      {connectionCount > 1 && (
+        <InfoBanner
+          tone="info"
+          icon={Users}
+          title={`Applies to all ${connectionCount} connections`}
+          action={
+            onOpenConnections ? (
+              <Button size="sm" variant="outline" className="shrink-0" onClick={onOpenConnections}>
+                Open Connections
+              </Button>
+            ) : undefined
+          }
+        >
+          To give one connection different permissions — say, one mailbox that may send and another
+          that may only read — open Connections and use “Permissions for this connection” on that
+          row. Anything you set there overrides what you set here, for that connection only.
+        </InfoBanner>
+      )}
+      {/* Say it once, up front. A workspace-scope rule beats everything on this
+          page and cannot be lifted here — silently rendering the losing value
+          is the bug this replaces. */}
+      {projectDecided.size > 0 && (
+        <InfoBanner
+          tone="warning"
+          icon={Lock}
+          title={`${projectDecided.size} ${projectDecided.size === 1 ? 'action is' : 'actions are'} set by a workspace-wide rule`}
+        >
+          Workspace rules apply across every connector and are evaluated first, so for those actions
+          whatever you set here is ignored. They are marked below.
+        </InfoBanner>
+      )}
       <div className="bg-popover rounded-md border px-4 py-5">
         <div className="space-y-4">
           <div className="space-y-2">
@@ -2765,11 +3285,11 @@ function PermissionsSection({
             <InfoBanner
               tone="neutral"
               title={tI18nHardcoded.raw(
-                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitleNo0e439be9',
+                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleNo0e439be9',
               )}
             >
               {tI18nHardcoded.raw(
-                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextConnectThec56fd30b',
+                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextConnectThec56fd30b',
               )}
             </InfoBanner>
           ) : (
@@ -2783,7 +3303,7 @@ function PermissionsSection({
                     }
                     onCheckedChange={toggleAllFiltered}
                     aria-label={tI18nHardcoded.raw(
-                      'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrAriaLabel924a321f',
+                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrAriaLabel924a321f',
                     )}
                     className="size-3.5"
                   />
@@ -2795,7 +3315,7 @@ function PermissionsSection({
                     </span>
                     <span className="text-muted-foreground text-xs">
                       {tI18nHardcoded.raw(
-                        'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextSetToff934ec7',
+                        'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextSetToff934ec7',
                       )}
                     </span>
                     {POLICY_CHOICES.map((c) => (
@@ -2825,7 +3345,7 @@ function PermissionsSection({
                   <span className="text-muted-foreground text-xs">
                     {filtered.length} {filtered.length === 1 ? 'tool' : 'tools'}{' '}
                     {tI18nHardcoded.raw(
-                      'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextTapA9c38f324',
+                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextTapA9c38f324',
                     )}
                   </span>
                 )}
@@ -2835,6 +3355,7 @@ function PermissionsSection({
                 {filtered.map((t) => {
                   const explicit = perTool[t.path];
                   const ruled = !explicit ? governingRule(t.path) : undefined;
+                  const projectAction = projectDecided.get(t.path);
                   const isOpen = expanded === t.path;
                   const isSel = selected.has(t.path);
                   return (
@@ -2882,9 +3403,22 @@ function PermissionsSection({
                           >
                             {POLICY_LABEL[ruled.action].label}{' '}
                             {tI18nHardcoded.raw(
-                              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextRulebbcba279',
+                              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextRulebbcba279',
                             )}
                           </span>
+                        )}
+                        {projectAction && (
+                          <Hint
+                            label={`A workspace-wide rule sets this to "${POLICY_LABEL[projectAction].label}". Workspace rules are evaluated first and win — anything you set here is ignored for this tool.`}
+                          >
+                            <Badge variant="outline" size="sm" className="shrink-0 gap-1">
+                              <Lock className="size-3 shrink-0" />
+                              <span className={POLICY_LABEL[projectAction].tint}>
+                                {POLICY_LABEL[projectAction].label}
+                              </span>
+                              by workspace
+                            </Badge>
+                          </Hint>
                         )}
                         <ChevronRight
                           className={cn(
@@ -2894,11 +3428,16 @@ function PermissionsSection({
                               : 'text-muted-foreground/40 opacity-0 group-hover:opacity-100',
                           )}
                         />
-                        <PermissionPicker
-                          value={explicit ?? 'default'}
-                          onChange={(c) => setChoice(t.path, c)}
-                          readOnly={!canWrite}
-                        />
+                        {/* Still editable — a workspace rule can be lifted later, and
+                            staging a connector rule for that is legitimate. Dimmed
+                            so it never reads as the thing currently in force. */}
+                        <div className={cn(projectAction && 'opacity-40')}>
+                          <PermissionPicker
+                            value={explicit ?? 'default'}
+                            onChange={(c) => setChoice(t.path, c)}
+                            readOnly={!canWrite}
+                          />
+                        </div>
                       </div>
                       {isOpen && (
                         <div className="bg-muted/20 space-y-3 px-4 pt-1 pb-3">
@@ -2931,7 +3470,7 @@ function PermissionsSection({
                 {filtered.length === 0 && (
                   <p className="text-muted-foreground px-3 py-6 text-center text-xs">
                     {tI18nHardcoded.raw(
-                      'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextNoTools69d22076',
+                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextNoTools69d22076',
                     )}
                     {search}”.
                   </p>
@@ -2955,7 +3494,7 @@ function PermissionsSection({
                   )}
                 />
                 {tI18nHardcoded.raw(
-                  'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextPatternRules6a07e5a7',
+                  'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextPatternRules6a07e5a7',
                 )}
                 {rules.length > 0 && (
                   <Badge variant="secondary" size="sm">
@@ -2964,7 +3503,7 @@ function PermissionsSection({
                 )}
                 <span className="text-muted-foreground ml-auto text-xs font-normal">
                   {tI18nHardcoded.raw(
-                    'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextCoverMany170203ce',
+                    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextCoverMany170203ce',
                   )}
                 </span>
               </button>
@@ -2972,23 +3511,23 @@ function PermissionsSection({
                 <div className="border-border/60 space-y-2 border-t px-3 py-3">
                   <p className="text-muted-foreground text-xs">
                     {tI18nHardcoded.raw(
-                      'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextMatchBy60561318',
+                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextMatchBy60561318',
                     )}
                     <code className="bg-muted rounded px-1 font-mono">
                       {tI18nHardcoded.raw(
-                        'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextSend0110e0d9',
+                        'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextSend0110e0d9',
                       )}
                     </code>
                     {tI18nHardcoded.raw(
-                      'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextOrRegexf5a26a27',
+                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextOrRegexf5a26a27',
                     )}
                     <code className="bg-muted rounded px-1 font-mono">
                       {tI18nHardcoded.raw(
-                        'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextDelete37c77402',
+                        'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextDelete37c77402',
                       )}
                     </code>
                     {tI18nHardcoded.raw(
-                      'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextPerTool4d0d7e9f',
+                      'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextPerTool4d0d7e9f',
                     )}
                   </p>
                   {rules.map((r) => (
@@ -3001,7 +3540,7 @@ function PermissionsSection({
                           )
                         }
                         placeholder={tI18nHardcoded.raw(
-                          'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrPlaceholderSend3b0a4ee1',
+                          'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrPlaceholderSend3b0a4ee1',
                         )}
                         className="h-8 flex-1 font-mono text-xs"
                         disabled={!canWrite}
@@ -3037,7 +3576,7 @@ function PermissionsSection({
                           className="hover:text-destructive h-8 w-8 shrink-0"
                           onClick={() => setRules((rs) => rs.filter((x) => x.id !== r.id))}
                           aria-label={tI18nHardcoded.raw(
-                            'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrAriaLabeld2296c34',
+                            'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrAriaLabeld2296c34',
                           )}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -3059,7 +3598,7 @@ function PermissionsSection({
                     >
                       <Plus className="h-3.5 w-3.5" />
                       {tI18nHardcoded.raw(
-                        'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextAddRule873a093f',
+                        'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextAddRule873a093f',
                       )}
                     </Button>
                   )}
@@ -3076,7 +3615,7 @@ function PermissionsSection({
             onSave={() => save.mutate()}
             onReset={reset}
             label={tI18nHardcoded.raw(
-              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrLabelSave783950c7',
+              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrLabelSave783950c7',
             )}
           />
         )}
@@ -3094,12 +3633,12 @@ function GlobalRulesPanel({ workspaceId }: { workspaceId: string }) {
         <div>
           <h2 className="text-foreground text-lg font-semibold">
             {tI18nHardcoded.raw(
-              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextGlobalRules436bcada',
+              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextGlobalRules436bcada',
             )}
           </h2>
           <p className="text-muted-foreground mt-1 text-sm">
             {tI18nHardcoded.raw(
-              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextPermissionsThat70379f46',
+              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextPermissionsThat70379f46',
             )}
           </p>
         </div>
@@ -3146,7 +3685,7 @@ function AddAppPanel({
   const easyConnectHidden = !connectorsEnabled;
   const easyConnectDisabled = easyConnectHidden || connectStatus.data?.configured === false;
   const easyConnectLabel = tI18nHardcoded.raw(
-    'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextEasyConnect19ca1c01',
+    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextEasyConnect19ca1c01',
   );
   const defaultTab = !easyConnectDisabled ? 'apps' : discoverEnabled ? 'discover' : 'channels';
   return (
@@ -3159,7 +3698,7 @@ function AddAppPanel({
           {easyConnectHidden ? null : easyConnectDisabled ? (
             <Hint
               label={tI18nHardcoded.raw(
-                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextEasyConnectc07266e0',
+                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextEasyConnectc07266e0',
               )}
             >
               <TabsTrigger value="apps" disabled>
@@ -3449,7 +3988,7 @@ function AppCatalogue({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={tI18nHardcoded.raw(
-            'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrPlaceholderSearch9d26aaaa',
+            'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrPlaceholderSearch9d26aaaa',
           )}
           variant="popover"
           className="pl-9"
@@ -3460,11 +3999,11 @@ function AppCatalogue({
           <InfoBanner
             tone="neutral"
             title={tI18nHardcoded.raw(
-              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitleEasy58e9c7b1',
+              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleEasy58e9c7b1',
             )}
           >
             {tI18nHardcoded.raw(
-              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextEasyConnectc07266e0',
+              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextEasyConnectc07266e0',
             )}
           </InfoBanner>
         ) : appsQuery.isLoading ? (
@@ -3477,7 +4016,7 @@ function AppCatalogue({
           <EmptyState
             icon={Search}
             title={tI18nHardcoded.raw(
-              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrTitleNof8067eda',
+              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleNof8067eda',
             )}
             description={q ? `Nothing matches "${q}".` : 'Try a search.'}
           />
@@ -3535,7 +4074,7 @@ function AppCatalogue({
                     <>
                       <Loading className="size-4 shrink-0" />
                       {tI18nHardcoded.raw(
-                        'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextLoading7131cc18',
+                        'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextLoading7131cc18',
                       )}
                     </>
                   ) : (
@@ -3816,7 +4355,7 @@ function ConnectorConfigFields({
             {p === 'postman'
               ? 'Collection, repository, or workspace'
               : tI18nHardcoded.raw(
-                  'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrLabelSpec4235864d',
+                  'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrLabelSpec4235864d',
                 )}
           </FieldLabel>
           <Input
@@ -3855,7 +4394,7 @@ function ConnectorConfigFields({
           <Field>
             <FieldLabel htmlFor="connector-sdl">
               {tI18nHardcoded.raw(
-                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrLabelSDL2325b707',
+                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrLabelSDL2325b707',
               )}
             </FieldLabel>
             <Input
@@ -3906,7 +4445,7 @@ function ConnectorConfigFields({
           <Field>
             <FieldLabel htmlFor="connector-base-url">
               {tI18nHardcoded.raw(
-                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrLabelBase744ecef9',
+                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrLabelBase744ecef9',
               )}
             </FieldLabel>
             <Input
@@ -3922,7 +4461,7 @@ function ConnectorConfigFields({
           <Field>
             <FieldLabel htmlFor="connector-routes">
               {tI18nHardcoded.raw(
-                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxAttrLabelRoutes38b14436',
+                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrLabelRoutes38b14436',
               )}
             </FieldLabel>
             <Input
@@ -3972,7 +4511,7 @@ function ConnectorConfigFields({
                 <SelectItem value="mtls">Mutual TLS</SelectItem>
                 <SelectItem value="custom">
                   {tI18nHardcoded.raw(
-                    'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextCustomHeader1e0e82ed',
+                    'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextCustomHeader1e0e82ed',
                   )}
                 </SelectItem>
               </SelectContent>
@@ -4201,7 +4740,7 @@ export function CustomConnectorForm({
           {authActive && !oauth2Selected && (
             <InfoBanner tone="info">
               {tI18nHardcoded.raw(
-                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextYouLle5def626',
+                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextYouLle5def626',
               )}
             </InfoBanner>
           )}
@@ -4219,7 +4758,7 @@ export function CustomConnectorForm({
             >
               {save.isPending && <Loading className="size-4 shrink-0" />}
               {tI18nHardcoded.raw(
-                'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextAddConnectore01e22fc',
+                'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextAddConnectore01e22fc',
               )}
             </Button>
           </div>
@@ -4409,7 +4948,7 @@ function SetCredentialModal({
         <ModalHeader>
           <ModalTitle>
             {tI18nHardcoded.raw(
-              'autoComponentsWorkspacesCustomizeSectionsConnectorsViewJsxTextSetCredential5e9704a8',
+              'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxTextSetCredential5e9704a8',
             )}
             {connector?.slug}
           </ModalTitle>

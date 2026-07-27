@@ -1,4 +1,5 @@
 import {
+  executorConnectionPolicies,
   executorConnectionProfiles,
   executorConnectorActions,
   executorConnectorPolicies,
@@ -44,6 +45,7 @@ import type { ChannelPlatform } from '../workspaces/connectors';
 import { invalidateWorkspaceMirror } from '../workspaces/git';
 import { loadWorkspaceForUser } from '../workspaces/lib/access';
 import {
+  canonicalConnectorAlias,
   publicConnectorAlias,
   resolveSessionConnectorProfile,
 } from '../workspaces/lib/session-connector-bindings';
@@ -87,7 +89,13 @@ import {
   runPipedreamProxy,
   verifyWebhookSig,
 } from './pipedream';
-import { type DefaultMode, type Policy, resolveEffectiveAction } from './policy';
+import {
+  type DefaultMode,
+  type EffectiveResolveResult,
+  type Policy,
+  type PolicyAction,
+  resolveEffectiveAction,
+} from './policy';
 import type {
   AdminConnectorView,
   CatalogConnector,
@@ -98,6 +106,9 @@ import { resolveShareSubject } from './share';
 import { getIntegrationCatalogDetail, listIntegrationCatalog } from './integration-catalog';
 import { discoverDraftConnectorAuth, syncWorkspaceConnectors } from './sync';
 import type { ActionBinding, Risk } from './types';
+
+/** Which policy scope decided an action — surfaced so the editor can say so. */
+type EffectiveSource = EffectiveResolveResult['source'];
 
 const DEFAULT_AUTH: ExecutorAuth = { type: 'none', in: 'header', name: null, prefix: null };
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -537,6 +548,7 @@ export function makeDbGatewayDeps(principal: ExecutorPrincipal): GatewayDeps {
     loadPolicies: loadConnectorPoliciesFor,
     loadWorkspacePolicies: loadWorkspacePoliciesFor,
     loadDefaultMode: loadDefaultModeFor,
+    loadConnectionPolicies: loadConnectionPoliciesFor,
     recordExecution: async (rec) => {
       const [row] = await db
         .insert(executorExecutions)
@@ -667,6 +679,16 @@ async function loadConnectorPoliciesFor(connectorId: string): Promise<Policy[]> 
     .from(executorConnectorPolicies)
     .where(eq(executorConnectorPolicies.connectorId, connectorId));
   return rows.map((r) => ({ match: r.match, action: r.action, position: r.position }));
+}
+
+/** Rules attached to one connection profile, between the workspace and connector scopes. */
+async function loadConnectionPoliciesFor(profileId: string): Promise<Policy[]> {
+  const rows = await db
+    .select()
+    .from(executorConnectionPolicies)
+    .where(eq(executorConnectionPolicies.profileId, profileId))
+    .orderBy(executorConnectionPolicies.position);
+  return rows.map((r) => ({ match: r.match, action: r.action as PolicyAction, position: r.position }));
 }
 
 async function loadWorkspacePoliciesFor(workspaceId: string): Promise<Policy[]> {
@@ -833,7 +855,8 @@ async function listCatalog(p: ExecutorPrincipal): Promise<CatalogConnector[]> {
     // consistent with the call gate, so it never lists a tool it can't invoke.
     // This is the ONLY access gate — connectors are workspace-wide visible to
     // every human with workspace access (no per-connector member scoping).
-    if (!agentMayUseConnector(p.agentGrant ?? null, publicConnectorAlias(row.slug))) continue;
+    // Canonical on both sides — the grant is canonicalized at construction.
+    if (!agentMayUseConnector(p.agentGrant ?? null, canonicalConnectorAlias(row.slug))) continue;
     const profile = await resolveSessionConnectorProfile({
       accountId: p.accountId,
       workspaceId: p.workspaceId,
@@ -1012,17 +1035,80 @@ async function listConnectors(workspaceId: string): Promise<AdminConnectorView[]
 async function getConnectorPolicies(
   workspaceId: string,
   slug: string,
-): Promise<{ policies: Array<{ match: string; action: string }> } | null> {
-  const fromManifest = await getConnectorPoliciesFromManifest(workspaceId, slug);
-  if (fromManifest) return fromManifest;
-  const [row] = await db
-    .select({ connectorId: executorConnectors.connectorId })
-    .from(executorConnectors)
-    .where(and(eq(executorConnectors.workspaceId, workspaceId), eq(executorConnectors.slug, slug)))
-    .limit(1);
-  if (!row) return null;
-  const policies = await loadConnectorPoliciesFor(row.connectorId);
-  return { policies: policies.map((p) => ({ match: p.match, action: p.action })) };
+): Promise<{
+  policies: Array<{ match: string; action: string }>;
+  effective: Array<{ path: string; action: PolicyAction; source: EffectiveSource }>;
+  workspace_policies: Array<{ match: string; action: string }>;
+  /** @deprecated Use `workspace_policies`. */
+  project_policies: Array<{ match: string; action: string }>;
+  default_mode: DefaultMode;
+} | null> {
+  const [fromManifest, [row]] = await Promise.all([
+    getConnectorPoliciesFromManifest(workspaceId, slug),
+    db
+      .select({ connectorId: executorConnectors.connectorId, config: executorConnectors.config })
+      .from(executorConnectors)
+      .where(and(eq(executorConnectors.workspaceId, workspaceId), eq(executorConnectors.slug, slug)))
+      .limit(1),
+  ]);
+  if (!fromManifest && !row) return null;
+
+  const policies = fromManifest
+    ? fromManifest.policies
+    : (await loadConnectorPoliciesFor(row.connectorId)).map((p) => ({
+        match: p.match,
+        action: p.action as string,
+      }));
+
+  // The editor also needs to know which scope decides each tool. A workspace-scope
+  // rule is evaluated first and cannot be overridden here (see policy.ts), so
+  // without this the panel would happily show a connector rule the runtime is
+  // ignoring. Resolve every action through the same function the call gate uses.
+  if (!row) {
+    return {
+      policies,
+      effective: [],
+      workspace_policies: [],
+      project_policies: [],
+      default_mode: 'allow_all',
+    };
+  }
+  const [workspacePolicies, defaultMode, actions] = await Promise.all([
+    loadWorkspacePoliciesFor(workspaceId),
+    loadDefaultModeFor(workspaceId),
+    db
+      .select()
+      .from(executorConnectorActions)
+      .where(eq(executorConnectorActions.connectorId, row.connectorId)),
+  ]);
+  const sensitive = (row.config as { sensitive?: unknown } | null)?.sensitive === true;
+  const connectorPolicies: Policy[] = policies.map((p) => ({
+    match: p.match,
+    action: p.action as PolicyAction,
+  }));
+  const effective = actions.map((a) => {
+    const resolved = resolveEffectiveAction({
+      fullPath: `${slug}.${a.path}`,
+      relPath: a.path,
+      workspacePolicies,
+      connectorPolicies,
+      risk: a.risk,
+      defaultMode,
+      sensitive,
+    });
+    return { path: a.path, action: resolved.action, source: resolved.source };
+  });
+  const serializedWorkspacePolicies = workspacePolicies.map((p) => ({
+    match: p.match,
+    action: p.action,
+  }));
+  return {
+    policies,
+    effective,
+    workspace_policies: serializedWorkspacePolicies,
+    project_policies: serializedWorkspacePolicies,
+    default_mode: defaultMode,
+  };
 }
 
 /**

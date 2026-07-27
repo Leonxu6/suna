@@ -24,6 +24,7 @@ import {
   type GitProxyAuth,
 } from '../workspaces';
 import type { GitScope } from '../workspaces/git-backends';
+import { deriveRequestContext } from '../iam/cache';
 import {
   FORWARD_REQUEST_HEADERS,
   STRIP_RESPONSE_HEADERS,
@@ -84,7 +85,9 @@ function validWorkspaceIdOrResponse(c: any, raw: string): string | Response {
 async function authorize(c: any, workspaceId: string, scope: GitScope): Promise<GitProxyAuth> {
   const token = extractToken(c.req.header('authorization'));
   if (!token) return { ok: false, status: 401, message: 'authentication required' };
-  return authorizeGitProxy(token, workspaceId, scope);
+  // Pass the request context so IP-allowlist / require-MFA policy conditions
+  // evaluate on the per-workspace capability path used by every workspace route.
+  return authorizeGitProxy(token, workspaceId, scope, deriveRequestContext(c));
 }
 
 /**

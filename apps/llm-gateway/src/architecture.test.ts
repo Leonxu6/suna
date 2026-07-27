@@ -16,20 +16,24 @@ function sourceFiles(root: string): string[] {
 }
 
 describe('gateway catalog boundary', () => {
-  test('core and standalone gateway have no llm-catalog package dependency', () => {
-    for (const root of [appRoot, coreRoot]) {
-      const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
-        dependencies?: Record<string, string>;
-        devDependencies?: Record<string, string>;
-      };
-      expect(pkg.dependencies?.['@kortix/llm-catalog']).toBeUndefined();
-      expect(pkg.devDependencies?.['@kortix/llm-catalog']).toBeUndefined();
-    }
+  test('core owns the llm-catalog dependency and the standalone gateway does not duplicate it', () => {
+    const appPackage = JSON.parse(readFileSync(join(appRoot, 'package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const corePackage = JSON.parse(readFileSync(join(coreRoot, 'package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+
+    expect(corePackage.dependencies?.['@kortix/llm-catalog']).toBe('workspace:*');
+    expect(corePackage.devDependencies?.['@kortix/llm-catalog']).toBeUndefined();
+    expect(appPackage.dependencies?.['@kortix/llm-catalog']).toBeUndefined();
+    expect(appPackage.devDependencies?.['@kortix/llm-catalog']).toBeUndefined();
   });
 
-  test('core and standalone source never import the product catalog', () => {
-    const offenders = [join(appRoot, 'src'), join(coreRoot, 'src')]
-      .flatMap(sourceFiles)
+  test('standalone source never imports the product catalog directly', () => {
+    const offenders = sourceFiles(join(appRoot, 'src'))
       .filter((file) => /(?:from\s*|import\s*)[('"`]@kortix\/llm-catalog/.test(
         readFileSync(file, 'utf8'),
       ));

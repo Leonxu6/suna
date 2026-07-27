@@ -1,4 +1,5 @@
 import type { MiddlewareHandler } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 
 const KEY_ALIASES: Record<string, string> = {
   workspace_id: 'project_id',
@@ -33,7 +34,20 @@ export function toDeprecatedProjectResponse(value: unknown): unknown {
 }
 
 export const projectCompatibilityMiddleware: MiddlewareHandler = async (c, next) => {
-  await next();
+  try {
+    await next();
+  } catch (error) {
+    if (!(error instanceof HTTPException)) throw error;
+    if (error.status === 503) c.header('Retry-After', '10');
+    c.res = c.json(
+      {
+        error: true,
+        message: error.message,
+        status: error.status,
+      },
+      error.status,
+    );
+  }
   c.header('Deprecation', 'true');
   c.header('Sunset', 'Wed, 31 Dec 2026 23:59:59 GMT');
   c.header('Link', '</v1/workspaces>; rel="successor-version"');

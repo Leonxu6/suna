@@ -127,6 +127,8 @@ export interface GatewayDeps {
   resolveEmailCredentialForInbox?(workspaceId: string, inboxId: string): Promise<string | null>;
   /** Connector-scoped policies (relative patterns over the connector's tool paths). */
   loadPolicies(connectorId: string): Promise<Policy[]>;
+  /** Rules for the specific connection selected for this session, if any. */
+  loadConnectionPolicies?(profileId: string): Promise<Policy[]>;
   /** Workspace-scoped policies (fully-qualified patterns over <slug>.<path>). */
   loadWorkspacePolicies?(workspaceId: string): Promise<Policy[]>;
   /** Workspace's policy.default_mode setting (risk | allow_all). Defaults to allow_all. */
@@ -437,17 +439,24 @@ export async function handleCall(deps: GatewayDeps, input: CallInput): Promise<C
   const executionArgs = emailExecution.args;
   const executionSecret = usable.secret;
 
-  // Layered policy enforcement: workspace policies first → connector → risk default.
+  // Layered enforcement: workspace → connection → connector → risk default. The
+  // connection is already resolved above (connector.profileId), so the extra
+  // scope costs one indexed lookup and no extra round trip.
   if (deps.enforcePolicies !== false) {
-    const [connectorPolicies, workspacePolicies, defaultMode] = await Promise.all([
+    const [connectorPolicies, workspacePolicies, defaultMode, connectionPolicies] =
+      await Promise.all([
       deps.loadPolicies(connector.connectorId),
       deps.loadWorkspacePolicies?.(input.workspaceId) ?? Promise.resolve([] as Policy[]),
       deps.loadDefaultMode?.(input.workspaceId) ?? Promise.resolve('allow_all' as DefaultMode),
-    ]);
+      connector.profileId && deps.loadConnectionPolicies
+        ? deps.loadConnectionPolicies(connector.profileId)
+        : Promise.resolve([] as Policy[]),
+      ]);
     const decision = resolveEffectiveAction({
       fullPath,
       relPath: input.actionPath,
       workspacePolicies,
+      connectionPolicies,
       connectorPolicies,
       risk: action.risk,
       defaultMode,

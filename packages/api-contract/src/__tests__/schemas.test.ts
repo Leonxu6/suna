@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  ConnectionProfileSchema,
   ConnectionProfileMetadataSchema,
   EXPERIMENTAL_FEATURE_KEYS,
   ErrorEnvelopeSchema,
@@ -83,7 +84,8 @@ function sessionFixture(overrides: Record<string, unknown> = {}) {
     owner_email: null,
     visibility: 'private',
     origin: 'user',
-    origin_ref: null,
+    end_user_ref: null,
+  origin_ref: null,
     secrets_allowlist: null,
     sharing: { mode: 'private', ownerId: '' },
     is_owner: true,
@@ -563,6 +565,20 @@ describe('session connector profile contracts', () => {
     };
     expect(ReconcileConnectionProfileInputSchema.safeParse(valid).success).toBe(true);
     expect(
+      ReconcileConnectionProfileInputSchema.safeParse({
+        ...valid,
+        owner_type: 'workspace',
+        owner_id: undefined,
+      }).success,
+    ).toBe(true);
+    expect(
+      ReconcileConnectionProfileInputSchema.safeParse({
+        ...valid,
+        owner_type: 'project',
+        owner_id: undefined,
+      }).success,
+    ).toBe(true);
+    expect(
       ReconcileConnectionProfileInputSchema.safeParse({ ...valid, credential: 'secret' }).success,
     ).toBe(false);
     expect(
@@ -591,6 +607,23 @@ describe('session connector profile contracts', () => {
         },
       }).success,
     ).toBe(false);
+  });
+
+  test('profile responses accept canonical workspace and the deprecated project compatibility value', () => {
+    const response = {
+      profile_id: profileId,
+      connector_alias: 'veyris',
+      owner_type: 'workspace',
+      owner_id: null,
+      label: 'VEYRIS',
+      status: 'active',
+      is_default: true,
+      metadata: {},
+    };
+    expect(ConnectionProfileSchema.safeParse(response).success).toBe(true);
+    expect(
+      ConnectionProfileSchema.safeParse({ ...response, owner_type: 'project' }).success,
+    ).toBe(true);
   });
 });
 
@@ -665,6 +698,21 @@ describe('native OAuth2 lifecycle schemas', () => {
     expect(OAuth2DeviceAuthorizationStartInputSchema.parse({ scopes: ['read'] })).toEqual({
       scopes: ['read'],
     });
+  });
+});
+
+describe('end_user_ref accepts its deprecated origin_ref alias', () => {
+  test('either spelling parses; the response carries both', () => {
+    expect(() => SessionCreateInputSchema.parse({ end_user_ref: 'u1' })).not.toThrow();
+    expect(() => SessionCreateInputSchema.parse({ origin_ref: 'u1' })).not.toThrow();
+    expect(() =>
+      SessionCreateInputSchema.parse({ end_user_ref: 'u1', origin_ref: 'u1' }),
+    ).not.toThrow();
+  });
+
+  test('the new name is bounded exactly like the alias', () => {
+    expect(() => SessionCreateInputSchema.parse({ end_user_ref: 'x'.repeat(257) })).toThrow();
+    expect(() => SessionCreateInputSchema.parse({ end_user_ref: '   ' })).toThrow();
   });
 });
 

@@ -5,6 +5,7 @@ import {
   type TriggerRuntimeCatalogStore,
   reconcileWorkspaceTriggerRuntimeWithStore,
 } from './trigger-runtime-catalog-core';
+import { initialTriggerScheduleSlot } from './trigger-schedule';
 import type { GitTriggerSpec } from './triggers';
 
 const databaseStore: TriggerRuntimeCatalogStore = {
@@ -13,25 +14,45 @@ const databaseStore: TriggerRuntimeCatalogStore = {
       .select({
         slug: workspaceTriggerRuntime.slug,
         sessionId: workspaceTriggerRuntime.sessionId,
+        scheduleRevision: workspaceTriggerRuntime.scheduleRevision,
       })
       .from(workspaceTriggerRuntime)
       .where(eq(workspaceTriggerRuntime.workspaceId, workspaceId));
   },
 
-  async upsert(workspaceId, spec) {
+  async upsert(workspaceId, spec, scheduleRevision) {
     const now = new Date();
+    const nextFireAt = initialTriggerScheduleSlot(spec, now);
     await db
       .insert(workspaceTriggerRuntime)
       .values({
         workspaceId,
         slug: spec.slug,
         sessionId: spec.pinnedSessionId,
+        triggerType: spec.type,
+        enabled: spec.enabled,
+        scheduleCron: spec.cron,
+        scheduleRunAt: spec.runAt ? new Date(spec.runAt) : null,
+        scheduleTimezone: spec.timezone,
+        scheduleRevision,
+        scheduleSpec: spec as unknown as Record<string, unknown>,
+        nextFireAt,
+        lastScheduledFor: null,
         updatedAt: now,
       })
       .onConflictDoUpdate({
         target: [workspaceTriggerRuntime.workspaceId, workspaceTriggerRuntime.slug],
         set: {
           sessionId: spec.pinnedSessionId,
+          triggerType: spec.type,
+          enabled: spec.enabled,
+          scheduleCron: spec.cron,
+          scheduleRunAt: spec.runAt ? new Date(spec.runAt) : null,
+          scheduleTimezone: spec.timezone,
+          scheduleRevision,
+          scheduleSpec: spec as unknown as Record<string, unknown>,
+          nextFireAt,
+          lastScheduledFor: null,
           updatedAt: now,
         },
       });

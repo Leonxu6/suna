@@ -39,6 +39,44 @@ test("shadow smokes can bypass the production custom domain before cutover", () 
   );
 });
 
+test("US shadow exposes the managed model catalog for runtime verification", () => {
+  assert.match(
+    shadowWorkflow,
+    /\.KORTIX_MANAGED_PROVIDER_ENABLED == "true"/,
+  );
+});
+
+test("shadow Terraform permits only immutable ECS task-definition replacement", () => {
+  assert.match(
+    shadowWorkflow,
+    /\.address != "module\.api\.aws_ecs_task_definition\.this"[\s\S]*\.change\.actions != \["delete", "create"\]/,
+  );
+  assert.match(
+    shadowWorkflow,
+    /\.address != "module\.gateway\.aws_ecs_task_definition\.this"[\s\S]*\.change\.actions != \["create", "delete"\]/,
+  );
+  assert.match(
+    shadowWorkflow,
+    /if \[ "\$blocked_destructive_changes" != "0" \]/,
+  );
+});
+
+test("US shadow deploy accepts an immutable candidate image tag", () => {
+  assert.match(shadowWorkflow, /image_tag:\s*\n\s*description:/);
+  assert.match(
+    shadowWorkflow,
+    /IMAGE_TAG: \$\{\{ inputs\.image_tag \|\| inputs\.version \}\}/,
+  );
+  assert.match(
+    shadowWorkflow,
+    /"kortix\/kortix-api:\$\{IMAGE_TAG\}"/,
+  );
+  assert.match(
+    shadowWorkflow,
+    /"kortix\/kortix-gateway:\$\{IMAGE_TAG\}"/,
+  );
+});
+
 test("target smoke removes and counts recovery flow state", () => {
   assert.match(
     targetSmokeProgram,

@@ -204,6 +204,37 @@ test('getConnectorPolicies GETs the policies list', async () => {
   expect(result.policies).toHaveLength(1);
 });
 
+test('getConnectorPolicies surfaces the effective scope that decided each tool', async () => {
+  // Workspace rules are evaluated before connector rules and cannot be overridden
+  // (see the executor's resolveEffectiveAction). Without `effective`, an editor
+  // renders a connector rule the runtime is actually ignoring.
+  nextResponse = {
+    status: 200,
+    body: {
+      policies: [{ match: 'send_email', action: 'always_run' }],
+      effective: [
+        { path: 'send_email', action: 'block', source: 'workspace' },
+        { path: 'list_labels', action: 'always_run', source: 'connector' },
+      ],
+      workspace_policies: [{ match: 'gmail.send_email', action: 'block' }],
+      default_mode: 'risk',
+    },
+  };
+  const result = await getConnectorPolicies('P1', 'gmail');
+  const overruled = result.effective?.find((e) => e.path === 'send_email');
+  expect(overruled?.source).toBe('workspace');
+  expect(overruled?.action).toBe('block');
+  expect(result.effective?.find((e) => e.path === 'list_labels')?.source).toBe('connector');
+  expect(result.default_mode).toBe('risk');
+});
+
+test('getConnectorPolicies tolerates a server that omits the effective block', async () => {
+  // Older servers return only `policies`; the editor must not crash on them.
+  nextResponse = { status: 200, body: { policies: [] } };
+  const result = await getConnectorPolicies('P1', 'slack');
+  expect(result.effective).toBeUndefined();
+});
+
 test('setConnectorPolicies PUTs { policies }', async () => {
   nextResponse = { status: 200, body: { ok: true } };
   const policies = [{ match: 'send_message', action: 'block' as const }];
