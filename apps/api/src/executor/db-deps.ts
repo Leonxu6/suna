@@ -46,7 +46,6 @@ import { invalidateWorkspaceMirror } from '../workspaces/git';
 import { loadWorkspaceForUser } from '../workspaces/lib/access';
 import {
   canonicalConnectorAlias,
-  publicConnectorAlias,
   resolveSessionConnectorProfile,
 } from '../workspaces/lib/session-connector-bindings';
 import { validateAccountToken } from '../repositories/account-tokens';
