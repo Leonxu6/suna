@@ -2,25 +2,24 @@
 
 import { useTranslations } from 'next-intl';
 
-import { PersonalOnboardingWelcome } from '@/components/workspaces/personal-onboarding-welcome';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { errorToast, successToast } from '@/components/ui/toast';
+import { PersonalOnboardingWelcome } from '@/components/workspaces/personal-onboarding-welcome';
 import { GlobalUpgradeModal } from '@/features/billing/global-upgrade-modal';
 import { UpgradeButton } from '@/features/billing/upgrade-button';
 import { Icon } from '@/features/icon/icon';
 import { AppHeader } from '@/features/layout/app-header';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import { ErrorState } from '@/features/layout/section/error-state';
-import { WorkspaceCreateModal } from '@/features/workspaces/modal/workspace-create-modal';
+import { useAuth } from '@/features/providers/auth-provider';
 import { RenameWorkspaceDialog } from '@/features/workspaces/modal/rename-workspace-modal';
+import { WorkspaceCreateModal } from '@/features/workspaces/modal/workspace-create-modal';
 import NewWorkspaceControl from '@/features/workspaces/new-workspace-control';
 import WorkspaceCard from '@/features/workspaces/workspace-card';
-import { useAuth } from '@/features/providers/auth-provider';
 import { invalidateAccountState, useAccountState } from '@/hooks/billing';
-import { syncSubscription } from '@kortix/sdk';
 import { fireConfetti } from '@/lib/confetti';
 import { isBillingEnabled } from '@/lib/config';
 import {
@@ -34,11 +33,12 @@ import {
   archiveWorkspace,
   listAccounts,
   listWorkspacesForAccount,
+  syncSubscription,
 } from '@kortix/sdk';
 import { Search } from '@mynaui/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FolderPlus } from 'lucide-react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const WORKSPACE_SKELETON_KEYS = Array.from(
@@ -51,16 +51,18 @@ const WORKSPACE_SKELETON_KEYS = Array.from(
  * the in-list fetch all resolve to the same skeleton grid — no progress line, no
  * connecting shell — so nothing else ever flashes before the workspaces land.
  */
-function WorkspacesLoadingScreen() {
+function WorkspacesLoadingScreen({ standalone }: { standalone: boolean }) {
   return (
-    <div className="flex min-h-screen flex-col">
-      <div className="w-full border-b">
-        <div className="kx-app-header px-mobile mx-auto flex w-full max-w-6xl shrink-0 items-center justify-between gap-2 py-4 sm:gap-3">
-          <Skeleton className="h-5 w-24 rounded-md" />
-          <Skeleton className="h-8 w-20 rounded-full" />
+    <div className={standalone ? 'flex min-h-screen flex-col' : 'contents'}>
+      {standalone ? (
+        <div className="w-full border-b">
+          <div className="kx-app-header px-mobile mx-auto flex w-full max-w-6xl shrink-0 items-center justify-between gap-2 py-4 sm:gap-3">
+            <Skeleton className="h-5 w-24 rounded-md" />
+            <Skeleton className="h-8 w-20 rounded-full" />
+          </div>
         </div>
-      </div>
-      <main className="bg-background px-mobile flex-1 py-10 sm:py-12">
+      ) : null}
+      <div className={standalone ? 'bg-background px-mobile flex-1 py-10 sm:py-12' : undefined}>
         <div className="mx-auto w-full max-w-6xl space-y-8">
           <div className="space-y-2">
             <Skeleton className="h-9 w-44 rounded-md" />
@@ -72,7 +74,7 @@ function WorkspacesLoadingScreen() {
             ))}
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }
@@ -81,7 +83,9 @@ export default function WorkspacesPage() {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const tHardcodedUi = useTranslations('hardcodedUi');
   const router = useRouter();
-  const { id: accountId } = useParams<{ id: string }>();
+  const pathname = usePathname();
+  const { id: routeAccountId } = useParams<{ id?: string }>();
+  const standalone = pathname === '/workspaces';
   const queryClient = useQueryClient();
   const { user, isLoading: authLoading } = useAuth();
   const { selectedAccountId, setSelectedAccountId } = useCurrentAccountStore();
@@ -181,8 +185,11 @@ export default function WorkspacesPage() {
     staleTime: 60_000,
   });
 
-  const activeAccount =
-    accountsQuery.data?.find((account) => account.account_id === accountId) ?? null;
+  const activeAccount = routeAccountId
+    ? (accountsQuery.data?.find((account) => account.account_id === routeAccountId) ?? null)
+    : (accountsQuery.data?.find((account) => account.account_id === selectedAccountId) ??
+      accountsQuery.data?.[0] ??
+      null);
   const activeAccountId = activeAccount?.account_id ?? null;
 
   useEffect(() => {
@@ -193,9 +200,9 @@ export default function WorkspacesPage() {
   }, [activeAccount, selectedAccountId, setSelectedAccountId]);
 
   useEffect(() => {
-    if (!accountsQuery.data || activeAccount) return;
+    if (!routeAccountId || !accountsQuery.data || activeAccount) return;
     router.replace('/workspaces');
-  }, [accountsQuery.data, activeAccount, router]);
+  }, [routeAccountId, accountsQuery.data, activeAccount, router]);
 
   const workspacesQuery = useQuery({
     queryKey: ['workspaces', activeAccountId],
@@ -319,13 +326,13 @@ export default function WorkspacesPage() {
   );
 
   if (authLoading || !user) {
-    return <WorkspacesLoadingScreen />;
+    return <WorkspacesLoadingScreen standalone={standalone} />;
   }
 
   // Bootstrapping the first workspace — hold the skeleton instead of flashing the
   // empty "create your first workspace" state before the redirect.
   if (autoCreating) {
-    return <WorkspacesLoadingScreen />;
+    return <WorkspacesLoadingScreen standalone={standalone} />;
   }
 
   const total = workspacesQuery.data?.length ?? 0;
@@ -345,15 +352,17 @@ export default function WorkspacesPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <div className="w-full border-b">
-        <AppHeader
-          user={user}
-          breadcrumb="Workspaces"
-          actions={<UpgradeButton accountId={activeAccountId ?? undefined} />}
-        />
-      </div>
-      <main className="bg-background px-mobile flex-1 py-10 sm:py-12">
+    <div className={standalone ? 'flex min-h-screen flex-col' : 'contents'}>
+      {standalone ? (
+        <div className="w-full border-b">
+          <AppHeader
+            user={user}
+            breadcrumb="Workspaces"
+            actions={<UpgradeButton accountId={activeAccountId ?? undefined} />}
+          />
+        </div>
+      ) : null}
+      <div className={standalone ? 'bg-background px-mobile flex-1 py-10 sm:py-12' : undefined}>
         <div className="mx-auto w-full max-w-6xl space-y-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0 space-y-1">
@@ -464,7 +473,7 @@ export default function WorkspacesPage() {
             </div>
           )}
         </div>
-      </main>
+      </div>
 
       <WorkspaceCreateModal
         open={modalOpen}

@@ -11,9 +11,8 @@ export function selectAccountWorkspace<T extends WorkspaceReference>(
   workspaces: readonly T[],
 ): T | undefined {
   return (
-    workspaces.find(
-      (workspace) => workspace.workspace_id === account.default_workspace_id,
-    ) ?? workspaces[0]
+    workspaces.find((workspace) => workspace.workspace_id === account.default_workspace_id) ??
+    workspaces[0]
   );
 }
 
@@ -25,10 +24,8 @@ export function accountWorkspaceDestination(
   return workspace ? `/workspaces/${workspace.workspace_id}` : '/workspaces';
 }
 
-export function shouldRenderWorkspaceSwitcher(
-  workspaces: readonly WorkspaceReference[],
-): boolean {
-  return workspaces.length !== 1;
+export function shouldRenderWorkspaceSwitcher(_workspaces: readonly WorkspaceReference[]): boolean {
+  return true;
 }
 
 export function workspaceManagementPath(accountId: string, search = ''): string {
