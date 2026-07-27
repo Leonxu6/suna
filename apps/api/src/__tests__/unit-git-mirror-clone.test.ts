@@ -254,15 +254,17 @@ describe('refreshMirror — partial-clone cleanup on failure', () => {
     try {
       const repoPath = repoCachePath(workspace);
       await mkdir(repoPath, { recursive: true });
-      const poisonedMarker = join(repoPath, 'not-a-repo');
-      await mkdir(poisonedMarker);
+      await writeFile(join(repoPath, 'not-a-repo.txt'), 'poisoned cache entry\n', {
+        flag: 'wx',
+        mode: 0o600,
+      });
 
       const healedPath = await refreshMirror(workspace);
 
       expect(healedPath).toBe(repoPath);
       expect(existsSync(join(repoPath, 'HEAD'))).toBe(true);
       expect(existsSync(join(repoPath, 'objects'))).toBe(true);
-      expect(existsSync(poisonedMarker)).toBe(false);
+      expect(existsSync(join(repoPath, 'not-a-repo.txt'))).toBe(false);
     } finally {
       process.env.KORTIX_GIT_CACHE_DIR = prevCacheDir;
       await rm(workdir, { recursive: true, force: true }).catch(() => {});
