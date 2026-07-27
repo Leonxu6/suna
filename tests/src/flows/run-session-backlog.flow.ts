@@ -31,6 +31,7 @@ import { isKe2eRetryableError } from '../core/client';
 import { waitFor, sleep } from '../core/poll';
 import { markSessionReadinessTimeoutRetryable } from '../core/session-runtime-retry';
 import type { FlowContext } from '../core/types';
+import { subscribe } from '../fixtures/billing';
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -517,6 +518,10 @@ flow(
     const admin = ctx.client.withBearer(ctx.env.adminToken, 'ADMIN_TOKEN');
     let previousLimit: number | null | undefined;
     const team = await ctx.fixtures.team();
+
+    await ctx.step('fund the isolated session-limit account', async () => {
+      await subscribe(ctx.env, ctx.client.as(ctx.P.OWNER), team.id);
+    });
 
     await ctx.step('set the run account concurrent-session override to 1', async () => {
       const r = await admin.post(
