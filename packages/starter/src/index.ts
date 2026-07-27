@@ -38,7 +38,7 @@ export interface StarterFile {
 // scaffolded with it. Workspace creation no longer offers a choice.
 //
 // `minimal` (base only, no domain skills) is kept purely as an INTERNAL
-// building block: the workspace-clone seed path (`buildProjectSeedFilesFromItem`)
+// building block: the workspace-clone seed path (`buildWorkspaceSeedFilesFromItem`)
 // uses it to lay down just the opencode runtime before a `registry:project`'s
 // own skills/agents are layered on top, so a specialized workspace template is not
 // polluted with every general-knowledge skill. It is not surfaced in the

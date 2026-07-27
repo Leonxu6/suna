@@ -116,7 +116,9 @@ async function main() {
   setTimeout(async () => {
     const result = await promptVoiceAgent(
       callId,
-      kortixSay('Hey, Kortix here. I can hear you — just talk normally.'),
+      kortixSay(
+        'Say exactly this out loud now, then stop: "Hey, Kortix here. I can hear you — just talk normally."',
+      ),
       { workspaceId },
     );
     console.log(

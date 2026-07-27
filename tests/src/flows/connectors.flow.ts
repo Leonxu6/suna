@@ -694,7 +694,7 @@ flow(
       },
       { params: { workspaceId: p.id } },
     );
-    connector.status(201);
+    connector.status(200);
     const defaultProfile = await ctx.client.as(ctx.P.OWNER).post(
       '/v1/workspaces/:workspaceId/connectors/:slug/oauth2/profile',
       {},

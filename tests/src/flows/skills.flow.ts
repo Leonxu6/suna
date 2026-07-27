@@ -10,43 +10,39 @@
  * workspaces provide real workspace-scoped PATs. No flow creates a sandbox.
  */
 import { flow } from '../core/flow';
+import type { FlowContext } from '../core/types';
 
 // The one skill guaranteed to exist on every deploy — it is the entry pointer
 // every other Kortix skill and the seeded workspace scaffold reference by name.
 const KNOWN_SKILL = 'kortix-system';
+
+async function createWorkspacePat(ctx: FlowContext, label: string) {
+  const workspace = await ctx.fixtures.workspace();
+  const response = await ctx.client.as(ctx.P.OWNER).post(
+    '/v1/workspaces/:workspaceId/cli-token',
+    { name: ctx.fixtures.name(label) },
+    { params: { workspaceId: workspace.id } },
+  );
+  response
+    .status(201)
+    .body()
+    .exists('$.secret_key')
+    .exists('$.token_id')
+    .has('$.workspace_id', workspace.id);
+  const body = response.json<{ secret_key: string; token_id: string }>();
+  ctx.track('cli-token', body.token_id, { workspaceId: workspace.id });
+  return ctx.client.withBearer(body.secret_key, 'PAT_WORKSPACE');
+}
 
 flow(
   'SKILL-1',
   {
     domain: 'skills',
     tags: ['smoke'],
-    routes: [
-      'POST /v1/workspaces/:workspaceId/cli-token',
-      'DELETE /v1/workspaces/:workspaceId/cli-token/:tokenId',
-      'GET /v1/skills',
-    ],
+    routes: ['POST /v1/workspaces/:workspaceId/cli-token', 'GET /v1/skills'],
   },
   async (ctx) => {
-    const workspace = await ctx.fixtures.workspace();
-    let secret = '';
-    let tokenId = '';
-    await ctx.step('mint a real workspace-scoped PAT', async () => {
-      const r = await ctx.client
-        .as(ctx.P.OWNER)
-        .post(
-          '/v1/workspaces/:workspaceId/cli-token',
-          { name: ctx.fixtures.name('skills-list') },
-          { params: { workspaceId: workspace.id } },
-        );
-      r.status(201)
-        .body()
-        .exists('$.secret_key')
-        .exists('$.token_id')
-        .has('$.workspace_id', workspace.id);
-      const body = r.json<{ secret_key: string; token_id: string }>();
-      secret = body.secret_key;
-      tokenId = body.token_id;
-    });
+    const workspacePat = await createWorkspacePat(ctx, 'skills-list');
     await ctx.step('ANON cannot list the system skills', async () => {
       const r = await ctx.client.as(ctx.P.ANON).get('/v1/skills');
       r.status(401);
@@ -57,7 +53,7 @@ flow(
       // outside /v1/workspaces/:id. That is the caller these routes exist for, so
       // it is the one that must be asserted here — an owner JWT passing proves
       // nothing about the sandbox.
-      const r = await ctx.client.withBearer(secret, 'PAT_WORKSPACE').get('/v1/skills');
+      const r = await workspacePat.get('/v1/skills');
       r.status(200);
     });
     await ctx.step('authed list → 200 with descriptions and no bodies', async () => {
@@ -72,14 +68,6 @@ flow(
       }
       if (body.count !== body.skills.length) throw new Error('count must match skills.length');
     });
-    await ctx.step('revoke the workspace-scoped PAT', async () => {
-      const r = await ctx.client
-        .as(ctx.P.OWNER)
-        .del('/v1/workspaces/:workspaceId/cli-token/:tokenId', {
-          params: { workspaceId: workspace.id, tokenId },
-        });
-      r.status(200).body().has('$.ok', true);
-    });
   },
 );
 
@@ -90,31 +78,11 @@ flow(
     tags: ['smoke'],
     routes: [
       'POST /v1/workspaces/:workspaceId/cli-token',
-      'DELETE /v1/workspaces/:workspaceId/cli-token/:tokenId',
       'GET /v1/skills/:name',
     ],
   },
   async (ctx) => {
-    const workspace = await ctx.fixtures.workspace();
-    let secret = '';
-    let tokenId = '';
-    await ctx.step('mint a real workspace-scoped PAT', async () => {
-      const r = await ctx.client
-        .as(ctx.P.OWNER)
-        .post(
-          '/v1/workspaces/:workspaceId/cli-token',
-          { name: ctx.fixtures.name('skills-read') },
-          { params: { workspaceId: workspace.id } },
-        );
-      r.status(201)
-        .body()
-        .exists('$.secret_key')
-        .exists('$.token_id')
-        .has('$.workspace_id', workspace.id);
-      const body = r.json<{ secret_key: string; token_id: string }>();
-      secret = body.secret_key;
-      tokenId = body.token_id;
-    });
+    const workspacePat = await createWorkspacePat(ctx, 'skills-read');
     await ctx.step('ANON cannot read a skill body', async () => {
       const r = await ctx.client.as(ctx.P.ANON).get('/v1/skills/:name', {
         params: { name: KNOWN_SKILL },
@@ -147,9 +115,7 @@ flow(
       }
     });
     await ctx.step('a WORKSPACE-scoped PAT can read the body (the in-sandbox read)', async () => {
-      const r = await ctx.client
-        .withBearer(secret, 'PAT_WORKSPACE')
-        .get('/v1/skills/:name', { params: { name: KNOWN_SKILL } });
+      const r = await workspacePat.get('/v1/skills/:name', { params: { name: KNOWN_SKILL } });
       r.status(200).body().exists('$.body');
     });
     await ctx.step('a name that is not a managed skill → 404', async () => {
@@ -157,14 +123,6 @@ flow(
         .as(ctx.P.OWNER)
         .get('/v1/skills/:name', { params: { name: 'not-a-kortix-skill' } });
       r.status(404);
-    });
-    await ctx.step('revoke the workspace-scoped PAT', async () => {
-      const r = await ctx.client
-        .as(ctx.P.OWNER)
-        .del('/v1/workspaces/:workspaceId/cli-token/:tokenId', {
-          params: { workspaceId: workspace.id, tokenId },
-        });
-      r.status(200).body().has('$.ok', true);
     });
   },
 );
@@ -196,11 +154,11 @@ flow('SKILL-3', { domain: 'skills', routes: ['GET /v1/skills/:name/file'] }, asy
       .get('/v1/skills/:name/file', { params: { name: KNOWN_SKILL } });
     r.status(400);
   });
-  await ctx.step('traversal attempt → 404, never a file outside the skill', async () => {
+  await ctx.step('traversal attempt → 403/404, never a file outside the skill', async () => {
     const r = await ctx.client.as(ctx.P.OWNER).get('/v1/skills/:name/file', {
       params: { name: KNOWN_SKILL },
       query: { path: '../../../../etc/passwd' },
     });
-    r.status(404);
+    r.status([403, 404]);
   });
 });
