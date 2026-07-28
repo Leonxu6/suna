@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   Client,
   Res,
@@ -7,7 +7,8 @@ import {
 } from '../src/core/client';
 import { waitFor } from '../src/core/poll';
 import type { Captured } from '../src/core/result';
-import { paceProvisionRequest, provisionWorkspace } from '../src/fixtures/provision';
+let paceProvisionRequest: typeof import('../src/fixtures/provision').paceProvisionRequest;
+let provisionWorkspace: typeof import('../src/fixtures/provision').provisionWorkspace;
 
 function response(statusCode: number, bodyText: string, json?: unknown) {
   return {
@@ -37,8 +38,17 @@ function capturedResponse(status: number, headers: Record<string, string>): Res 
 }
 
 describe('release gate transient failure resilience', () => {
+  beforeEach(async () => {
+    vi.stubEnv('KE2E_PROVISION_CONCURRENCY', '2');
+    vi.stubEnv('KE2E_PROVISION_MIN_INTERVAL_MS', '0');
+    vi.stubEnv('KE2E_PROVISION_RATE_LIMIT_DELAY_MS', '120000');
+    vi.resetModules();
+    ({ paceProvisionRequest, provisionWorkspace } = await import('../src/fixtures/provision'));
+  });
+
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 

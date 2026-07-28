@@ -2002,6 +2002,10 @@ workspacesApp.openapi(
 
     const loaded = await loadWorkspaceForUser(c, workspaceId, 'session');
     if (!loaded) return c.json({ error: 'Not found' }, 404);
+    // A live model change restarts opencode and can terminate the target
+    // session's in-flight turn. Scoped agent tokens therefore need the same
+    // destructive capability as the stop route (no-op for human/PAT tokens).
+    assertAgentScope(c, WORKSPACE_ACTIONS.WORKSPACE_SESSION_STOP);
     const visible = await loadVisibleSession(loaded, sessionId, c.get('sessionId') ?? null);
     if (!visible) return c.json({ error: 'Not found' }, 404);
     // Seeing a session is not permission to mutate it: visibility 'workspace'

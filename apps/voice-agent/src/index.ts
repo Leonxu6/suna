@@ -13,8 +13,8 @@
  * not to our own infrastructure — see README.md. LiveKit injects LIVEKIT_URL /
  * LIVEKIT_API_KEY / LIVEKIT_API_SECRET automatically, and every model below runs
  * through LiveKit Inference, so this worker needs NO third-party API keys and no
- * secrets of its own. Everything else it needs (workspace, session, call id, the
- * Kortix API URL and a per-call token) arrives in the room metadata.
+ * secrets of its own. Public call context arrives in room metadata. The per-call
+ * token arrives in private dispatch metadata.
  *
  * Run locally with `bun run src/index.ts dev`.
  */
@@ -33,13 +33,13 @@ import { postUserTurn, wireTranscripts } from './transcripts';
 export default defineAgent({
   entry: async (ctx) => {
 
-    // Read call identity + Kortix credentials from the room BEFORE connecting
-    // — `ctx.job.room` is a snapshot of the room's server-side state at
-    // dispatch time (name + metadata), available immediately, whereas
-    // `ctx.room` (the live rtc-node Room) only populates those fields once
-    // `ctx.connect()` has actually joined. See call-context.ts for why this
-    // has to be per-job room metadata and not a process-wide env var.
-    const callContext: CallContext = resolveCallContext(ctx.job.room?.name, ctx.job.room?.metadata);
+    // Read public call context from the room and the worker bearer from private
+    // dispatch metadata. Both values are available before `ctx.connect()`.
+    const callContext: CallContext = resolveCallContext(
+      ctx.job.room?.name,
+      ctx.job.room?.metadata,
+      ctx.job.metadata,
+    );
 
     const { send_prompt, run_command } = buildTools();
 

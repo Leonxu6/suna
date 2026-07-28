@@ -10,10 +10,10 @@
  *   Kortix turn ──► promptVoiceAgent ──► room data channel ──► worker  (say)
  *
  * The worker is a SEPARATE PROCESS (apps/voice-agent, not part of apps/api),
- * dispatched into the room by name and bootstrapped entirely from the room's
- * metadata — see `VoiceRoomMetadata` below and apps/voice-agent/README.md's
- * "The apps/api contract this app expects", which this file (plus the voice
- * MCP — mcp.ts / routes.ts) implements.
+ * dispatched into the room by name and bootstrapped from public room metadata
+ * plus private dispatch metadata. See `VoiceRoomMetadata` below and
+ * apps/voice-agent/README.md's "The apps/api contract this app expects", which
+ * this file (plus the voice MCP — mcp.ts / routes.ts) implements.
  *
  * The single most important property, unchanged from the realtime-provider
  * version this replaces: `askKortix` (the MCP's `ask_kortix` tool, called by
@@ -93,9 +93,8 @@ export async function isCallLive(callId: string): Promise<boolean> {
 }
 
 /**
- * Everything apps/voice-agent needs to bootstrap a freshly dispatched job,
- * carried in the LiveKit room's metadata so the worker never has to call back
- * into the API just to learn who it's talking to. Field names and shape are
+ * Non-sensitive context for a voice call. LiveKit exposes room metadata to
+ * room participants. Field names and shape are
  * fixed by that app's `call-context.ts` (`RoomMetadataShape`) — snake_case,
  * NOT this codebase's usual camelCase, because the contract is owned jointly
  * with a consumer this file cannot rename.
@@ -105,8 +104,11 @@ export interface VoiceRoomMetadata {
   session_id: string;
   call_id: string;
   kortix_api_url: string;
-  kortix_api_token: string;
   bot_name: string;
+}
+
+export interface VoiceWorkerMetadata extends VoiceRoomMetadata {
+  kortix_api_token: string;
 }
 
 export interface StartCallInput {
@@ -140,9 +142,9 @@ export async function startCall(input: StartCallInput): Promise<VoiceCall> {
   // the worker left — which it did every time, since callId IS the session id.
   //
   // The metadata check matters just as much: a room outlives the process that
-  // made it (emptyTimeout is 30min), and its metadata carries the callback URL
-  // and per-call token the worker authenticates with. Reusing a live room whose
-  // metadata names a DEAD api url gives you an agent that joins, greets, listens
+  // made it (emptyTimeout is 30min), and its metadata carries the callback URL.
+  // Reusing a live room whose metadata names a DEAD api url gives you an agent
+  // that joins, greets, listens
   // — and then answers every real request with "I couldn't reach Kortix",
   // because its hand-off is POSTing into the void. Rebuilding is cheap; a call
   // that cannot reach Kortix is worthless.
@@ -150,19 +152,22 @@ export async function startCall(input: StartCallInput): Promise<VoiceCall> {
     return call;
   }
 
-  const metadata: VoiceRoomMetadata = {
+  const roomMetadata: VoiceRoomMetadata = {
     workspace_id: input.workspaceId,
     session_id: input.sessionId,
     call_id: input.callId,
     kortix_api_url: config.KORTIX_URL,
-    kortix_api_token: mintCallApiToken(input.callId),
     bot_name: input.botName,
+  };
+  const workerMetadata: VoiceWorkerMetadata = {
+    ...roomMetadata,
+    kortix_api_token: mintCallApiToken(input.callId),
   };
 
   // Create the room, dispatched to the worker, BEFORE anything tries to join
   // it — same ordering the old code used for the provider connect: if the bot
   // arrives first it must find somewhere real to join.
-  await createRoom(room, JSON.stringify(metadata));
+  await createRoom(room, JSON.stringify(roomMetadata), JSON.stringify(workerMetadata));
 
   return call;
 }
