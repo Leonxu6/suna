@@ -25,35 +25,37 @@ const ACTIVE_RECORD = {
 };
 
 mock.module('../../config', () => ({ config: { KORTIX_ENFORCE_SESSION_AGENT_LOCK: false } }));
-mock.module('../../lib/request-context', () => ({ getTraceHeaders: () => ({}) }));
-mock.module('../../shared/kortix-user-context', () => ({
-  KORTIX_USER_CONTEXT_HEADER: 'x-kortix-user-context',
-}));
 mock.module('../../shared/preview-ownership', () => ({
   canAccessPreviewSandbox: async () => true,
   canAccessSandboxSession: async () => true,
+  resolveSandboxWorkspaceId: async () => ACTIVE_RECORD.workspaceId,
+  resolvePreviewUserContext: async () => null,
+  clearPreviewOwnershipCache: () => {},
+  invalidatePreviewCacheForUser: () => {},
 }));
 mock.module('../../workspaces/lib/sandbox-env-sync', () => ({
   syncSandboxEnvForPrompt: async () => {},
-}));
-mock.module('../../workspaces/opencode-title-capture', () => ({
-  scheduleTitleCaptureAfterPrompt: () => {},
 }));
 mock.module('../../workspaces/routes/shared', () => ({
   resumeStoppedSandboxByExternalId: async () => true,
 }));
 mock.module('../backend', () => ({
   loadSandbox: async () => ({ ...ACTIVE_RECORD }),
+  resolveServiceKey: async () => ACTIVE_RECORD.serviceKey,
   routeSandboxIngress: () => ({ effectivePort: 8000 }),
   resolveSandboxIngress: async () => ({ url: 'http://sandbox.local', headers: {} }),
   buildSandboxUpstreamHeaders: async () => ({}),
   invalidatePreviewLink: () => {},
+  invalidateSandbox: () => {},
   markSandboxUsed: () => {},
   markSandboxErrored: async () => {},
   wakeSandbox: async () => {},
 }));
 
-const { forwardToSandbox } = await import('./preview');
+const {
+  forwardToSandbox,
+  setPreviewTitleCaptureDependenciesForTest,
+} = await import('./preview');
 const { __resetPromptDedupe } = await import('../prompt-dedupe');
 
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -79,9 +81,17 @@ const PROMPT_BODY = new TextEncoder().encode(
   JSON.stringify({ parts: [{ type: 'text', text: 'hi' }] }),
 ).buffer;
 
-beforeEach(() => __resetPromptDedupe());
+beforeEach(() => {
+  __resetPromptDedupe();
+  setPreviewTitleCaptureDependenciesForTest({
+    scheduleAfterPrompt: () => {},
+    captureAfterRuntimeEvent: async () => {},
+  });
+});
 afterAll(() => {
+  setPreviewTitleCaptureDependenciesForTest(null);
   (globalThis as { fetch: unknown }).fetch = ORIGINAL_FETCH;
+  mock.restore();
 });
 
 describe('forwardToSandbox — prompt delivery is never double-sent', () => {
