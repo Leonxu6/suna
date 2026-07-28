@@ -9,6 +9,21 @@ let deleteWhereArgs: any[] = [];
 let conflictMode: 'update' | 'nothing' | null = null;
 let conflictConfig: any = null;
 
+function collectSqlIdentifiers(value: unknown, seen = new Set<unknown>()): string[] {
+  if (value == null || typeof value !== 'object' || seen.has(value)) return [];
+  seen.add(value);
+  const record = value as Record<string, unknown>;
+  const identifiers = typeof record.name === 'string' ? [record.name] : [];
+  for (const child of Object.values(record)) {
+    if (Array.isArray(child)) {
+      for (const item of child) identifiers.push(...collectSqlIdentifiers(item, seen));
+    } else {
+      identifiers.push(...collectSqlIdentifiers(child, seen));
+    }
+  }
+  return identifiers;
+}
+
 function chain(): any {
   const c: any = {};
   for (const m of ['select', 'from', 'update', 'set', 'returning', 'limit', 'leftJoin']) {
@@ -146,6 +161,7 @@ describe('upsertAccountModelPreference', () => {
     // Targets the GLOBAL partial index (account_id, scope, scope_key) WHERE workspace_id IS NULL.
     expect(conflictConfig.target).toHaveLength(3);
     expect(conflictConfig.targetWhere).toBeDefined();
+    expect(collectSqlIdentifiers(conflictConfig.targetWhere)).toContain('project_id');
   });
 
   test('account scope pins scope_key to empty string, workspace_id stays null', async () => {

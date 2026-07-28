@@ -280,7 +280,7 @@ Single, self-contained changes. Anything multi-step earns a spec instead.
 | B30 | **Expose message-based session rewind and restore through both REST and ACP transports.** Editing an earlier user message must rewind the same canonical session instead of creating a fork. The removed path must remain recoverable until the replacement prompt commits.                                                                                                                                                                      | `apps/web/src/features/session/session-chat.tsx` contains `TODO(session-rewind)`. OpenCode exposes `/session/{sessionID}/revert` and `/unrevert`; ACP has no standard rewind method and needs a Kortix bridge extension plus transcript reload.                                                               | **DONE 2026-07-27** — implementation `eab4eef0f`; PR #5619 merged as `9e90e8ed7`. Deploy Dev run `30293660760` deployed source `e548c6a8fc9ee1d5a92db66d6feb912d4442ebeb`, which contains the merge. Dev session `7feb4e84-072f-4b71-987f-dc25dd542890` kept canonical OpenCode session `ses_05b075d25ffe7PBkZ632pcVAlW` across ACP and REST rewind, restore, replacement commit, reconnect, and file rollback. ACP produced `DEPLOYED_ACP_REPLACEMENT`; REST produced `DEPLOYED_REST_REPLACEMENT`; cleanup removed `26/26` probe sessions and restored ACP runtime overrides. SDK tests `1309/0`, daemon tests `306/0`, web source contract `5/0`, local ACP Playwright `1/0`, and local real ACP plus REST smoke pass. Shippable to production: **YES** for protocol behavior. Deployed UI interaction remains unverified because Browser discovery returned `[]`. |
 | B31 | **Allow a page-scoped ACP query override and settle completed ACP prompts that contain stale running tools.**                                                                                                                                                                                                                                                                                                                                     | `?acp` has no SDK transport override. Dev session `5322fa59-7a73-4fea-9f1a-9da59c2a0b5a` rendered the final assistant response while an older tool part remained `running`; `hasProjectionBlockers()` then kept the composer busy and blocked the queued prompt.                                                                 | **IMPLEMENTATION COMPLETE 2026-07-27** — implementation `d3544ae14`; focused SDK `40/0`, full SDK `1312/0`, typecheck, packed-install smoke, web routing `5/0`, and touched web ESLint pass. PR #5636, Deploy Dev, deployed SHA proof, and deployed ACP-only proof remain |
 | B32 | **Synchronize generated Kortix session names from both ACP and OpenCode REST runtimes without navigation or refresh.**                                                                                                                                                                                                                                                                                                                           | ACP emits `session_info_update`; OpenCode `/global/event` emits a wrapped `session.updated`. Neither path reliably persisted `metadata.name`, and the sidebar query could stay stale after a completed prompt.                                                                                              | **IMPLEMENTATION COMPLETE 2026-07-28** — ACP and REST title events persist server-side; the SDK refetches list and detail queries through a bounded post-send loop; focused API `78/0`, full SDK `1318/0`, API and SDK typechecks, packed-install smoke, test-harness typecheck, and local ACP plus REST Chromium `1/0` pass. Full API has `3` pre-existing failures reproduced in the primary checkout. PR, Deploy Dev, deployed SHA proof, and deployed UI proof remain. |
-| B33 | **Ignore malformed OpenCode event payloads before session synchronization reads message metadata.**                                                                                                                                                                                                                                                                                                                                             | The live web event stream calls `noteSessionSyncEvent()` with an event whose `properties.info` is absent, which throws at `session-sync-registry.ts:200` and drops the event handler.                                                                                                                        | **IN PROGRESS 2026-07-28** — session `workspace-refactor-runtime-repair`; RED test, SDK fix, full SDK gates, and live browser verification required |
+| B33 | **Ignore malformed OpenCode event payloads before session synchronization reads message metadata.**                                                                                                                                                                                                                                                                                                                                             | The live web event stream calls `noteSessionSyncEvent()` with an event whose `properties.info` is absent, which throws at `session-sync-registry.ts:200` and drops the event handler.                                                                                                                        | **IMPLEMENTATION COMPLETE 2026-07-28** — RED `5/1`; GREEN `6/0`; full SDK `1330/0`; SDK typecheck and live browser console verification pass |
 
 > **Paths above are as of today (pre-Task-4).** After the restructure they move:
 > `platform/api/` → `core/http/api/`, `opencode/` → `core/runtime/`,
@@ -3752,3 +3752,31 @@ the full SDK suite, packed-install smoke, local browser proof, PR merge,
 Deploy Dev, deployed SHA proof, and deployed session-name synchronization.
 
 **Status:** IN PROGRESS.
+
+---
+
+### 2026-07-28 — session `workspace-refactor-runtime-repair` (B33 local completion)
+
+Implemented a fail-closed guard for malformed OpenCode event payloads.
+
+`noteSessionSyncEvent()` now ignores missing, scalar, and array `properties`
+values before reading message metadata.
+
+TDD evidence:
+
+- RED focused SDK: **5 pass / 1 fail**.
+- GREEN focused SDK: **6 pass / 0 fail**.
+
+Required non-build gates:
+
+- `pnpm --filter @kortix/sdk typecheck`: exit 0.
+- `pnpm --filter @kortix/sdk test`: **1330 pass / 0 fail** with **7039**
+  assertions across **115** files.
+- Local Chromium session page: the presentation iframe rendered.
+- Local Chromium console: no `noteSessionSyncEvent()` exception.
+- `smoke:install` was not run because the user prohibited builds.
+
+**Status:** IMPLEMENTATION COMPLETE.
+
+**Shippable to production: NOT YET.** The branch commit, push, and PR checks
+remain. The user must approve the PR merge.

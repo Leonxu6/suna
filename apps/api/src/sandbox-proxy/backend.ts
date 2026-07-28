@@ -20,7 +20,7 @@
  * own status mapping on top so the same resolver serves HTTP and WebSocket.
  */
 
-import { and, eq, ne, sql } from 'drizzle-orm';
+import { and, eq, ne, sql, type SQL } from 'drizzle-orm';
 import { workspaceSessions, sessionSandboxes } from '@kortix/db';
 import { config } from '../config';
 import {
@@ -108,34 +108,43 @@ function preferredSandboxOrder() {
 // ── Row loading ────────────────────────────────────────────────────────────
 
 /**
- * Load the session-sandbox row for `externalId` in a single query. Returns null
- * when no row exists. Fresh on every call (status must not be cached); the
- * service key it finds is cached as a side-effect for `resolveServiceKey`.
+ * Load the session-sandbox row for `externalId`. The exact indexed lookup is
+ * the normal path. A case-insensitive lookup runs only after an exact miss
+ * because browsers lowercase sandbox ids embedded in preview hostnames.
+ * Returns null when no row exists. Fresh on every call because status must not
+ * be cached. The service key is cached as a side-effect for `resolveServiceKey`.
  */
 export async function loadSandbox(externalId: string): Promise<SandboxRecord | null> {
-  const [row] = await db
-    .select({
-      sandboxId: sessionSandboxes.sandboxId,
-      externalId: sessionSandboxes.externalId,
-      sessionId: sessionSandboxes.sessionId,
-      agentName: sql<string | null>`(
-        select ${workspaceSessions.agentName}
-        from ${workspaceSessions}
-        where ${workspaceSessions.sessionId} = ${sessionSandboxes.sessionId}
-        limit 1
-      )`,
-      workspaceId: sessionSandboxes.workspaceId,
-      accountId: sessionSandboxes.accountId,
-      provider: sessionSandboxes.provider,
-      status: sessionSandboxes.status,
-      baseUrl: sessionSandboxes.baseUrl,
-      config: sessionSandboxes.config,
-    })
+  const columns = {
+    sandboxId: sessionSandboxes.sandboxId,
+    externalId: sessionSandboxes.externalId,
+    sessionId: sessionSandboxes.sessionId,
+    agentName: sql<string | null>`(
+      select ${workspaceSessions.agentName}
+      from ${workspaceSessions}
+      where ${workspaceSessions.sessionId} = ${sessionSandboxes.sessionId}
+      limit 1
+    )`,
+    workspaceId: sessionSandboxes.workspaceId,
+    accountId: sessionSandboxes.accountId,
+    provider: sessionSandboxes.provider,
+    status: sessionSandboxes.status,
+    baseUrl: sessionSandboxes.baseUrl,
+    config: sessionSandboxes.config,
+  };
+  const selectSandbox = (condition: SQL) => db
+    .select(columns)
     .from(sessionSandboxes)
-    .where(eq(sessionSandboxes.externalId, externalId))
+    .where(condition)
     .orderBy(...preferredSandboxOrder())
     .limit(1);
 
+  let [row] = await selectSandbox(eq(sessionSandboxes.externalId, externalId));
+  if (!row) {
+    [row] = await selectSandbox(
+      sql`lower(${sessionSandboxes.externalId}) = lower(${externalId})`,
+    );
+  }
   if (!row) return null;
 
   const config = (row.config || {}) as Record<string, unknown>;

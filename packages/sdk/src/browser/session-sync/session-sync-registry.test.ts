@@ -135,6 +135,15 @@ describe('session sync controller eviction', () => {
 });
 
 describe('REST prompt observation events', () => {
+  test('ignores an event with no properties payload', () => {
+    expect(() =>
+      noteSessionSyncEvent({
+        type: 'message.updated',
+        properties: undefined,
+      }),
+    ).not.toThrow();
+  });
+
   test('ignores premature idle and ends observation on a terminal runtime error', () => {
     const sessionId = 'session-rest-prompt';
     const controller = getSessionSyncController(sessionId);

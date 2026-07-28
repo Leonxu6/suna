@@ -51,6 +51,9 @@ let mockFetchCallCount = 0;
 let mockFetchCalls: Array<{ url: string; method: string; headers: Record<string, string>; body: string | null }> = [];
 let mockDbUpdateCalls: Array<{ table: unknown; updates: Record<string, unknown> }> = [];
 let mockResolvedPreviewPorts: number[] = [];
+let mockResolvedSandboxIds: string[] = [];
+let mockSandboxSelectCount = 0;
+let mockExactSandboxLookupMiss = false;
 let mockAcpTitleCaptureCalls: Array<Record<string, unknown>> = [];
 let mockDeferredTitleCaptureCalls: Array<Record<string, unknown>> = [];
 
@@ -115,11 +118,14 @@ mock.module('../shared/db', () => {
         const isSandboxQuery = !isWorkspaceSessionQuery && fieldKeys.some((key) =>
           ['accountId', 'sandboxId', 'workspaceId', 'agentName', 'status', 'config', 'provider', 'baseUrl'].includes(key),
         );
+        const isSandboxLoadQuery = isSandboxQuery && fieldKeys.includes('externalId');
         const isMembershipQuery = fieldKeys.includes('accountRole');
+        const sandboxSelectIndex = isSandboxLoadQuery ? ++mockSandboxSelectCount : 0;
 
         const rowsFor = (ordered = false): any[] => {
           if (isWorkspaceSessionQuery) return [{ createdBy: TEST_USER_ID }];
           if (isSandboxQuery) {
+            if (mockExactSandboxLookupMiss && sandboxSelectIndex === 1) return [];
             const rows = mockSandboxRows();
             return ordered ? sortPreferredSandboxRows(rows) : rows;
           }
@@ -232,8 +238,9 @@ mock.module('../platform/providers', () => ({
     };
     return {
     routeIngress,
-    resolveIngress: async (_externalId: string, request: { port: number; path?: string; transport?: string }) => {
+    resolveIngress: async (externalId: string, request: { port: number; path?: string; transport?: string }) => {
       const route = routeIngress(request);
+      mockResolvedSandboxIds.push(externalId);
       mockResolvedPreviewPorts.push(route.effectivePort);
       return {
         url: mockPreviewUrl,
@@ -416,6 +423,9 @@ beforeEach(() => {
   mockFetchCalls = [];
   mockDbUpdateCalls = [];
   mockResolvedPreviewPorts = [];
+  mockResolvedSandboxIds = [];
+  mockSandboxSelectCount = 0;
+  mockExactSandboxLookupMiss = false;
   mockAcpTitleCaptureCalls = [];
   mockDeferredTitleCaptureCalls = [];
   setPreviewTitleCaptureDependenciesForTest({
@@ -579,6 +589,22 @@ describe('Preview proxy: port validation', () => {
 });
 
 describe('Preview proxy: ownership', () => {
+  test('resolves a mixed-case external id after browser hostname lowercasing', async () => {
+    const canonicalExternalId = 'sbx_01KYK490528F44H2G3N92Y57ND';
+    const lowercasedHostnameId = canonicalExternalId.toLowerCase();
+    mockDbSandbox = { ...mockDbSandbox, externalId: canonicalExternalId };
+    mockExactSandboxLookupMiss = true;
+
+    const app = createProxyTestApp();
+    const res = await app.request(`/v1/p/${lowercasedHostnameId}/${TEST_PORT}/`, {
+      headers: { Authorization: 'Bearer test' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockSandboxSelectCount).toBe(2);
+    expect(mockResolvedSandboxIds).toEqual([canonicalExternalId]);
+  });
+
   test('returns 404 when sandbox not found', async () => {
     mockDbSandbox = null;
     const app = createProxyTestApp();

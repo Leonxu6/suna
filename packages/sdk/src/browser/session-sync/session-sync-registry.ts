@@ -196,6 +196,9 @@ export function loadSessionTranscriptMessages(
 }
 
 export function noteSessionSyncEvent(event: { type?: string; properties: unknown }): void {
+  if (!event.properties || typeof event.properties !== 'object' || Array.isArray(event.properties)) {
+    return;
+  }
   const properties = event.properties as Record<string, unknown>;
   const info = properties.info as { sessionID?: string; role?: string } | undefined;
   const part = properties.part as { sessionID?: string } | undefined;

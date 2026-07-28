@@ -115,7 +115,9 @@ export async function upsertAccountModelPreference(params: {
         accountModelPreferences.workspaceId,
       ]
     : [accountModelPreferences.accountId, accountModelPreferences.scope, accountModelPreferences.scopeKey];
-  const targetWhere = workspaceId ? sql`workspace_id is not null` : sql`workspace_id is null`;
+  const targetWhere = workspaceId
+    ? sql`${accountModelPreferences.workspaceId} is not null`
+    : sql`${accountModelPreferences.workspaceId} is null`;
   if (params.onlyIfAbsent) {
     await db
       .insert(accountModelPreferences)
