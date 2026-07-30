@@ -1,6 +1,6 @@
 {
   "generatedAt": "static",
-  "count": 526,
+  "count": 528,
   "routes": [
     {
       "method": "GET",
@@ -521,6 +521,10 @@
     {
       "method": "POST",
       "path": "/v1/admin/api/sandboxes/:sessionId/migrate"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/approval-links/:token"
     },
     {
       "method": "POST",
@@ -1693,6 +1697,10 @@
     {
       "method": "POST",
       "path": "/v1/projects/:projectId/sessions/:sessionId/restart"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/projects/:projectId/sessions/:sessionId/scope"
     },
     {
       "method": "PUT",
